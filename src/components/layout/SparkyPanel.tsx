@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import PixelCat from '../shared/PixelCat';
 import type { Message } from '../../types';
 
@@ -8,10 +8,11 @@ interface SparkyPanelProps {
   showTyping: boolean;
   visible: boolean;
   onClose: () => void;
+  input: string;
+  onInputChange: (value: string) => void;
 }
 
-export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose }: SparkyPanelProps) {
-  const [input, setInput] = useState('');
+export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose, input, onInputChange }: SparkyPanelProps) {
   const msgEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -24,7 +25,6 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
-    setInput('');
     onSend(text);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -75,7 +75,7 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
           className="sparky-input"
           placeholder="输入消息..."
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => onInputChange(e.target.value)}
           onKeyDown={handleKey}
         />
         <button className="sparky-send" onClick={handleSend}>↑</button>

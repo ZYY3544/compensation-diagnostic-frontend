@@ -37,6 +37,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'bot', text: '你好！我是 Sparky，你的 AI 薪酬诊断助手。\n\n上传公司薪酬数据 Excel，我会帮你完成：\n\u2022 数据清洗与质量检查\n\u2022 市场薪酬对标匹配\n\u2022 五大模块全面诊断\n\n有任何问题随时问我。' }
   ]);
+  const [chatInput, setChatInput] = useState('');
 
   // Ref for Stage2 to register its text input handler
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
@@ -112,6 +113,7 @@ function App() {
 
   // Handle user message
   const handleSend = async (text: string) => {
+    setChatInput('');
     addMsg({ role: 'user', text });
 
     // If in Stage 2, try text-based confirmation sync first
@@ -197,6 +199,8 @@ function App() {
           showTyping={showTyping}
           visible={panelVisible}
           onClose={() => setPanelVisible(false)}
+          input={chatInput}
+          onInputChange={setChatInput}
         />
 
         {!panelVisible && (

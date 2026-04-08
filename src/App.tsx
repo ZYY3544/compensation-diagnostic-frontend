@@ -66,7 +66,7 @@ function App() {
       }
 
       // 2. Upload the real file
-      const uploadRes = await uploadFile(sid, file);
+      const uploadRes = await uploadFile(sid!, file);
       setParseResult(uploadRes.data as ParseResult);
 
       addMsg({ role: 'bot', text: `文件 "${file.name}" 上传成功，让我先看看数据结构...` });

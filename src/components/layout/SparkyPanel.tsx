@@ -109,15 +109,58 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
     setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
 
     if (!sessionId) {
-      // No session, use mock fallback
+      // No session yet (backend cold starting), try creating one on the fly
+      try {
+        const res = await fetch(`${API_BASE}/sessions/`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          // Session created, continue with chat below
+          // Note: we can't set sessionId here (it's a prop), so use the ID directly
+          const tempSessionId = data.id;
+          const controller = new AbortController();
+          abortRef.current = controller;
+          try {
+            const chatRes = await fetch(`${API_BASE}/chat/${tempSessionId}/stream`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text }),
+              signal: controller.signal,
+            });
+            if (chatRes.ok) {
+              const ct = chatRes.headers.get('content-type') || '';
+              if (ct.includes('text/event-stream')) {
+                await parseSseStream(chatRes, (fullText) => {
+                  setMessages(prev => {
+                    const updated = [...prev];
+                    updated[updated.length - 1] = { role: 'bot', text: fullText };
+                    return updated;
+                  });
+                });
+              } else {
+                const chatData = await chatRes.json();
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: 'bot', text: chatData.response || '你好，有什么薪酬问题可以问我。' };
+                  return updated;
+                });
+              }
+              abortRef.current = null;
+              setIsLoading(false);
+              return;
+            }
+          } catch {}
+          abortRef.current = null;
+        }
+      } catch {}
+      // All attempts failed, show friendly message
       setTimeout(() => {
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: 'bot', text: '目前还没有诊断数据，请先上传薪酬 Excel。' };
+          updated[updated.length - 1] = { role: 'bot', text: '后端服务正在启动中，请稍后再试（约 30 秒）。' };
           return updated;
         });
         setIsLoading(false);
-      }, 800);
+      }, 500);
       return;
     }
 

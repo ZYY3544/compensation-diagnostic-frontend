@@ -43,6 +43,13 @@ function App() {
   // Ref for Stage3 interview text handler
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
 
+  // Create session on app load so Sparky can chat from Stage 1
+  useEffect(() => {
+    createSession().then(res => {
+      setSessionId(res.data.id);
+    }).catch(() => {});
+  }, []);
+
   const addMsg = useCallback((msg: Message) => {
     setMessages(prev => [...prev, msg]);
   }, []);
@@ -119,8 +126,8 @@ function App() {
       if (handled) return;
     }
 
-    // In stage 4 with a session, try calling backend chat API
-    if (stage === 4 && sessionId) {
+    // Try calling backend chat API (all stages)
+    if (sessionId) {
       try {
         const res = await sendMessage(sessionId, text);
         const reply = res.data.response;

@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+// Dev: Vite proxy handles /api -> localhost:5001
+// Prod: VITE_API_URL = https://compensation-diagnostic-backend.onrender.com/api
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({ baseURL: API_BASE });
 
@@ -19,8 +21,8 @@ export const uploadFile = (sessionId: string, file: File) => {
 export const confirmStep = (sessionId: string, step: string, value: any) =>
   api.post(`/sessions/${sessionId}/confirm`, { step, value });
 
-export const sendMessage = (sessionId: string, message: string, stage: string) =>
-  api.post(`/chat/${sessionId}/message`, { message, stage });
+export const sendMessage = (sessionId: string, message: string) =>
+  api.post(`/chat/${sessionId}`, { message });
 
 export const runAnalysis = (sessionId: string) =>
   api.post(`/report/${sessionId}/analyze`);

@@ -1,3 +1,5 @@
+import type { ReportData } from '../../types';
+
 interface GaugeProps {
   score: number;
 }
@@ -16,29 +18,40 @@ function Gauge({ score }: GaugeProps) {
   );
 }
 
-export default function ReportOverview() {
+// Mock fallback findings
+const mockFindings = [
+  { severity: 'red', text: '销售团队 L4-L5 竞争力不足，CR 仅 0.84-0.88' },
+  { severity: 'amber', text: 'L5 层级内部薪酬离散度偏高，离散系数 0.32' },
+  { severity: 'amber', text: '绩效与薪酬关联偏弱，A vs C 差距仅 23%' },
+  { severity: 'red', text: '人工成本增速（22%）高于营收增速（15%）' },
+];
+
+interface ReportOverviewProps {
+  reportData?: ReportData | null;
+}
+
+export default function ReportOverview({ reportData }: ReportOverviewProps) {
+  const score = reportData?.health_score ?? 72;
+  const findings = reportData?.key_findings ?? mockFindings;
+
+  const severityColor = (s: string) => {
+    if (s === 'red') return 'var(--red)';
+    if (s === 'amber') return 'var(--amber)';
+    return 'var(--green)';
+  };
+
   return (
     <div className="card overview-card" style={{ marginBottom: 24 }}>
       <div className="gauge-wrap">
-        <Gauge score={72} />
+        <Gauge score={score} />
         <div className="gauge-right">
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>核心发现</div>
-          <div className="finding-item">
-            <span className="finding-dot" style={{ color: 'var(--red)' }}>●</span>
-            <span>销售团队 L4-L5 竞争力不足，CR 仅 0.84-0.88</span>
-          </div>
-          <div className="finding-item">
-            <span className="finding-dot" style={{ color: 'var(--amber)' }}>●</span>
-            <span>L5 层级内部薪酬离散度偏高，离散系数 0.32</span>
-          </div>
-          <div className="finding-item">
-            <span className="finding-dot" style={{ color: 'var(--amber)' }}>●</span>
-            <span>绩效与薪酬关联偏弱，A vs C 差距仅 23%</span>
-          </div>
-          <div className="finding-item">
-            <span className="finding-dot" style={{ color: 'var(--red)' }}>●</span>
-            <span>人工成本增速（22%）高于营收增速（15%）</span>
-          </div>
+          {findings.map((f, i) => (
+            <div key={i} className="finding-item">
+              <span className="finding-dot" style={{ color: severityColor(f.severity) }}>●</span>
+              <span>{f.text}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

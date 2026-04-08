@@ -1,17 +1,35 @@
+import type { ParseResult } from '../../types';
+
 interface StepReadyProps {
   onStart: () => void;
   onStepClick: (step: number) => void;
   onReupload: () => void;
+  parseResult?: ParseResult | null;
 }
 
-export default function StepReady({ onStart, onStepClick, onReupload }: StepReadyProps) {
-  const modules = [
-    { name: '外部竞争力分析', available: true },
-    { name: '内部公平性分析', available: true },
-    { name: '薪酬固浮比分析', available: true },
-    { name: '绩效关联分析', available: false, reason: '缺少绩效字段' },
-    { name: '人工成本趋势分析', available: false, reason: '缺少公司经营数据' },
-  ];
+// Mock fallback modules
+const mockModules: { name: string; available: boolean; reason?: string }[] = [
+  { name: '外部竞争力分析', available: true },
+  { name: '内部公平性分析', available: true },
+  { name: '薪酬固浮比分析', available: true },
+  { name: '绩效关联分析', available: false, reason: '缺少绩效字段' },
+  { name: '人工成本趋势分析', available: false, reason: '缺少公司经营数据' },
+];
+
+export default function StepReady({ onStart, onStepClick, onReupload, parseResult }: StepReadyProps) {
+  // Build modules list from parseResult if available
+  const modules: { name: string; available: boolean; reason?: string }[] = parseResult
+    ? [
+        ...parseResult.unlocked_modules.map(name => ({ name, available: true })),
+        ...parseResult.locked_modules.map(m => ({ name: m.name, available: false, reason: m.reason })),
+      ]
+    : mockModules;
+
+  const completenessScore = parseResult?.data_completeness_score ?? 78;
+  const rowMissingCount = parseResult?.completeness_issues?.row_missing?.length ?? 3;
+  const correctionCount = parseResult?.cleansing_corrections?.length ?? 3;
+  const gradeTotal = parseResult?.grade_matching?.length ?? 6;
+  const funcTotal = parseResult?.function_matching?.length ?? 5;
 
   return (
     <div className="wizard-content">
@@ -20,19 +38,19 @@ export default function StepReady({ onStart, onStepClick, onReupload }: StepRead
       {/* 汇总卡片 - 可点击回看 */}
       <div className="ready-summary" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(2)}>
-          <div className="ready-card-value">3 项排除</div>
+          <div className="ready-card-value">{rowMissingCount} 项排除</div>
           <div className="ready-card-label">完整性</div>
         </div>
         <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(3)}>
-          <div className="ready-card-value">3 项</div>
+          <div className="ready-card-value">{correctionCount} 项</div>
           <div className="ready-card-label">数据修正</div>
         </div>
         <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(4)}>
-          <div className="ready-card-value">6/6</div>
+          <div className="ready-card-value">{gradeTotal}/{gradeTotal}</div>
           <div className="ready-card-label">职级匹配</div>
         </div>
         <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(5)}>
-          <div className="ready-card-value">5/5</div>
+          <div className="ready-card-value">{funcTotal}/{funcTotal}</div>
           <div className="ready-card-label">职能匹配</div>
         </div>
       </div>
@@ -50,15 +68,15 @@ export default function StepReady({ onStart, onStepClick, onReupload }: StepRead
               <span style={{ color: m.available ? 'var(--text-primary)' : 'var(--text-muted)' }}>{m.name}</span>
             </div>
             <span style={{ fontSize: 12, color: m.available ? 'var(--green)' : 'var(--amber)' }}>
-              {m.available ? '可用' : `不可用 — ${m.reason}`}
+              {m.available ? '可用' : `不可用 — ${m.reason || '数据不足'}`}
             </span>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-            数据完整度 78%
+            数据完整度 {completenessScore}%
             <span className="progress-bar-track" style={{ width: 120 }}>
-              <span className="progress-bar-fill" style={{ width: '78%' }}></span>
+              <span className="progress-bar-fill" style={{ width: `${completenessScore}%` }}></span>
             </span>
           </div>
           <span style={{ fontSize: 12, color: 'var(--blue)', cursor: 'pointer' }} onClick={onReupload}>补充数据，重新上传</span>

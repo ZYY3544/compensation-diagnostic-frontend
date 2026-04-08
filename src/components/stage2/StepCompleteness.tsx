@@ -1,9 +1,27 @@
+import type { ParseResult } from '../../types';
+
 interface StepCompletenessProps {
   onAccept: () => void;
   onReupload: () => void;
+  parseResult?: ParseResult | null;
 }
 
-export default function StepCompleteness({ onAccept, onReupload }: StepCompletenessProps) {
+// Mock fallback data
+const mockRowMissing = [
+  { row: 15, field: '月薪', issue: '月薪为空' },
+  { row: 23, field: '职级', issue: '职级为空' },
+  { row: 67, field: '岗位名称', issue: '岗位名称为空' },
+];
+const mockColMissing = [
+  { field: '管理岗/专业岗', impact: '管理溢价分析不可用' },
+  { field: '是否关键岗位', impact: '关键岗位下钻不可用' },
+  { field: '管理复杂度', impact: '管理复杂度定价不可用' },
+];
+
+export default function StepCompleteness({ onAccept, onReupload, parseResult }: StepCompletenessProps) {
+  const rowMissing = parseResult?.completeness_issues?.row_missing ?? mockRowMissing;
+  const colMissing = parseResult?.completeness_issues?.column_missing ?? mockColMissing;
+
   return (
     <div className="wizard-content">
       <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>完整性检查</h3>
@@ -12,18 +30,14 @@ export default function StepCompleteness({ onAccept, onReupload }: StepCompleten
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">
           <span className="card-title">关键字段缺失</span>
-          <span className="badge badge-amber">3 条记录</span>
+          <span className="badge badge-amber">{rowMissing.length} 条记录</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '0 0 12px 0' }}>以下记录缺少必填字段，建议在原始 Excel 中补完后重新上传</div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--amber)' }}>⚠</span> 第 15 行：月薪为空</span>
-        </div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--amber)' }}>⚠</span> 第 23 行：职级为空</span>
-        </div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--amber)' }}>⚠</span> 第 67 行：岗位名称为空</span>
-        </div>
+        {rowMissing.map((item, i) => (
+          <div key={i} className="clean-item">
+            <span><span style={{ color: 'var(--amber)' }}>⚠</span> 第 {item.row} 行：{item.issue}</span>
+          </div>
+        ))}
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
           <button className="confirm-bar-btn" onClick={onReupload} style={{ flex: 'none', fontSize: 12, padding: '6px 14px' }}>重新上传</button>
           <button className="confirm-bar-btn selected" onClick={onAccept} style={{ flex: 'none', fontSize: 12, padding: '6px 14px' }}>跳过，排除这些记录继续</button>
@@ -34,18 +48,14 @@ export default function StepCompleteness({ onAccept, onReupload }: StepCompleten
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">
           <span className="card-title">缺少以下字段</span>
-          <span className="badge" style={{ background: '#F1F5F9', color: 'var(--text-muted)' }}>3 列</span>
+          <span className="badge" style={{ background: '#F1F5F9', color: 'var(--text-muted)' }}>{colMissing.length} 列</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '0 0 12px 0' }}>以下字段整列未填写，对应的分析模块将不可用或受限</div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--red)' }}>✗</span> 管理岗/专业岗 标识 — <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>管理溢价分析不可用</span></span>
-        </div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--red)' }}>✗</span> 是否关键岗位 标识 — <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>关键岗位下钻不可用</span></span>
-        </div>
-        <div className="clean-item">
-          <span><span style={{ color: 'var(--red)' }}>✗</span> 管理复杂度 — <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>管理复杂度定价不可用</span></span>
-        </div>
+        {colMissing.map((item, i) => (
+          <div key={i} className="clean-item">
+            <span><span style={{ color: 'var(--red)' }}>✗</span> {item.field} 标识 — <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{item.impact}</span></span>
+          </div>
+        ))}
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>

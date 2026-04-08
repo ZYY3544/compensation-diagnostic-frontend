@@ -6,16 +6,17 @@ import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
-import type { Message } from '../../types';
+import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
   onComplete: () => void;
   addMsg: (msg: Message) => void;
   setShowTyping: (v: boolean) => void;
   textInputRef: MutableRefObject<((text: string) => boolean) | null>;
+  parseResult?: ParseResult | null;
 }
 
-export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInputRef }: DataConfirmProps) {
+export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInputRef, parseResult }: DataConfirmProps) {
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);
@@ -128,10 +129,14 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
   useEffect(() => {
     if (substep === 1 && !step1MsgsSent) {
       setStep1MsgsSent(true);
+      const empCount = parseResult?.employee_count ?? 126;
+      const gradeCount = parseResult?.grade_count ?? 6;
+      const deptCount = parseResult?.department_count ?? 5;
+      const grades = parseResult?.grades?.join('-') || 'L3-L8';
       sendBotMsg('让我先看看你的数据结构...', 300).then(() => {
         setTimeout(() => {
           setParsing(false);
-          sendBotMsg('好的，解析完成！识别到 126 条员工记录，覆盖 6 个职级（L3-L8）、5 个部门。', 500).then(() => {
+          sendBotMsg(`好的，解析完成！识别到 ${empCount} 条员工记录，覆盖 ${gradeCount} 个职级（${grades}）、${deptCount} 个部门。`, 500).then(() => {
             setTimeout(() => {
               setCompletedSteps(prev => [...prev, 1]);
               setSubstep(2);
@@ -141,7 +146,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
         }, 2000);
       });
     }
-  }, [substep, step1MsgsSent, sendBotMsg]);
+  }, [substep, step1MsgsSent, sendBotMsg, parseResult]);
 
   // Step 2: completeness check messages
   useEffect(() => {
@@ -227,9 +232,9 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
   const renderStepContent = () => {
     switch (viewingStep) {
       case 1:
-        return <StepParsing parsing={parsing} />;
+        return <StepParsing parsing={parsing} parseResult={parseResult} />;
       case 2:
-        return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} />;
+        return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
       case 3:
         return (
           <StepCleansing
@@ -237,6 +242,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             onTaxChoice={handleTaxChoice}
             reverted={reverted}
             onRevert={handleRevert}
+            parseResult={parseResult}
           />
         );
       case 4:
@@ -244,6 +250,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
           <StepGradeMatch
             l7Choice={l7Choice}
             onL7Choice={handleL7Choice}
+            parseResult={parseResult}
           />
         );
       case 5:
@@ -251,6 +258,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
           <StepFuncMatch
             funcChoice={funcChoice}
             onFuncChoice={handleFuncChoice}
+            parseResult={parseResult}
           />
         );
       case 6:
@@ -259,6 +267,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             onStart={onComplete}
             onStepClick={(s) => setViewingStep(s)}
             onReupload={handleReupload}
+            parseResult={parseResult}
           />
         );
       default:

@@ -6,7 +6,8 @@ import DataConfirm from './components/stage2/DataConfirm';
 import InterviewView from './components/stage3/InterviewView';
 import ReportView from './components/stage4/ReportView';
 import PixelCat from './components/shared/PixelCat';
-import type { Stage, Message } from './types';
+import { createSession, uploadFile, sendMessage, runAnalysis, getReport } from './api/client';
+import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
 
 function LoadingView() {
@@ -30,6 +31,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
   const [panelVisible, setPanelVisible] = useState(true);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'bot', text: '你好！我是 Sparky，你的 AI 薪酬诊断助手。\n\n上传公司薪酬数据 Excel，我会帮你完成：\n\u2022 数据清洗与质量检查\n\u2022 市场薪酬对标匹配\n\u2022 五大模块全面诊断\n\n有任何问题随时问我。' }
   ]);
@@ -43,13 +47,29 @@ function App() {
     setMessages(prev => [...prev, msg]);
   }, []);
 
-  // Handle upload click
-  const handleUpload = () => {
+  // Handle upload click — call backend, fallback to mock flow
+  const handleUpload = async () => {
     setLoading(true);
-    setTimeout(() => {
+    try {
+      // 1. Create session
+      const sessionRes = await createSession();
+      const sid = sessionRes.data.id;
+      setSessionId(sid);
+
+      // 2. Upload file (use a placeholder file since we don't have a real picker yet)
+      const mockFile = new File(['placeholder'], 'sample.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const uploadRes = await uploadFile(sid, mockFile);
+      setParseResult(uploadRes.data as ParseResult);
+
       setLoading(false);
       setStage(2);
-    }, 1500);
+    } catch (err) {
+      console.warn('Upload API failed, falling back to mock flow', err);
+      setLoading(false);
+      setStage(2);
+    }
   };
 
   // Handle Stage 2 complete -> go to interview
@@ -57,18 +77,34 @@ function App() {
     setStage(3);
   };
 
-  // Handle interview complete -> go to report
-  const handleInterviewComplete = () => {
+  // Handle interview complete -> trigger analysis, then go to report
+  const handleInterviewComplete = async () => {
     setLoading(true);
+
+    if (sessionId) {
+      try {
+        // Trigger analysis
+        await runAnalysis(sessionId);
+        // Wait briefly for analysis to finish, then fetch report
+        await new Promise(r => setTimeout(r, 2000));
+        const reportRes = await getReport(sessionId);
+        setReportData(reportRes.data as ReportData);
+      } catch (err) {
+        console.warn('Analysis API failed, using mock report', err);
+      }
+    }
+
     setTimeout(() => {
       setLoading(false);
       setStage(4);
-      addMsg({ role: 'bot', text: '诊断报告已生成！整体薪酬健康度 72 分。\n\n结合你刚才提到的业务背景，重点发现：\n1. 销售团队竞争力确实不足（验证了你的流失判断）\n2. 调薪预算分配缺乏倾斜，未向关键岗位集中\n3. 人工成本增速与降本增效目标存在矛盾\n\n点击左侧各模块查看详情，有问题随时问我' });
-    }, 3000);
+
+      const score = reportData?.health_score ?? 72;
+      addMsg({ role: 'bot', text: `诊断报告已生成！整体薪酬健康度 ${score} 分。\n\n结合你刚才提到的业务背景，重点发现：\n1. 销售团队竞争力确实不足（验证了你的流失判断）\n2. 调薪预算分配缺乏倾斜，未向关键岗位集中\n3. 人工成本增速与降本增效目标存在矛盾\n\n点击左侧各模块查看详情，有问题随时问我` });
+    }, 1000);
   };
 
   // Handle user message
-  const handleSend = (text: string) => {
+  const handleSend = async (text: string) => {
     addMsg({ role: 'user', text });
 
     // If in Stage 2, try text-based confirmation sync first
@@ -83,6 +119,21 @@ function App() {
       if (handled) return;
     }
 
+    // In stage 4 with a session, try calling backend chat API
+    if (stage === 4 && sessionId) {
+      try {
+        const res = await sendMessage(sessionId, text);
+        const reply = res.data.response;
+        if (reply) {
+          addMsg({ role: 'bot', text: reply });
+          return;
+        }
+      } catch (err) {
+        console.warn('Chat API failed, using mock reply', err);
+      }
+    }
+
+    // Fallback: mock replies
     setTimeout(() => {
       let reply: string;
       if (text.includes('销售')) {
@@ -119,6 +170,7 @@ function App() {
               addMsg={addMsg}
               setShowTyping={setShowTyping}
               textInputRef={stage2InputHandlerRef}
+              parseResult={parseResult}
             />
           )}
           {!loading && stage === 3 && (
@@ -129,7 +181,7 @@ function App() {
               textHandlerRef={stage3TextHandlerRef}
             />
           )}
-          {!loading && stage === 4 && <ReportView />}
+          {!loading && stage === 4 && <ReportView reportData={reportData} />}
         </div>
 
         <SparkyPanel

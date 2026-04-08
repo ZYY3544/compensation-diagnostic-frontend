@@ -21,8 +21,8 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
-    onSend(text);
     setInput('');
+    onSend(text);
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {

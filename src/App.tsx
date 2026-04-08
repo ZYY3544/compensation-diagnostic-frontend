@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import TopNav from './components/layout/TopNav';
-import SparkyPanel, { type SparkyPanelHandle } from './components/layout/SparkyPanel';
+import SparkyPanel from './components/layout/SparkyPanel';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import InterviewView from './components/stage3/InterviewView';
@@ -42,8 +42,6 @@ function App() {
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
   // Ref for Stage3 interview text handler
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
-  // Ref for SparkyPanel to clear input
-  const sparkyPanelRef = useRef<SparkyPanelHandle>(null);
 
   // Create session on app load so Sparky can chat from Stage 1
   useEffect(() => {
@@ -114,8 +112,6 @@ function App() {
 
   // Handle user message
   const handleSend = async (text: string) => {
-    // Clear input immediately before any state updates
-    sparkyPanelRef.current?.clearInput();
     addMsg({ role: 'user', text });
 
     // If in Stage 2, try text-based confirmation sync first
@@ -196,7 +192,6 @@ function App() {
         </div>
 
         <SparkyPanel
-          ref={sparkyPanelRef}
           messages={messages}
           onSend={handleSend}
           showTyping={showTyping}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import PixelCat from '../shared/PixelCat';
 import type { Message } from '../../types';
 
@@ -11,7 +11,6 @@ interface SparkyPanelProps {
 }
 
 export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose }: SparkyPanelProps) {
-  const [input, setInput] = useState('');
   const msgEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -19,15 +18,13 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
     msgEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, showTyping]);
 
-  const handleSend = useCallback(() => {
-    const text = input.trim();
+  const handleSend = () => {
+    if (!inputRef.current) return;
+    const text = inputRef.current.value.trim();
     if (!text) return;
-    // Clear input immediately via both state and DOM
-    setInput('');
-    if (inputRef.current) inputRef.current.value = '';
-    // Then send
+    inputRef.current.value = '';
     onSend(text);
-  }, [input, onSend]);
+  };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -69,8 +66,7 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
           ref={inputRef}
           className="sparky-input"
           placeholder="输入消息..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
+          defaultValue=""
           onKeyDown={handleKey}
         />
         <button className="sparky-send" onClick={handleSend}>↑</button>

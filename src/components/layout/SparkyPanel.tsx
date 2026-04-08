@@ -78,7 +78,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const msgEnd = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -239,7 +239,10 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
       <div className="sparky-header">
         <div className="sparky-icon"><PixelCat size={24} /></div>
         <div style={{ flex: 1 }}>
-          <div className="sparky-title">Sparky</div>
+          <div className="sparky-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            Sparky
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+          </div>
           <div className="sparky-subtitle">AI 诊断助手</div>
         </div>
         <button className="panel-close-btn" onClick={onClose}>✕</button>
@@ -259,20 +262,29 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
         <div ref={msgEnd} />
       </div>
       <div className="sparky-input-area">
-        <input
-          ref={inputRef}
-          className="sparky-input"
-          placeholder="输入消息..."
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isLoading}
-        />
-        <button
-          className="sparky-send"
-          onClick={() => sendMessage()}
-          disabled={!inputValue.trim() || isLoading}
-        >↑</button>
+        <div className="sparky-input-wrapper">
+          <textarea
+            ref={inputRef}
+            className="sparky-input"
+            placeholder="输入消息..."
+            value={inputValue}
+            onChange={e => {
+              setInputValue(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+            rows={1}
+          />
+          <div className="sparky-input-bottom">
+            <button
+              className="sparky-send"
+              onClick={() => sendMessage()}
+              disabled={!inputValue.trim() || isLoading}
+            >↑</button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -114,12 +114,12 @@ body {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: #CA7C5E;
-  color: #fff;
-  border: none;
+  background: #FFFFFF;
+  color: #CA7C5E;
+  border: 2px solid #CA7C5E;
   cursor: pointer;
   font-size: 18px;
   display: flex;
@@ -131,7 +131,7 @@ body {
 }
 .toggle-panel-btn:hover {
   transform: scale(1.08);
-  background: #b5694e;
+  background: #FFF5F0;
 }
 .sparky-header {
   padding: 16px 24px;

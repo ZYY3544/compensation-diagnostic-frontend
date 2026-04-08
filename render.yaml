@@ -1,0 +1,14 @@
+services:
+  - type: static
+    name: compensation-diagnostic-frontend
+    repo: https://github.com/ZYY3544/compensation-diagnostic-frontend
+    branch: main
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false

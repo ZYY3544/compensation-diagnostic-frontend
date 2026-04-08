@@ -25,6 +25,8 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
+    // Clear DOM value immediately to prevent onChange from reading stale value
+    if (inputRef.current) inputRef.current.value = '';
     onSend(text);
     setTimeout(() => inputRef.current?.focus(), 0);
   };

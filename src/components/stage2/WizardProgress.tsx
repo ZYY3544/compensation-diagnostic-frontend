@@ -3,6 +3,7 @@ import React from 'react';
 interface WizardProgressProps {
   currentStep: number;
   completedSteps: number[];
+  maxReachedStep: number;
   onStepClick: (step: number) => void;
 }
 
@@ -15,13 +16,13 @@ const steps = [
   { num: 6, label: '准备就绪' },
 ];
 
-export default function WizardProgress({ currentStep, completedSteps, onStepClick }: WizardProgressProps) {
+export default function WizardProgress({ currentStep, completedSteps, maxReachedStep, onStepClick }: WizardProgressProps) {
   return (
     <div className="wizard-progress">
       {steps.map((step, i) => {
         const isCompleted = completedSteps.includes(step.num);
         const isCurrent = currentStep === step.num;
-        const isClickable = isCompleted;
+        const isClickable = (isCompleted || step.num <= maxReachedStep) && !isCurrent;
 
         return (
           <React.Fragment key={step.num}>

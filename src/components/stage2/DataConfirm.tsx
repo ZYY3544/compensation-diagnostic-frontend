@@ -223,7 +223,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
 
   // Handle progress bar click (go back to view a completed step)
   const handleStepClick = (step: number) => {
-    if (completedSteps.includes(step)) {
+    if (step <= substep) {
       setViewingStep(step);
     }
   };
@@ -280,6 +280,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
       <WizardProgress
         currentStep={viewingStep}
         completedSteps={completedSteps}
+        maxReachedStep={substep}
         onStepClick={handleStepClick}
       />
       {renderStepContent()}

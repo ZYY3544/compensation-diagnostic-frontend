@@ -529,12 +529,9 @@ body {
 .wizard-progress {
   display: flex;
   align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--bg);
+  background: var(--panel-bg);
   margin: -32px -32px 20px -32px;
-  padding: 20px 32px;
+  padding: 16px 32px;
   border-bottom: 1px solid var(--border);
 }
 .wizard-step {

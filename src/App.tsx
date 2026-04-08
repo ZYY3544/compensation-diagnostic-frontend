@@ -54,25 +54,27 @@ function App() {
   }, []);
 
   // Handle upload click — call backend, fallback to mock flow
-  const handleUpload = async () => {
+  const handleUpload = async (file: File) => {
     setLoading(true);
     try {
-      // 1. Create session
-      const sessionRes = await createSession();
-      const sid = sessionRes.data.id;
-      setSessionId(sid);
+      // 1. Create session if not already created
+      let sid = sessionId;
+      if (!sid) {
+        const sessionRes = await createSession();
+        sid = sessionRes.data.id;
+        setSessionId(sid);
+      }
 
-      // 2. Upload file (use a placeholder file since we don't have a real picker yet)
-      const mockFile = new File(['placeholder'], 'sample.xlsx', {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const uploadRes = await uploadFile(sid, mockFile);
+      // 2. Upload the real file
+      const uploadRes = await uploadFile(sid, file);
       setParseResult(uploadRes.data as ParseResult);
 
+      addMsg({ role: 'bot', text: `文件 "${file.name}" 上传成功，让我先看看数据结构...` });
       setLoading(false);
       setStage(2);
     } catch (err) {
       console.warn('Upload API failed, falling back to mock flow', err);
+      addMsg({ role: 'bot', text: '让我先看看你的数据结构...' });
       setLoading(false);
       setStage(2);
     }

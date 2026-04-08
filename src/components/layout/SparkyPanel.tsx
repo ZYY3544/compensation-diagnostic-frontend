@@ -32,7 +32,7 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); handleSend(); }
   };
 
   return (

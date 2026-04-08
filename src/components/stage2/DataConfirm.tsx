@@ -148,63 +148,159 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
     }
   }, [substep, step1MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 2: completeness check messages
+  // Step 2: completeness check messages (dynamic from parseResult)
   useEffect(() => {
     if (substep === 2 && !step2MsgsSent) {
       setStep2MsgsSent(true);
+      const sparky = (parseResult as any)?.sparky_messages;
+      const rowMissing = parseResult?.completeness_issues?.row_missing || [];
+      const colMissing = parseResult?.completeness_issues?.column_missing || [];
+
+      // Build dynamic missing message
+      let missingMsg: string;
+      if (sparky?.step2_missing) {
+        missingMsg = sparky.step2_missing;
+      } else if (rowMissing.length > 0) {
+        const desc = rowMissing.slice(0, 3).map((r: any) => `第 ${r.row} 行${r.field}`).join('、');
+        missingMsg = `有 ${rowMissing.length} 条记录关键字段缺失（${desc}）。建议你在 Excel 里补完后重新上传，或者直接跳过，我会排除这些记录继续分析。`;
+      } else {
+        missingMsg = '所有记录的关键字段都有值，数据完整度很好！';
+      }
+
+      // Build dynamic column message
+      let colMsg: string;
+      if (sparky?.step2_columns) {
+        colMsg = sparky.step2_columns;
+      } else if (colMissing.length > 0) {
+        const colNames = colMissing.map((c: any) => c.field).join('、');
+        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。左边可以看详情。`;
+      } else {
+        colMsg = '';
+      }
+
       sendBotMsg('先看看数据完整度...', 300).then(() => {
-        return sendBotMsg('有 3 条记录关键字段缺失（第 15 行月薪、第 23 行职级、第 67 行岗位名称）。建议你在 Excel 里补完后重新上传，或者直接跳过，我会排除这些记录继续分析。', 1000);
+        return sendBotMsg(missingMsg, 1000);
       }).then(() => {
-        return sendBotMsg('另外有几个可选字段整列没填——管理岗标识、关键岗位标识、管理复杂度。这些不影响核心诊断，但相关的深度分析会受限。左边可以看详情。', 1200);
+        if (colMsg) {
+          return sendBotMsg(colMsg, 1200);
+        }
       });
     }
-  }, [substep, step2MsgsSent, sendBotMsg]);
+  }, [substep, step2MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 3: data cleaning messages
+  // Step 3: data cleaning messages (dynamic from parseResult)
   useEffect(() => {
     if (substep === 3 && !step3MsgsSent) {
       setStep3MsgsSent(true);
+      const sparky = (parseResult as any)?.sparky_messages;
+      const corrections = parseResult?.cleansing_corrections || [];
+
+      let corrMsg: string;
+      if (sparky?.step3_corrections) {
+        corrMsg = sparky.step3_corrections;
+      } else if (corrections.length > 0) {
+        corrMsg = `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。左边可以看到详情，有不对的可以撤回。`;
+      } else {
+        corrMsg = '数据口径看起来没有明显问题，不需要额外修正。';
+      }
+
       sendBotMsg('让我检查一下数据质量...', 300).then(() => {
-        return sendBotMsg('发现几个需要处理的地方，我已经帮你自动修正了 3 项。左边可以看到详情，有不对的可以撤回。', 1000);
+        return sendBotMsg(corrMsg, 1000);
       }).then(() => {
         return sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 800);
       });
     }
-  }, [substep, step3MsgsSent, sendBotMsg]);
+  }, [substep, step3MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 4: grade matching messages
+  // Step 4: grade matching messages (dynamic from parseResult)
   useEffect(() => {
     if (substep === 4 && !step4MsgsSent) {
       setStep4MsgsSent(true);
+      const sparky = (parseResult as any)?.sparky_messages;
+      const gradeMatching = parseResult?.grade_matching || [];
+      const unconfirmed = gradeMatching.filter(g => !g.confirmed);
+
+      let gradeMsg: string;
+      if (sparky?.step4_grades) {
+        gradeMsg = sparky.step4_grades;
+      } else if (unconfirmed.length > 0) {
+        const uncertain = unconfirmed.slice(0, 3).map(g => g.client_grade).join('、');
+        const confirmed = gradeMatching.filter(g => g.confirmed).length;
+        gradeMsg = `大部分职级都对上了（${confirmed} 个高置信度），但 ${uncertain} 我拿不准，需要你确认一下。`;
+      } else {
+        gradeMsg = `所有 ${gradeMatching.length} 个职级都高置信度匹配上了！`;
+      }
+
       sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300).then(() => {
-        return sendBotMsg('L3 到 L6 我都比较确定，但 L7 我拿不准——你们的 L7 是高级经理级还是总监级？', 1000);
+        return sendBotMsg(gradeMsg, 1000);
       });
     }
-  }, [substep, step4MsgsSent, sendBotMsg]);
+  }, [substep, step4MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 5: function matching messages
+  // Step 5: function matching messages (dynamic from parseResult)
   useEffect(() => {
     if (substep === 5 && !step5MsgsSent) {
       setStep5MsgsSent(true);
+      const sparky = (parseResult as any)?.sparky_messages;
+      const funcMatching = parseResult?.function_matching || [];
+      const unconfirmed = funcMatching.filter(f => !f.confirmed);
+
+      let funcMsg: string;
+      if (sparky?.step5_functions) {
+        funcMsg = sparky.step5_functions;
+      } else if (unconfirmed.length > 0) {
+        const uncertain = unconfirmed.slice(0, 3).map(f => f.title).join('、');
+        const confirmed = funcMatching.filter(f => f.confirmed).length;
+        funcMsg = `大部分岗位都匹配上了（${confirmed} 个高置信度），但 ${uncertain} 我不太确定，需要你看一下。`;
+      } else {
+        funcMsg = `所有 ${funcMatching.length} 个岗位都匹配上了！`;
+      }
+
       sendBotMsg('最后匹配一下岗位的职能类别...', 300).then(() => {
-        return sendBotMsg('大部分都对上了。就是"增长黑客"这个岗位我不太确定，它主要是做数字营销相关的，还是偏用户增长运营的？', 1000);
+        return sendBotMsg(funcMsg, 1000);
       });
     }
-  }, [substep, step5MsgsSent, sendBotMsg]);
+  }, [substep, step5MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 6: ready messages
+  // Step 6: ready messages (dynamic from parseResult)
   useEffect(() => {
     if (substep === 6 && !step6MsgsSent) {
       setStep6MsgsSent(true);
-      sendBotMsg('数据准备好了！这次诊断将覆盖外部竞争力、内部公平性和薪酬结构三个维度。', 300).then(() => {
-        return sendBotMsg('如果你能补充绩效数据和公司经营数据，我还能帮你做绩效关联和人效分析。不补也没关系，点"下一步"进入业务访谈', 1200);
+      const sparky = (parseResult as any)?.sparky_messages;
+      const unlocked = parseResult?.unlocked_modules || [];
+      const locked = parseResult?.locked_modules || [];
+
+      let readyMsg: string;
+      if (sparky?.step6_ready) {
+        readyMsg = sparky.step6_ready;
+      } else {
+        readyMsg = `数据准备好了！这次诊断将覆盖${unlocked.slice(0, 3).join('、')}等 ${unlocked.length} 个维度。`;
+      }
+
+      let lockedMsg: string;
+      if (sparky?.step6_locked) {
+        lockedMsg = sparky.step6_locked;
+      } else if (locked.length > 0) {
+        const lockHints = locked.map(l => `${l.name}（${l.reason}）`).join('、');
+        lockedMsg = `如果你能补充相关数据，我还能帮你做 ${lockHints}。不补也没关系，点"下一步"进入业务访谈。`;
+      } else {
+        lockedMsg = '所有分析模块都已解锁！点"下一步"进入业务访谈。';
+      }
+
+      sendBotMsg(readyMsg, 300).then(() => {
+        return sendBotMsg(lockedMsg, 1200);
       });
     }
-  }, [substep, step6MsgsSent, sendBotMsg]);
+  }, [substep, step6MsgsSent, sendBotMsg, parseResult]);
 
   // Handle completeness check accept
   const handleAcceptCompleteness = () => {
-    addMsg({ role: 'bot', text: '好的，这 3 条缺失记录已排除，不影响整体分析。接下来检查一下数据口径问题...' });
+    const rowMissing = parseResult?.completeness_issues?.row_missing || [];
+    const count = rowMissing.length;
+    const msg = count > 0
+      ? `好的，这 ${count} 条缺失记录已排除，不影响整体分析。接下来检查一下数据口径问题...`
+      : '好的，数据完整度没问题。接下来检查一下数据口径问题...';
+    addMsg({ role: 'bot', text: msg });
     setTimeout(() => advanceStep(2), 800);
   };
 

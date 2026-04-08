@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import PixelCat from '../shared/PixelCat';
 import type { Message } from '../../types';
 
@@ -11,19 +11,22 @@ interface SparkyPanelProps {
 }
 
 export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose }: SparkyPanelProps) {
+  const [input, setInput] = useState('');
   const msgEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    msgEnd.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, showTyping]);
+    if (visible) {
+      msgEnd.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, showTyping, visible]);
 
   const handleSend = () => {
-    if (!inputRef.current) return;
-    const text = inputRef.current.value.trim();
+    const text = input.trim();
     if (!text) return;
-    inputRef.current.value = '';
+    setInput('');
     onSend(text);
+    inputRef.current?.focus();
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -41,6 +44,11 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
         <button className="panel-close-btn" onClick={onClose}>✕</button>
       </div>
       <div className="sparky-messages">
+        {messages.length === 0 && !showTyping && (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: 13 }}>
+            有任何问题随时问我
+          </div>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
             {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
@@ -66,7 +74,8 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
           ref={inputRef}
           className="sparky-input"
           placeholder="输入消息..."
-          defaultValue=""
+          value={input}
+          onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
         />
         <button className="sparky-send" onClick={handleSend}>↑</button>

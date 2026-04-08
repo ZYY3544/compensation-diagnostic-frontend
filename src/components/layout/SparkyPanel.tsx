@@ -12,16 +12,21 @@ interface SparkyPanelProps {
 
 export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose }: SparkyPanelProps) {
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const msgEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    msgEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, showTyping]);
 
-  const handleSubmit = () => {
-    if (!input.trim()) return;
-    onSend(input.trim());
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text) return;
+    onSend(text);
     setInput('');
+  };
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   return (
@@ -34,7 +39,6 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
         </div>
         <button className="panel-close-btn" onClick={onClose}>✕</button>
       </div>
-
       <div className="sparky-messages">
         {messages.map((m, i) => (
           <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
@@ -45,23 +49,26 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
         {showTyping && (
           <div className="msg-row">
             <div className="msg-avatar"><PixelCat size={18} /></div>
-            <div className="msg-bubble typing">
-              <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+            <div className="msg-bubble">
+              <div className="typing-indicator">
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+              </div>
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        <div ref={msgEnd} />
       </div>
-
       <div className="sparky-input-area">
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          placeholder="输入消息..."
           className="sparky-input"
+          placeholder="输入消息..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
         />
-        <button className="sparky-send-btn" onClick={handleSubmit}>↑</button>
+        <button className="sparky-send" onClick={handleSend}>↑</button>
       </div>
     </div>
   );

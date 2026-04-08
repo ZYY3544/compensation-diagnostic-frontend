@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface WizardProgressProps {
   currentStep: number;
   completedSteps: number[];
@@ -19,11 +21,13 @@ export default function WizardProgress({ currentStep, completedSteps, onStepClic
       {steps.map((step, i) => {
         const isCompleted = completedSteps.includes(step.num);
         const isCurrent = currentStep === step.num;
+        const isClickable = isCompleted;
+
         return (
-          <div key={step.num} style={{ display: 'flex', alignItems: 'center' }}>
+          <React.Fragment key={step.num}>
             <div
-              className={`wizard-step ${isCompleted ? 'clickable' : ''}`}
-              onClick={() => isCompleted && onStepClick(step.num)}
+              className={`wizard-step ${isClickable ? 'clickable' : ''}`}
+              onClick={() => isClickable && onStepClick(step.num)}
             >
               <div className={`wizard-circle ${isCurrent ? 'current' : isCompleted ? 'completed' : 'pending'}`}>
                 {isCompleted ? '✓' : step.num}
@@ -32,8 +36,10 @@ export default function WizardProgress({ currentStep, completedSteps, onStepClic
                 {step.label}
               </span>
             </div>
-            {i < steps.length - 1 && <div className={`wizard-line ${isCompleted ? 'done' : 'pending'}`} />}
-          </div>
+            {i < steps.length - 1 && (
+              <div className={`wizard-line ${isCompleted ? 'done' : 'pending'}`} />
+            )}
+          </React.Fragment>
         );
       })}
     </div>

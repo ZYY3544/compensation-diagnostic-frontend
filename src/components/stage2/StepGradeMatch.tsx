@@ -4,6 +4,7 @@ interface StepGradeMatchProps {
   l7Choice: string | null;
   onL7Choice: (choice: string) => void;
   parseResult?: ParseResult | null;
+  onNext: () => void;
 }
 
 const mockGrades: GradeMatch[] = [
@@ -15,7 +16,7 @@ const mockGrades: GradeMatch[] = [
   { client_grade: 'L8', standard_grade: '总监级', confidence: 'high', confirmed: true },
 ];
 
-export default function StepGradeMatch({ l7Choice, onL7Choice, parseResult }: StepGradeMatchProps) {
+export default function StepGradeMatch({ l7Choice, onL7Choice, parseResult, onNext }: StepGradeMatchProps) {
   const grades = parseResult?.grade_matching ?? mockGrades;
   // Find the unconfirmed grade (L7 in mock)
   const uncertainGrade = grades.find(g => !g.confirmed && g.confidence === 'low');
@@ -63,6 +64,8 @@ export default function StepGradeMatch({ l7Choice, onL7Choice, parseResult }: St
           </div>
         )}
       </div>
+
+      <button className="next-step-btn" onClick={onNext} style={{ marginTop: 16 }}>下一步 →</button>
     </div>
   );
 }

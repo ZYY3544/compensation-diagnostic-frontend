@@ -339,6 +339,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             reverted={reverted}
             onRevert={handleRevert}
             parseResult={parseResult}
+            onNext={() => advanceStep(3)}
           />
         );
       case 4:
@@ -347,6 +348,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             l7Choice={l7Choice}
             onL7Choice={handleL7Choice}
             parseResult={parseResult}
+            onNext={() => advanceStep(4)}
           />
         );
       case 5:
@@ -355,6 +357,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             funcChoice={funcChoice}
             onFuncChoice={handleFuncChoice}
             parseResult={parseResult}
+            onNext={() => advanceStep(5)}
           />
         );
       case 6:

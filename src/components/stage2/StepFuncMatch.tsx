@@ -4,6 +4,7 @@ interface StepFuncMatchProps {
   funcChoice: string | null;
   onFuncChoice: (choice: string) => void;
   parseResult?: ParseResult | null;
+  onNext: () => void;
 }
 
 const mockFuncs: FuncMatch[] = [
@@ -14,7 +15,7 @@ const mockFuncs: FuncMatch[] = [
   { title: '财务主管', matched: '财务-财务管理', confidence: 'high', confirmed: true },
 ];
 
-export default function StepFuncMatch({ funcChoice, onFuncChoice, parseResult }: StepFuncMatchProps) {
+export default function StepFuncMatch({ funcChoice, onFuncChoice, parseResult, onNext }: StepFuncMatchProps) {
   const funcs = parseResult?.function_matching ?? mockFuncs;
 
   return (
@@ -59,6 +60,8 @@ export default function StepFuncMatch({ funcChoice, onFuncChoice, parseResult }:
           );
         })}
       </div>
+
+      <button className="next-step-btn" onClick={onNext} style={{ marginTop: 16 }}>下一步 →</button>
     </div>
   );
 }

@@ -6,6 +6,7 @@ interface StepCleansingProps {
   reverted: boolean[];
   onRevert: (idx: number) => void;
   parseResult?: ParseResult | null;
+  onNext: () => void;
 }
 
 const mockCorrections = [
@@ -14,7 +15,7 @@ const mockCorrections = [
   { id: 2, description: '第 45 行月薪 ¥85,000 已标记为异常值', type: 'extreme_value' },
 ];
 
-export default function StepCleansing({ taxChoice, onTaxChoice, reverted, onRevert, parseResult }: StepCleansingProps) {
+export default function StepCleansing({ taxChoice, onTaxChoice, reverted, onRevert, parseResult, onNext }: StepCleansingProps) {
   const corrections = parseResult?.cleansing_corrections ?? mockCorrections;
   const completenessScore = parseResult?.data_completeness_score ?? 78;
 
@@ -52,6 +53,8 @@ export default function StepCleansing({ taxChoice, onTaxChoice, reverted, onReve
           <span className="progress-bar-fill" style={{ width: `${completenessScore}%` }}></span>
         </span>
       </div>
+
+      <button className="next-step-btn" onClick={onNext} style={{ marginTop: 16 }}>下一步 →</button>
     </div>
   );
 }

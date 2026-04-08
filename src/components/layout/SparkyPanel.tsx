@@ -1,39 +1,195 @@
-import { useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import PixelCat from '../shared/PixelCat';
 import type { Message } from '../../types';
 
-interface SparkyPanelProps {
-  messages: Message[];
-  onSend: (text: string) => void;
-  showTyping: boolean;
-  visible: boolean;
-  onClose: () => void;
-  input: string;
-  onInputChange: (value: string) => void;
+// SSE 流式解析函数（简化版，只处理 text 类型）
+async function parseSseStream(
+  response: Response,
+  onText: (fullText: string) => void,
+) {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  let displayedLen = 0;
+  let streamDone = false;
+
+  const RENDER_INTERVAL = 50;
+  const CHARS_PER_TICK = 2;
+  let renderTimer: ReturnType<typeof setInterval> | null = null;
+
+  const startRenderLoop = () => {
+    if (renderTimer) return;
+    renderTimer = setInterval(() => {
+      if (displayedLen < fullText.length) {
+        displayedLen = Math.min(displayedLen + CHARS_PER_TICK, fullText.length);
+        onText(fullText.slice(0, displayedLen));
+      } else if (streamDone) {
+        if (renderTimer) { clearInterval(renderTimer); renderTimer = null; }
+        onText(fullText);
+      }
+    }, RENDER_INTERVAL);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      streamDone = true;
+      if (!renderTimer) onText(fullText);
+      // Wait for render loop to finish
+      await new Promise<void>(resolve => {
+        if (!renderTimer) { resolve(); return; }
+        const check = setInterval(() => {
+          if (!renderTimer) { clearInterval(check); resolve(); }
+        }, 50);
+      });
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        if (event.type === 'text') {
+          fullText += event.content;
+          startRenderLoop();
+        }
+      } catch { /* ignore malformed SSE lines */ }
+    }
+  }
 }
 
-export default function SparkyPanel({ messages, onSend, showTyping, visible, onClose, input, onInputChange }: SparkyPanelProps) {
+interface SparkyPanelProps {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  sessionId: string | null;
+  visible: boolean;
+  onClose: () => void;
+  onNonChatSend?: (text: string) => boolean;
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend }: SparkyPanelProps) {
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const msgEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (visible) {
       msgEnd.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, showTyping, visible]);
+  }, [messages, visible]);
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text) return;
-    // Clear DOM value immediately to prevent onChange from reading stale value
-    if (inputRef.current) inputRef.current.value = '';
-    onSend(text);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  };
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = (overrideText || inputValue).trim();
+    if (!text || isLoading) return;
 
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); handleSend(); }
-  };
+    // If parent has a non-chat handler (Stage 2/3), try that first
+    if (onNonChatSend) {
+      const handled = onNonChatSend(text);
+      if (handled) {
+        setInputValue('');
+        return;
+      }
+    }
+
+    // Add user message and clear input
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setInputValue('');
+    setIsLoading(true);
+
+    // Add "thinking" message
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+
+    if (!sessionId) {
+      // No session, use mock fallback
+      setTimeout(() => {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'bot', text: '目前还没有诊断数据，请先上传薪酬 Excel。' };
+          return updated;
+        });
+        setIsLoading(false);
+      }, 800);
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch(`${API_BASE}/chat/${sessionId}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Check if response is SSE stream
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        await parseSseStream(res, (fullText) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'bot', text: fullText };
+            return updated;
+          });
+        });
+      } else {
+        // Non-streaming fallback (JSON response)
+        const data = await res.json();
+        const reply = data.response || data.content || '抱歉，暂时无法回答。';
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'bot', text: reply };
+          return updated;
+        });
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Chat stream failed:', err);
+      // Fallback to non-stream API
+      try {
+        const res = await fetch(`${API_BASE}/chat/${sessionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json();
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'bot', text: data.response || '抱歉，获取回复失败。' };
+          return updated;
+        });
+      } catch {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'bot', text: '网络异常，请稍后重试。' };
+          return updated;
+        });
+      }
+    } finally {
+      abortRef.current = null;
+      setIsLoading(false);
+    }
+  }, [inputValue, isLoading, sessionId, setMessages, onNonChatSend]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return; // 中文输入法防护
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }, [sendMessage]);
 
   return (
     <div className={`right-panel ${visible ? '' : 'hidden'}`}>
@@ -46,7 +202,7 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
         <button className="panel-close-btn" onClick={onClose}>✕</button>
       </div>
       <div className="sparky-messages">
-        {messages.length === 0 && !showTyping && (
+        {messages.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: 13 }}>
             有任何问题随时问我
           </div>
@@ -57,18 +213,6 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
             <div className="msg-bubble">{m.text}</div>
           </div>
         ))}
-        {showTyping && (
-          <div className="msg-row">
-            <div className="msg-avatar"><PixelCat size={18} /></div>
-            <div className="msg-bubble">
-              <div className="typing-indicator">
-                <div className="typing-dot"></div>
-                <div className="typing-dot"></div>
-                <div className="typing-dot"></div>
-              </div>
-            </div>
-          </div>
-        )}
         <div ref={msgEnd} />
       </div>
       <div className="sparky-input-area">
@@ -76,11 +220,16 @@ export default function SparkyPanel({ messages, onSend, showTyping, visible, onC
           ref={inputRef}
           className="sparky-input"
           placeholder="输入消息..."
-          value={input}
-          onChange={e => onInputChange(e.target.value)}
-          onKeyDown={handleKey}
+          value={inputValue}
+          onChange={e => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={isLoading}
         />
-        <button className="sparky-send" onClick={handleSend}>↑</button>
+        <button
+          className="sparky-send"
+          onClick={() => sendMessage()}
+          disabled={!inputValue.trim() || isLoading}
+        >↑</button>
       </div>
     </div>
   );

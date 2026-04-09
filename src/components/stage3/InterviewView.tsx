@@ -276,9 +276,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         setInterviewStep(7);
       }
 
-      // Step 2: Stream card content after Sparky's reply is done
-      if (items.length > 0) {
-        await streamCardContent(items);
+      // Step 2: Stream card content after Sparky's reply is done (only if value actually changed)
+      const changedItems = items.filter(item => {
+        if (!item.value) return false;
+        const block = fieldToBlock[item.field_name] as keyof BlockContents | undefined;
+        if (!block) return false;
+        const slotMap = fieldSlotMapRef.current[block] || {};
+        const slotIdx = slotMap[item.field_name];
+        const entries = blockContents[block] || [];
+        const currentVal = (slotIdx !== undefined && slotIdx < entries.length) ? entries[slotIdx] : '';
+        return item.value !== currentVal;
+      });
+      if (changedItems.length > 0) {
+        await streamCardContent(changedItems);
       }
 
     } catch {

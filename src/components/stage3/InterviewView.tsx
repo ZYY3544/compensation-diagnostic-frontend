@@ -319,12 +319,29 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     </svg>
   );
 
+  // Render text with line breaks and **bold** support for card content
+  const renderCardText = (text: string) => {
+    return text.split('\n').map((line, li) => {
+      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+      return (
+        <div key={li} style={{ marginBottom: li < text.split('\n').length - 1 ? 4 : 0 }}>
+          {parts.map((part, pi) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <strong key={pi} style={{ color: '#0A66C2' }}>{part.slice(2, -2)}</strong>;
+            }
+            return <span key={pi}>{part}</span>;
+          })}
+        </div>
+      );
+    });
+  };
+
   const renderContentLine = (blockKey: keyof BlockContents, line: string, idx: number) => {
     const editKey = `${blockKey}-${idx}`;
     if (editing === editKey) {
       return (
         <div key={idx} className="interview-content-line">
-          <input
+          <textarea
             autoFocus
             defaultValue={line}
             onBlur={(e) => {
@@ -335,16 +352,16 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
               setEditing(null);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Enter' && !e.shiftKey) (e.target as HTMLTextAreaElement).blur();
             }}
-            style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 13, outline: 'none' }}
+            style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 13, outline: 'none', minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }}
           />
         </div>
       );
     }
     return (
       <div key={idx} className="interview-content-line">
-        <span>{line}</span>
+        <div style={{ flex: 1 }}>{renderCardText(line)}</div>
         <span
           className="edit-btn"
           style={{ cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}

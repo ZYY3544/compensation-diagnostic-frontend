@@ -293,15 +293,58 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
 
   const renderFindings = () => {
     if (!showFindings) return null;
+
+    // Dynamically generate findings from actual interview answers
+    const b1 = blockContents.block1 || [];
+    const b2 = blockContents.block2 || [];
+    const b3 = blockContents.block3 || [];
+
+    const goal = b1[0] || '未明确';
+    const strategy = b2[0] || '';
+    const raise = b2[1] || '';
+    const coreFunc = b3.find(s => s.includes('核心职能')) || '';
+    const attrition = b3.find(s => s.includes('流失')) || '';
+    const direction = b3.find(s => s.includes('战略')) || '';
+
+    // Build summary paragraph
+    let summary = `客户核心诉求为${goal.replace('核心诉求：', '')}。`;
+    if (strategy) summary += `${strategy}。`;
+    if (raise) summary += `${raise}。`;
+
+    // Build focus points based on actual answers
+    const focusPoints: string[] = [];
+    if (attrition) {
+      const dept = attrition.replace('流失重灾区：', '');
+      focusPoints.push(`${dept}的外部竞争力`);
+    }
+    if (goal.includes('公平') || goal.includes('内部')) {
+      focusPoints.push('内部薪酬公平性与离散度');
+    }
+    if (goal.includes('成本') || (direction && direction.includes('降本'))) {
+      focusPoints.push('人工成本结构与增速');
+    }
+    if (coreFunc) {
+      const func = coreFunc.replace('核心职能：', '');
+      focusPoints.push(`${func}职能的薪酬资源倾斜度`);
+    }
+    if (focusPoints.length === 0) {
+      focusPoints.push('各职能的外部竞争力', '绩效与薪酬的关联度', '薪酬资源分配合理性');
+    }
+
     return (
       <div className="interview-findings fade-enter">
         <div className="interview-findings-title">✨ 关键发现提炼</div>
         <div className="interview-findings-text">
-          客户核心诉求为销售团队留人，当前薪酬策略对标 P50 但未按职能做差异化。调薪预算 8% 按统一比例分配，未向关键岗位倾斜。建议诊断重点关注：
-          <br/><br/>
-          1. 销售团队各层级的外部竞争力<br/>
-          2. 绩效与薪酬的关联度<br/>
-          3. 不同职能间的薪酬资源分配合理性
+          {summary}
+          {focusPoints.length > 0 && (
+            <>
+              建议诊断重点关注：
+              <br/><br/>
+              {focusPoints.map((p, idx) => (
+                <span key={idx}>{idx + 1}. {p}<br/></span>
+              ))}
+            </>
+          )}
         </div>
       </div>
     );

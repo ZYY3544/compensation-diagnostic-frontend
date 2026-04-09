@@ -36,9 +36,8 @@ function App() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [_skippedInterview, setSkippedInterview] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', text: '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？', chips: ['留人', '招人', '控成本', '公平性'] }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const welcomeSent = useRef(false);
   // Ref for Stage2 to register its text input handler
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
   // Ref for Stage3 interview text handler
@@ -49,6 +48,40 @@ function App() {
     createSession().then(res => {
       setSessionId(res.data.id);
     }).catch(() => {});
+  }, []);
+
+  // Stream welcome message on mount
+  useEffect(() => {
+    if (welcomeSent.current) return;
+    welcomeSent.current = true;
+
+    const fullText = '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？';
+    const chips = ['留人', '招人', '控成本', '公平性'];
+
+    // Show typing indicator briefly
+    setMessages([{ role: 'bot', text: '' }]);
+
+    let displayed = 0;
+    const CHARS_PER_TICK = 2;
+    const INTERVAL = 30;
+
+    const startDelay = setTimeout(() => {
+      const timer = setInterval(() => {
+        displayed = Math.min(displayed + CHARS_PER_TICK, fullText.length);
+        const currentText = fullText.slice(0, displayed);
+        const isDone = displayed >= fullText.length;
+
+        setMessages([{
+          role: 'bot',
+          text: currentText,
+          chips: isDone ? chips : undefined,
+        }]);
+
+        if (isDone) clearInterval(timer);
+      }, INTERVAL);
+    }, 600);
+
+    return () => clearTimeout(startDelay);
   }, []);
 
   const addMsg = useCallback((msg: Message) => {

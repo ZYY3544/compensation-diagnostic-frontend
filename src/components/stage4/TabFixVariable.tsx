@@ -1,38 +1,31 @@
 import { useState, useEffect } from 'react';
 
-const mockRatioData = [
-  { level: 'L3', fixed: 72000, variable: 12000, fixPct: 86, varPct: 14 },
-  { level: 'L4', fixed: 96000, variable: 18000, fixPct: 84, varPct: 16 },
-  { level: 'L5', fixed: 132000, variable: 36000, fixPct: 79, varPct: 21 },
-  { level: 'L6', fixed: 168000, variable: 60000, fixPct: 74, varPct: 26 },
-  { level: 'L7', fixed: 216000, variable: 96000, fixPct: 69, varPct: 31 },
-  { level: 'L8', fixed: 276000, variable: 156000, fixPct: 64, varPct: 36 },
-];
-
-const mockCompareData = [
-  { level: 'L3', company: '86:14', market: '80:20', diff: '固定偏高' },
-  { level: 'L4', company: '84:16', market: '80:20', diff: '固定偏高' },
-  { level: 'L5', company: '79:21', market: '75:25', diff: '接近' },
-  { level: 'L6', company: '74:26', market: '70:30', diff: '接近' },
-  { level: 'L7', company: '69:31', market: '65:35', diff: '接近' },
-  { level: 'L8', company: '64:36', market: '60:40', diff: '接近' },
-];
-
 interface TabFixVariableProps {
   data?: any;
 }
 
 export default function TabFixVariable({ data }: TabFixVariableProps) {
-  const ratioData = data?.ratio_by_grade || mockRatioData;
-  const compareData = data?.comparison || mockCompareData;
-  const maxTotal = Math.max(...ratioData.map((d: any) => (d.fixed || 0) + (d.variable || 0)));
+  const ratioData = data?.ratio_by_grade || [];
+  const compareData = data?.comparison || [];
+  const maxTotal = ratioData.length > 0 ? Math.max(...ratioData.map((d: any) => (d.fixed || 0) + (d.variable || 0))) : 1;
 
   const statusBadge = data?.status === 'warning' ? 'badge-amber' : 'badge-green';
   const statusText = data?.status === 'warning' ? '需关注' : '正常';
-  const insight = data?.insight || '整体呈合理梯度：越高职级浮动越多。但 L3-L4 浮动占比偏低（14-16%），市场通常 20%。建议适当增加基层绩效奖金比例，增强激励感知。';
+  const insight = data?.insight || '';
 
   const [animated, setAnimated] = useState(false);
   useEffect(() => { const t = setTimeout(() => setAnimated(true), 100); return () => clearTimeout(t); }, []);
+
+  if (ratioData.length === 0 && compareData.length === 0) {
+    return (
+      <div className="fade-enter">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <span style={{ fontSize: 16, color: 'var(--blue)', fontWeight: 600 }}>薪酬固浮比</span>
+        </div>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>暂无数据</div>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-enter">

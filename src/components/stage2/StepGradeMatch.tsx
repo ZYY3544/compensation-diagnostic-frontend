@@ -1,4 +1,4 @@
-import type { ParseResult, GradeMatch } from '../../types';
+import type { ParseResult } from '../../types';
 
 interface StepGradeMatchProps {
   l7Choice: string | null;
@@ -7,19 +7,19 @@ interface StepGradeMatchProps {
   onNext: () => void;
 }
 
-const mockGrades: GradeMatch[] = [
-  { client_grade: 'L3', standard_grade: '专员级', confidence: 'high', confirmed: true },
-  { client_grade: 'L4', standard_grade: '高级专员级', confidence: 'high', confirmed: true },
-  { client_grade: 'L5', standard_grade: '经理级', confidence: 'high', confirmed: true },
-  { client_grade: 'L6', standard_grade: '高级经理级', confidence: 'high', confirmed: true },
-  { client_grade: 'L7', standard_grade: null, confidence: 'low', confirmed: false },
-  { client_grade: 'L8', standard_grade: '总监级', confidence: 'high', confirmed: true },
-];
-
 export default function StepGradeMatch({ l7Choice, onL7Choice, parseResult, onNext }: StepGradeMatchProps) {
-  const grades = parseResult?.grade_matching ?? mockGrades;
-  // Find the unconfirmed grade (L7 in mock)
+  const grades = parseResult?.grade_matching ?? [];
+  // Find the unconfirmed grade
   const uncertainGrade = grades.find(g => !g.confirmed && g.confidence === 'low');
+
+  if (grades.length === 0) {
+    return (
+      <div className="wizard-content">
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>职级匹配</h3>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>等待职级匹配...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="wizard-content">

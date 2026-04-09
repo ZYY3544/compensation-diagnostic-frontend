@@ -55,7 +55,7 @@ function App() {
     setMessages(prev => [...prev, msg]);
   }, []);
 
-  // Handle upload click — call backend, fallback to mock flow
+  // Handle upload click — call backend
   const handleUpload = async (file: File) => {
     setLoading(true);
     try {
@@ -75,7 +75,7 @@ function App() {
       setLoading(false);
       setStage(3);
     } catch (err) {
-      console.warn('Upload API failed, falling back to mock flow', err);
+      console.warn('Upload API failed', err);
       addMsg({ role: 'bot', text: '让我先看看你的数据结构...' });
       setLoading(false);
       setStage(3);
@@ -109,7 +109,7 @@ function App() {
         const reportRes = await getReport(sessionId);
         setReportData(reportRes.data as ReportData);
       } catch (err) {
-        console.warn('Analysis API failed, using mock report', err);
+        console.warn('Analysis API failed', err);
       }
     }
 
@@ -117,8 +117,10 @@ function App() {
       setLoading(false);
       setStage(4);
 
-      const score = reportData?.health_score ?? 72;
-      addMsg({ role: 'bot', text: `诊断报告已生成！整体薪酬健康度 ${score} 分。\n\n结合你刚才提到的业务背景，重点发现：\n1. 销售团队竞争力确实不足（验证了你的流失判断）\n2. 调薪预算分配缺乏倾斜，未向关键岗位集中\n3. 人工成本增速与降本增效目标存在矛盾\n\n点击右侧各模块查看详情，有问题随时问我` });
+      const score = reportData?.health_score;
+      addMsg({ role: 'bot', text: score
+        ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
+        : '诊断报告已生成，点击各模块查看详情，有问题随时问我。' });
     }, 1000);
   };
 

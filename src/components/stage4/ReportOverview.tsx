@@ -18,21 +18,13 @@ function Gauge({ score }: GaugeProps) {
   );
 }
 
-// Mock fallback findings
-const mockFindings = [
-  { severity: 'red', text: '销售团队 L4-L5 竞争力不足，CR 仅 0.84-0.88' },
-  { severity: 'amber', text: 'L5 层级内部薪酬离散度偏高，离散系数 0.32' },
-  { severity: 'amber', text: '绩效与薪酬关联偏弱，A vs C 差距仅 23%' },
-  { severity: 'red', text: '人工成本增速（22%）高于营收增速（15%）' },
-];
-
 interface ReportOverviewProps {
   reportData?: ReportData | null;
 }
 
 export default function ReportOverview({ reportData }: ReportOverviewProps) {
-  const score = reportData?.health_score ?? 72;
-  const findings = reportData?.key_findings ?? mockFindings;
+  const score = reportData?.health_score ?? 0;
+  const findings = reportData?.key_findings ?? [];
 
   const severityColor = (s: string) => {
     if (s === 'red') return 'var(--red)';
@@ -46,12 +38,16 @@ export default function ReportOverview({ reportData }: ReportOverviewProps) {
         <Gauge score={score} />
         <div className="gauge-right">
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>核心发现</div>
-          {findings.map((f, i) => (
-            <div key={i} className="finding-item">
-              <span className="finding-dot" style={{ color: severityColor(f.severity) }}>●</span>
-              <span>{f.text}</span>
-            </div>
-          ))}
+          {findings.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', padding: '12px 0' }}>暂无数据</div>
+          ) : (
+            findings.map((f, i) => (
+              <div key={i} className="finding-item">
+                <span className="finding-dot" style={{ color: severityColor(f.severity) }}>●</span>
+                <span>{f.text}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

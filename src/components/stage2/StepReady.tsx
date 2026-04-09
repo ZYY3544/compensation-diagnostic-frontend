@@ -8,15 +8,6 @@ interface StepReadyProps {
   interviewNotes?: any;
 }
 
-// Mock fallback modules
-const mockModules: { name: string; available: boolean; reason?: string }[] = [
-  { name: '外部竞争力分析', available: true },
-  { name: '内部公平性分析', available: true },
-  { name: '薪酬固浮比分析', available: true },
-  { name: '绩效关联分析', available: false, reason: '缺少绩效字段' },
-  { name: '人工成本趋势分析', available: false, reason: '缺少公司经营数据' },
-];
-
 export default function StepReady({ onStart, onStepClick, onReupload, parseResult, interviewNotes }: StepReadyProps) {
   // Build modules list from parseResult if available
   const modules: { name: string; available: boolean; reason?: string }[] = parseResult
@@ -24,13 +15,13 @@ export default function StepReady({ onStart, onStepClick, onReupload, parseResul
         ...parseResult.unlocked_modules.map(name => ({ name, available: true })),
         ...parseResult.locked_modules.map(m => ({ name: m.name, available: false, reason: m.reason })),
       ]
-    : mockModules;
+    : [];
 
-  const completenessScore = parseResult?.data_completeness_score ?? 78;
-  const rowMissingCount = parseResult?.completeness_issues?.row_missing?.length ?? 3;
-  const correctionCount = parseResult?.cleansing_corrections?.length ?? 3;
-  const gradeTotal = parseResult?.grade_matching?.length ?? 6;
-  const funcTotal = parseResult?.function_matching?.length ?? 5;
+  const completenessScore = parseResult?.data_completeness_score ?? 0;
+  const rowMissingCount = parseResult?.completeness_issues?.row_missing?.length ?? 0;
+  const correctionCount = parseResult?.cleansing_corrections?.length ?? 0;
+  const gradeTotal = parseResult?.grade_matching?.length ?? 0;
+  const funcTotal = parseResult?.function_matching?.length ?? 0;
 
   return (
     <div className="wizard-content">

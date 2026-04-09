@@ -1,4 +1,4 @@
-import type { ParseResult, FuncMatch } from '../../types';
+import type { ParseResult } from '../../types';
 
 interface StepFuncMatchProps {
   funcChoice: string | null;
@@ -7,16 +7,17 @@ interface StepFuncMatchProps {
   onNext: () => void;
 }
 
-const mockFuncs: FuncMatch[] = [
-  { title: '软件工程师', matched: '技术研发-软件开发', confidence: 'high', confirmed: true },
-  { title: 'HRBP 经理', matched: '人力资源-HRBP', confidence: 'high', confirmed: true },
-  { title: '增长黑客', matched: null, confidence: 'low', confirmed: false, alternatives: ['数字营销', '用户增长'] },
-  { title: '销售总监', matched: '销售-大客户销售', confidence: 'high', confirmed: true },
-  { title: '财务主管', matched: '财务-财务管理', confidence: 'high', confirmed: true },
-];
-
 export default function StepFuncMatch({ funcChoice, onFuncChoice, parseResult, onNext }: StepFuncMatchProps) {
-  const funcs = parseResult?.function_matching ?? mockFuncs;
+  const funcs = parseResult?.function_matching ?? [];
+
+  if (funcs.length === 0) {
+    return (
+      <div className="wizard-content">
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>职能匹配</h3>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>等待职能匹配...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="wizard-content">

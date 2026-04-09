@@ -9,26 +9,24 @@ interface StepCleansingProps {
   onNext: () => void;
 }
 
-const mockCorrections = [
-  { id: 0, description: '第 5、12、30 行年终奖已年化处理（入司不满 1 年）', type: 'annualize_bonus' },
-  { id: 1, description: '全部员工 13 薪已从年终奖移入固定薪酬', type: '13th_month_reclassify' },
-  { id: 2, description: '第 45 行月薪 ¥85,000 已标记为异常值', type: 'extreme_value' },
-];
-
 export default function StepCleansing({ taxChoice, onTaxChoice, reverted, onRevert, parseResult, onNext }: StepCleansingProps) {
-  const corrections = parseResult?.cleansing_corrections ?? mockCorrections;
-  const completenessScore = parseResult?.data_completeness_score ?? 78;
+  const corrections = parseResult?.cleansing_corrections ?? [];
+  const completenessScore = parseResult?.data_completeness_score ?? 0;
 
   return (
     <div className="wizard-content">
       <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>数据清洗</h3>
       <div className="card" style={{ marginBottom: 16 }}>
-        {corrections.map((c, i) => (
-          <div key={c.id} className={`clean-item ${reverted[i] ? 'reverted' : ''}`}>
-            <span><span className="clean-check">✓</span> {c.description}</span>
-            <button className="revert-btn" onClick={() => onRevert(i)}>{reverted[i] ? '已撤回' : '撤回'}</button>
-          </div>
-        ))}
+        {corrections.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>暂无修正项</div>
+        ) : (
+          corrections.map((c, i) => (
+            <div key={c.id} className={`clean-item ${reverted[i] ? 'reverted' : ''}`}>
+              <span><span className="clean-check">✓</span> {c.description}</span>
+              <button className="revert-btn" onClick={() => onRevert(i)}>{reverted[i] ? '已撤回' : '撤回'}</button>
+            </div>
+          ))
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>

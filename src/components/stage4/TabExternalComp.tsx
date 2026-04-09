@@ -31,15 +31,9 @@ function HBarChart({ data, maxVal }: { data: HBarData[]; maxVal: number }) {
 }
 
 function Heatmap({ heatmapData }: { heatmapData?: any }) {
-  const depts = heatmapData?.departments || ['研发', '销售', '市场', 'HR', '行政'];
-  const levels = heatmapData?.levels || ['L3', 'L4', 'L5', 'L6', 'L7', 'L8'];
-  const data: (number | null)[][] = heatmapData?.matrix || [
-    [1.05, 1.07, 1.04, 1.02, 1.07, 1.03],
-    [0.92, 0.97, 0.88, 0.84, 0.89, null],
-    [0.95, 0.89, 0.91, 0.88, null, 0.90],
-    [0.83, 0.82, 0.81, null, null, null],
-    [0.89, 0.85, null, null, null, null],
-  ];
+  const depts = heatmapData?.departments || [];
+  const levels = heatmapData?.levels || [];
+  const data: (number | null)[][] = heatmapData?.matrix || [];
   const cellClass = (v: number | null) => {
     if (v === null) return 'heat-empty';
     if (v > 1.05) return 'heat-high';
@@ -66,14 +60,6 @@ function Heatmap({ heatmapData }: { heatmapData?: any }) {
   );
 }
 
-const mockHbarData: HBarData[] = [
-  { name: '研发', value: 1.05, color: 'var(--green)', label_right: '1.05' },
-  { name: '产品', value: 0.98, color: 'var(--amber)', label_right: '0.98' },
-  { name: '销售', value: 0.88, color: 'var(--red)', label_right: '0.88' },
-  { name: '人力资源', value: 0.82, color: 'var(--red)', label_right: '0.82' },
-  { name: '行政', value: 0.85, color: 'var(--red)', label_right: '0.85' },
-];
-
 const crColor = (v: number) => {
   if (v >= 1.0) return 'var(--green)';
   if (v >= 0.90) return 'var(--amber)';
@@ -85,7 +71,6 @@ interface TabExternalCompProps {
 }
 
 export default function TabExternalComp({ data }: TabExternalCompProps) {
-  // Use real data if available
   const hbarData: HBarData[] = data?.cr_by_function
     ? data.cr_by_function.map((f: any) => ({
         name: f.name,
@@ -93,11 +78,22 @@ export default function TabExternalComp({ data }: TabExternalCompProps) {
         color: crColor(f.cr),
         label_right: f.cr.toFixed(2),
       }))
-    : mockHbarData;
+    : [];
 
   const statusBadge = data?.status === 'warning' ? 'badge-red' : data?.status === 'normal' ? 'badge-green' : 'badge-red';
   const statusText = data?.status === 'warning' ? '预警' : data?.status === 'normal' ? '正常' : '预警';
-  const insight = data?.insight || '你提到销售团队流失严重，从数据来看确实如此——销售 L4-L5 的 CR 值仅 0.84-0.88，低于市场中位值 12-16%，薪酬竞争力不足很可能是流失的核心原因。研发竞争力良好（CR 1.05），但你的核心创收职能薪酬却明显偏低，建议在调薪预算中优先向销售倾斜。';
+  const insight = data?.insight || '';
+
+  if (hbarData.length === 0) {
+    return (
+      <div className="fade-enter">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <span style={{ fontSize: 16, color: 'var(--blue)', fontWeight: 600 }}>外部竞争力</span>
+        </div>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>暂无数据</div>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-enter">

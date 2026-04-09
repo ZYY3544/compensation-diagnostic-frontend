@@ -72,8 +72,6 @@ const questions = [
   '最后一个——明年的业务战略重点是什么方向？',
 ];
 
-// mockBlock2 removed - now using AI extraction or chip mapping
-
 const questionChips: Record<number, string[]> = {
   1: ['留人', '招人', '控成本', '公平性'],
   2: ['领先市场', '跟随市场', '没明确定过'],

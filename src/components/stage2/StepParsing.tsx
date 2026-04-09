@@ -5,23 +5,11 @@ interface StepParsingProps {
   parseResult?: ParseResult | null;
 }
 
-// Mock data as fallback
-const mockFields = [
-  { name: '姓名', detected: true },
-  { name: '岗位', detected: true },
-  { name: '职级', detected: true },
-  { name: '月薪', detected: true },
-  { name: '年终奖', detected: true },
-  { name: '部门', detected: true },
-  { name: '绩效', detected: true },
-  { name: '入司时间', detected: true },
-];
-
 export default function StepParsing({ parsing, parseResult }: StepParsingProps) {
-  const empCount = parseResult?.employee_count ?? 126;
-  const gradeCount = parseResult?.grade_count ?? 6;
-  const deptCount = parseResult?.department_count ?? 5;
-  const fields = parseResult?.fields_detected ?? mockFields;
+  const empCount = parseResult?.employee_count ?? 0;
+  const gradeCount = parseResult?.grade_count ?? 0;
+  const deptCount = parseResult?.department_count ?? 0;
+  const fields = parseResult?.fields_detected ?? [];
   const detectedCount = fields.filter(f => f.detected).length;
 
   if (parsing) {
@@ -34,6 +22,14 @@ export default function StepParsing({ parsing, parseResult }: StepParsingProps) 
       </div>
     );
   }
+  if (fields.length === 0) {
+    return (
+      <div className="wizard-content">
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>等待数据解析...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="wizard-content">
       <div className="data-overview-cards">

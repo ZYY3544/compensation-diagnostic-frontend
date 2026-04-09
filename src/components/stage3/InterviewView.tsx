@@ -23,6 +23,9 @@ interface BlockContents {
   block1: string[] | null;
   block2: string[] | null;
   block3: string[] | null;
+  block4: string[] | null;
+  block5: string[] | null;
+  block6: string[] | null;
 }
 
 const questions = [
@@ -54,9 +57,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     direction: null,
   });
   const [blockContents, setBlockContents] = useState<BlockContents>({
-    block1: null,
-    block2: null,
-    block3: null,
+    block1: null, block2: null, block3: null,
+    block4: null, block5: null, block6: null,
   });
   const [showFindings, setShowFindings] = useState(false);
   const [findingsText, setFindingsText] = useState<string>('');
@@ -104,12 +106,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   // Map field_name from AI to card block
   const fieldToBlock: Record<string, string> = {
     company_profile: 'block1',
-    strategy: 'block1',
-    core_goal: 'block2',
-    attrition: 'block2',
-    core_functions: 'block2',
-    pay_strategy: 'block3',
-    raise_mechanism: 'block3',
+    strategy: 'block2',
+    core_goal: 'block3',
+    attrition: 'block4',
+    core_functions: 'block5',
+    pay_strategy: 'block6',
+    raise_mechanism: 'block6',
   };
 
   const fieldToAnswer: Record<string, keyof Answers> = {
@@ -190,9 +192,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   // Build context string from current answers for AI
   const buildContext = (): string => {
     const parts: string[] = [];
-    if (blockContents.block1?.length) parts.push('【公司概况与战略】' + blockContents.block1.join('；'));
-    if (blockContents.block2?.length) parts.push('【诊断诉求与人才现状】' + blockContents.block2.join('；'));
-    if (blockContents.block3?.length) parts.push('【薪酬管理现状】' + blockContents.block3.join('；'));
+    if (blockContents.block1?.length) parts.push('【公司基本情况】' + blockContents.block1.join('；'));
+    if (blockContents.block2?.length) parts.push('【战略方向】' + blockContents.block2.join('；'));
+    if (blockContents.block3?.length) parts.push('【诊断诉求】' + blockContents.block3.join('；'));
+    if (blockContents.block4?.length) parts.push('【流失情况】' + blockContents.block4.join('；'));
+    if (blockContents.block5?.length) parts.push('【核心职能】' + blockContents.block5.join('；'));
+    if (blockContents.block6?.length) parts.push('【薪酬管理现状】' + blockContents.block6.join('；'));
     return parts.join('\n');
   };
 
@@ -383,52 +388,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     );
   };
 
-  const renderBlock1 = () => {
-    return (
-      <div className="interview-block">
-        <div className="interview-block-title">🏢 公司概况与战略</div>
-        {!blockContents.block1 ? (
-          <div className="interview-placeholder">等待访谈...</div>
-        ) : (
-          <div>
-            {blockContents.block1.map((line, i) => renderContentLine('block1', line, i))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderBlock2 = () => {
-    if (interviewStep < 3) return null;
-    return (
-      <div className="interview-block fade-in-up">
-        <div className="interview-block-title">🎯 诊断诉求与人才现状</div>
-        {!blockContents.block2 ? (
-          <div className="interview-placeholder">等待访谈...</div>
-        ) : (
-          <div>
-            {blockContents.block2.map((line, i) => renderContentLine('block2', line, i))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderBlock3 = () => {
-    if (interviewStep < 6) return null;
-    return (
-      <div className="interview-block fade-in-up">
-        <div className="interview-block-title">💰 薪酬管理现状</div>
-        {!blockContents.block3 ? (
-          <div className="interview-placeholder">等待访谈...</div>
-        ) : (
-          <div>
-            {blockContents.block3.map((line, i) => renderContentLine('block3', line, i))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const blocks = [
+    { key: 'block1' as const, title: '🏢 公司基本情况', showAt: 1 },
+    { key: 'block2' as const, title: '🎯 战略方向', showAt: 2 },
+    { key: 'block3' as const, title: '📋 诊断诉求', showAt: 3 },
+    { key: 'block4' as const, title: '👥 流失情况', showAt: 4 },
+    { key: 'block5' as const, title: '⚡ 核心职能', showAt: 5 },
+    { key: 'block6' as const, title: '💰 薪酬管理现状', showAt: 6 },
+  ];
 
   // Generate findings via dedicated AI endpoint when all 6 questions are done
   useEffect(() => {
@@ -506,9 +473,21 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         </div>
       )}
 
-      {renderBlock1()}
-      {renderBlock2()}
-      {renderBlock3()}
+      {blocks.map(({ key, title, showAt }) => {
+        if (interviewStep < showAt) return null;
+        return (
+          <div key={key} className={`interview-block ${interviewStep === showAt ? 'fade-in-up' : ''}`}>
+            <div className="interview-block-title">{title}</div>
+            {!blockContents[key] ? (
+              <div className="interview-placeholder">等待访谈...</div>
+            ) : (
+              <div>
+                {blockContents[key]!.map((line, i) => renderContentLine(key, line, i))}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {renderFindings()}
 
       {showFindings && (

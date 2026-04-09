@@ -55,8 +55,8 @@ function App() {
     if (welcomeSent.current) return;
     welcomeSent.current = true;
 
-    const fullText = '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？';
-    const chips = ['留人', '招人', '控成本', '公平性'];
+    const fullText = '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n**先简单介绍下你们公司吧——主要做什么业务？大概多少人？发展到什么阶段了？**';
+    const chips: string[] = [];
 
     // Show typing indicator briefly
     setMessages([{ role: 'bot', text: '' }]);
@@ -74,7 +74,7 @@ function App() {
         setMessages([{
           role: 'bot',
           text: currentText,
-          chips: isDone ? chips : undefined,
+          chips: isDone && chips.length > 0 ? chips : undefined,
         }]);
 
         if (isDone) clearInterval(timer);

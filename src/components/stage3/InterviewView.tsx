@@ -31,14 +31,15 @@ const goalMap: Record<string, string> = {
   '公平性': '核心诉求：解决内部薪酬公平性问题',
 };
 const strategyMap: Record<string, string> = {
-  '领先市场': '薪酬定位：领先市场（P75 以上）',
-  '跟随市场': '薪酬定位：跟随市场（P50 附近）',
-  '没明确定过': '薪酬定位：无明确策略，凭经验定薪',
+  '业务扩张': '明年战略：业务扩张',
+  '降本增效': '明年战略：降本增效',
+  '数字化转型': '明年战略：数字化转型',
+  '新市场开拓': '明年战略：新市场开拓',
 };
-const raiseMap: Record<string, string> = {
-  '每年一次': '调薪机制：年度调薪',
-  '不定期': '调薪机制：不定期调整',
-  '没有固定机制': '调薪机制：无固定调薪机制',
+const payStrategyMap: Record<string, string> = {
+  '有明确策略': '薪酬定位：有明确的市场对标策略',
+  '大概跟随市场': '薪酬定位：大致跟随市场，未精确定位',
+  '没怎么定过': '薪酬定位：无明确策略，凭经验定薪',
 };
 
 const sparkyResponses: Record<string, string> = {
@@ -46,12 +47,13 @@ const sparkyResponses: Record<string, string> = {
   '招人': '了解，吸引外部人才需要有竞争力的薪酬包。',
   '控成本': '理解，人工成本控制是当前很多企业的核心议题。',
   '公平性': '收到，内部公平性问题如果不解决，容易引发连锁反应。',
-  '领先市场': '不错，领先策略能有效吸引和保留人才。',
-  '跟随市场': '了解，跟随市场是比较稳妥的做法。',
-  '没明确定过': '这很常见，很多企业薪酬定位其实是模糊的。',
-  '每年一次': '好的，年度调薪是最常见的机制。',
-  '不定期': '了解，不定期调薪灵活但也容易缺乏系统性。',
-  '没有固定机制': '明白了，这可能是一个需要关注的点。',
+  '业务扩张': '扩张期薪酬竞争力是关键，得确保 offer 在市场上有吸引力。',
+  '降本增效': '降本增效不一定是砍人砍钱，更多是看钱有没有花在刀刃上。',
+  '数字化转型': '数字化转型对人才结构影响很大，薪酬策略也要跟着调。',
+  '新市场开拓': '开拓新市场意味着新的人才需求，薪酬定位要有吸引力。',
+  '有明确策略': '不错，有明确策略的公司在薪酬管理上更主动。',
+  '大概跟随市场': '了解，大致跟随市场是比较常见的做法。',
+  '没怎么定过': '这很常见，很多快速成长的公司薪酬定位其实是模糊的。',
 };
 
 const defaultResponses = [
@@ -64,21 +66,21 @@ const defaultResponses = [
 ];
 
 const questions = [
-  '这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？',
+  '先简单介绍下你们公司吧——主要做什么业务？大概多少人？发展到什么阶段了？',
+  '明年公司大方向是什么？扩张、收缩、还是转型？',
+  '了解了你们的业务和方向。那这次想做薪酬诊断，主要是想解决什么问题？',
   '最近有没有觉得某个部门人特别不稳定？',
   '你们公司最核心的部门是哪些？就是如果这些人走了业务就转不动的那种',
-  '明年公司大方向是什么？扩张、收缩、还是转型？',
-  '你们现在给薪酬定价有没有一个标准？比如对标市场什么水位？',
-  '调薪一般怎么操作？多久调一次、预算大概多少？',
+  '最后聊聊你们薪酬是怎么管的——有没有明确的薪酬定位？调薪一般怎么操作？',
 ];
 
 const questionChips: Record<number, string[]> = {
-  1: ['留人', '招人', '控成本', '公平性'],
-  2: ['研发', '销售', '产品', '运营', '没有明显流失'],
-  3: ['研发', '销售', '产品', '运营', '市场'],
-  4: ['业务扩张', '降本增效', '数字化转型', '新市场开拓'],
-  5: ['领先市场', '跟随市场', '没明确定过'],
-  6: ['每年一次', '不定期', '没有固定机制'],
+  // Q1 no chips (free text only)
+  2: ['业务扩张', '降本增效', '数字化转型', '新市场开拓'],
+  3: ['留人', '招人', '控成本', '公平性'],
+  4: ['研发', '销售', '产品', '运营', '没有明显流失'],
+  5: ['研发', '销售', '产品', '运营', '市场'],
+  6: ['有明确策略', '大概跟随市场', '没怎么定过'],
 };
 
 export default function InterviewView({ onComplete, onSkip, addMsg, setShowTyping, textHandlerRef }: InterviewViewProps) {
@@ -114,29 +116,31 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
 
   // Check if answer is a chip click (has direct mapping)
   const isChipAnswer = (step: number, text: string): boolean => {
-    if (step === 1) return !!goalMap[text];
+    if (step === 1) return false; // Q1 has no chips
     if (step === 2) return !!strategyMap[text];
-    if (step === 3) return !!raiseMap[text];
-    // Q4-Q6 chips are direct values, check against questionChips
+    if (step === 3) return !!goalMap[text];
+    if (step === 6) return !!payStrategyMap[text];
     const chips = questionChips[step];
     return chips ? chips.includes(text) : false;
   };
 
   // Map field_name from AI to card block
   const fieldToBlock: Record<string, string> = {
-    core_goal: 'block1',
-    attrition: 'block3',
-    core_functions: 'block3',
-    strategy: 'block3',
-    pay_strategy: 'block2',
-    raise_mechanism: 'block2',
+    company_profile: 'block1',
+    strategy: 'block1',
+    core_goal: 'block2',
+    attrition: 'block2',
+    core_functions: 'block2',
+    pay_strategy: 'block3',
+    raise_mechanism: 'block3',
   };
 
   const fieldToAnswer: Record<string, keyof Answers> = {
+    company_profile: 'goal',  // reuse goal slot for company_profile text
+    strategy: 'direction',
     core_goal: 'goal',
     attrition: 'attrition',
     core_functions: 'coreFunc',
-    strategy: 'direction',
     pay_strategy: 'strategy',
     raise_mechanism: 'raise',
   };
@@ -147,18 +151,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
       const block = fieldToBlock[item.field_name];
       const answerKey = fieldToAnswer[item.field_name];
       if (block) {
-        if (block === 'block1') {
-          setBlockContents(prev => ({ ...prev, block1: [item.value] }));
-        } else {
-          setBlockContents(prev => ({
-            ...prev,
-            [block]: [...(prev[block as keyof typeof prev] || []).filter(v => {
-              // Replace existing entry for same field if updating
-              const prefix = item.value.split('：')[0];
-              return !v.startsWith(prefix + '：');
-            }), item.value],
-          }));
-        }
+        setBlockContents(prev => ({
+          ...prev,
+          [block]: [...(prev[block as keyof typeof prev] || []).filter(v => {
+            // Replace existing entry for same field if updating
+            const prefix = item.value.split('：')[0];
+            return !v.startsWith(prefix + '：');
+          }), item.value],
+        }));
       }
       if (answerKey) {
         setAnswers(prev => ({
@@ -171,33 +171,30 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
 
   // Fill card from chip mapping (simple, single field)
   const fillCardFromChip = (step: number, value: string, answerText: string) => {
-    if (step === 1) {
-      setBlockContents(prev => ({ ...prev, block1: [value] }));
-      setAnswers(prev => ({ ...prev, goal: answerText }));
-    } else if (step === 2) {
-      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
-      setAnswers(prev => ({ ...prev, attrition: answerText }));
-    } else if (step === 3) {
-      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
-      setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
-    } else if (step === 4) {
-      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
+    if (step === 2) {
+      setBlockContents(prev => ({ ...prev, block1: [...(prev.block1 || []), value] }));
       setAnswers(prev => ({ ...prev, direction: answerText }));
+    } else if (step === 3) {
+      setBlockContents(prev => ({ ...prev, block2: [value, ...(prev.block2 || [])] }));
+      setAnswers(prev => ({ ...prev, goal: answerText }));
+    } else if (step === 4) {
+      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
+      setAnswers(prev => ({ ...prev, attrition: answerText }));
     } else if (step === 5) {
       setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, strategy: answerText }));
+      setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
     } else if (step === 6) {
-      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, raise: answerText }));
+      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
+      setAnswers(prev => ({ ...prev, strategy: answerText }));
     }
   };
 
   // Build context string from current answers for AI
   const buildContext = (): string => {
     const parts: string[] = [];
-    if (blockContents.block1?.length) parts.push('【诊断诉求】' + blockContents.block1.join('；'));
-    if (blockContents.block2?.length) parts.push('【薪酬策略】' + blockContents.block2.join('；'));
-    if (blockContents.block3?.length) parts.push('【组织背景】' + blockContents.block3.join('；'));
+    if (blockContents.block1?.length) parts.push('【公司概况与战略】' + blockContents.block1.join('；'));
+    if (blockContents.block2?.length) parts.push('【诊断诉求与人才现状】' + blockContents.block2.join('；'));
+    if (blockContents.block3?.length) parts.push('【薪酬管理现状】' + blockContents.block3.join('；'));
     return parts.join('\n');
   };
 
@@ -226,12 +223,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     if (isChipAnswer(step, answerText)) {
       // Chip click: hardcoded mapping, skip AI, always advance
       let value = '';
-      if (step === 1) value = goalMap[answerText] || answerText;
-      else if (step === 2) value = '流失重灾区：' + answerText;
-      else if (step === 3) value = '核心职能：' + answerText;
-      else if (step === 4) value = '明年战略：' + answerText;
-      else if (step === 5) value = strategyMap[answerText] || '薪酬定位：' + answerText;
-      else if (step === 6) value = raiseMap[answerText] || '调薪机制：' + answerText;
+      if (step === 2) value = strategyMap[answerText] || '明年战略：' + answerText;
+      else if (step === 3) value = goalMap[answerText] || answerText;
+      else if (step === 4) value = '流失重灾区：' + answerText;
+      else if (step === 5) value = '核心职能：' + answerText;
+      else if (step === 6) value = payStrategyMap[answerText] || '薪酬定位：' + answerText;
 
       const reply = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
       advanceToNext(step, reply);
@@ -283,9 +279,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
       } catch {
         // Fallback: fill card with raw answer, advance
         let value = answerText;
-        if (step === 2) value = '流失重灾区：' + answerText;
-        else if (step === 3) value = '核心职能：' + answerText;
-        else if (step === 4) value = '明年战略：' + answerText;
+        if (step === 2) value = '明年战略：' + answerText;
+        else if (step === 3) value = '核心诉求：' + answerText;
+        else if (step === 4) value = '流失重灾区：' + answerText;
+        else if (step === 5) value = '核心职能：' + answerText;
+        else if (step === 6) value = '薪酬定位：' + answerText;
 
         const reply = defaultResponses[step - 1] || '好的，了解了。';
         advanceToNext(step, reply);
@@ -358,7 +356,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
   const renderBlock1 = () => {
     return (
       <div className="interview-block">
-        <div className="interview-block-title">📋 诊断诉求</div>
+        <div className="interview-block-title">🏢 公司概况与战略</div>
         {!blockContents.block1 ? (
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
@@ -371,10 +369,10 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
   };
 
   const renderBlock2 = () => {
-    if (interviewStep < 2) return null;
+    if (interviewStep < 3) return null;
     return (
       <div className="interview-block fade-in-up">
-        <div className="interview-block-title">💰 薪酬策略现状</div>
+        <div className="interview-block-title">🎯 诊断诉求与人才现状</div>
         {!blockContents.block2 ? (
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
@@ -387,10 +385,10 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
   };
 
   const renderBlock3 = () => {
-    if (interviewStep < 4) return null;
+    if (interviewStep < 6) return null;
     return (
       <div className="interview-block fade-in-up">
-        <div className="interview-block-title">🏢 组织与业务背景</div>
+        <div className="interview-block-title">💰 薪酬管理现状</div>
         {!blockContents.block3 ? (
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
@@ -406,21 +404,28 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     if (!showFindings) return null;
 
     // Dynamically generate findings from actual interview answers
+    // block1 = company profile + strategy
+    // block2 = core goal + attrition + core functions
+    // block3 = pay strategy + raise mechanism
     const b1 = blockContents.block1 || [];
     const b2 = blockContents.block2 || [];
     const b3 = blockContents.block3 || [];
 
-    const goal = b1[0] || '未明确';
-    const strategy = b2[0] || '';
-    const raise = b2[1] || '';
-    const coreFunc = b3.find(s => s.includes('核心职能')) || '';
-    const attrition = b3.find(s => s.includes('流失')) || '';
-    const direction = b3.find(s => s.includes('战略')) || '';
+    const companyInfo = b1.find(s => !s.includes('战略')) || '';
+    const direction = b1.find(s => s.includes('战略')) || '';
+    const goal = b2.find(s => s.includes('核心诉求')) || '';
+    const attrition = b2.find(s => s.includes('流失')) || '';
+    const coreFunc = b2.find(s => s.includes('核心职能')) || '';
+    const payStrategy = b3.find(s => s.includes('薪酬定位')) || '';
+    const raise = b3.find(s => s.includes('调薪') || s.includes('机制')) || '';
 
     // Build summary paragraph
-    let summary = `客户核心诉求为${goal.replace('核心诉求：', '')}。`;
-    if (strategy) summary += `${strategy}。`;
+    let summary = '';
+    if (companyInfo) summary += `${companyInfo}。`;
+    if (goal) summary += `${goal.replace('核心诉求：', '核心诉求为')}。`;
+    if (payStrategy) summary += `${payStrategy}。`;
     if (raise) summary += `${raise}。`;
+    if (!summary) summary = '访谈信息收集完成。';
 
     // Build focus points based on actual answers
     const focusPoints: string[] = [];
@@ -478,7 +483,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         </div>
       </div>
 
-      {interviewStep <= 1 && !answers.goal && (
+      {interviewStep <= 1 && (
         <div className="card fade-in-up" style={{ marginBottom: 20, background: 'linear-gradient(135deg, #f0f7ff, #f8fafc)', border: '1px solid #dbeafe' }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--blue)' }}>铭曦 · AI 薪酬诊断</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>上传薪酬数据，5 分钟获取专业级诊断报告</div>

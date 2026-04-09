@@ -14,9 +14,10 @@ interface DataConfirmProps {
   setShowTyping: (v: boolean) => void;
   textInputRef: MutableRefObject<((text: string) => boolean) | null>;
   parseResult?: ParseResult | null;
+  interviewNotes?: any;
 }
 
-export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInputRef, parseResult }: DataConfirmProps) {
+export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);
@@ -173,7 +174,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
         colMsg = sparky.step2_columns;
       } else if (colMissing.length > 0) {
         const colNames = colMissing.map((c: any) => c.field).join('、');
-        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。左边可以看详情。`;
+        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。右边可以看详情。`;
       } else {
         colMsg = '';
       }
@@ -199,7 +200,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
       if (sparky?.step3_corrections) {
         corrMsg = sparky.step3_corrections;
       } else if (corrections.length > 0) {
-        corrMsg = `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。左边可以看到详情，有不对的可以撤回。`;
+        corrMsg = `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。右边可以看到详情，有不对的可以撤回。`;
       } else {
         corrMsg = '数据口径看起来没有明显问题，不需要额外修正。';
       }
@@ -282,9 +283,9 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
         lockedMsg = sparky.step6_locked;
       } else if (locked.length > 0) {
         const lockHints = locked.map(l => `${l.name}（${l.reason}）`).join('、');
-        lockedMsg = `如果你能补充相关数据，我还能帮你做 ${lockHints}。不补也没关系，点"下一步"进入业务访谈。`;
+        lockedMsg = `如果你能补充相关数据，我还能帮你做 ${lockHints}。不补也没关系，点"开始诊断分析"直接跑报告。`;
       } else {
-        lockedMsg = '所有分析模块都已解锁！点"下一步"进入业务访谈。';
+        lockedMsg = '所有分析模块都已解锁！点"开始诊断分析"直接跑报告。';
       }
 
       sendBotMsg(readyMsg, 300).then(() => {
@@ -367,6 +368,7 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
             onStepClick={(s) => setViewingStep(s)}
             onReupload={handleReupload}
             parseResult={parseResult}
+            interviewNotes={interviewNotes}
           />
         );
       default:

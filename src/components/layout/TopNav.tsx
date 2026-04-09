@@ -5,9 +5,9 @@ interface TopNavProps {
 }
 
 const stageLabels: Record<Stage, string> = {
-  1: '数据上传',
-  2: '数据确认',
-  3: '业务访谈',
+  1: '业务访谈',
+  2: '数据上传',
+  3: '数据确认',
   4: '诊断报告',
 };
 

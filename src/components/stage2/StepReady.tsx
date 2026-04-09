@@ -5,6 +5,7 @@ interface StepReadyProps {
   onStepClick: (step: number) => void;
   onReupload: () => void;
   parseResult?: ParseResult | null;
+  interviewNotes?: any;
 }
 
 // Mock fallback modules
@@ -16,7 +17,7 @@ const mockModules: { name: string; available: boolean; reason?: string }[] = [
   { name: '人工成本趋势分析', available: false, reason: '缺少公司经营数据' },
 ];
 
-export default function StepReady({ onStart, onStepClick, onReupload, parseResult }: StepReadyProps) {
+export default function StepReady({ onStart, onStepClick, onReupload, parseResult, interviewNotes }: StepReadyProps) {
   // Build modules list from parseResult if available
   const modules: { name: string; available: boolean; reason?: string }[] = parseResult
     ? [
@@ -83,9 +84,11 @@ export default function StepReady({ onStart, onStepClick, onReupload, parseResul
         </div>
       </div>
 
-      <button className="start-btn" onClick={onStart}>下一步：业务访谈 →</button>
+      <button className="start-btn" onClick={onStart}>开始诊断分析 →</button>
       <div style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-        Sparky 将通过简短访谈了解你的业务背景
+        {interviewNotes
+          ? 'Sparky 将结合数据与访谈信息生成诊断报告'
+          : 'Sparky 将基于数据生成诊断报告'}
       </div>
     </div>
   );

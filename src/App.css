@@ -98,7 +98,7 @@ body {
   width: 380px;
   min-width: 380px;
   background: var(--right-panel-bg);
-  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease, min-width 0.3s ease, opacity 0.3s ease;
@@ -108,11 +108,11 @@ body {
   min-width: 0;
   overflow: hidden;
   opacity: 0;
-  border-left: none;
+  border-right: none;
 }
 .toggle-panel-btn {
   position: fixed;
-  right: 16px;
+  left: 16px;
   bottom: 16px;
   width: 52px;
   height: 52px;

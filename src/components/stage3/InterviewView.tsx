@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 
 import type { Message } from '../../types';
 
 interface InterviewViewProps {
-  onComplete: () => void;
+  onComplete: (notes: any) => void;
+  onSkip: () => void;
   addMsg: (msg: Message) => void;
   setShowTyping: (v: boolean) => void;
   textHandlerRef: MutableRefObject<((text: string) => boolean) | null>;
@@ -63,7 +64,7 @@ const defaultResponses = [
 ];
 
 const questions = [
-  '好，数据准备好了！在跑分析之前，我想先了解一下你们的业务背景，大概 2-3 分钟就好。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？',
+  '好的，我们先聊聊你们的业务背景，大概 2-3 分钟就好。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？',
   '你们有没有明确的薪酬策略？比如对标市场什么水位——是想领先、跟随、还是从来没明确定过？',
   '调薪是怎么做的？每年固定调一次还是不定期？调薪预算大概多少？',
   '你们的核心职能是哪些？就是对业务增长最关键的部门或岗位。',
@@ -73,7 +74,7 @@ const questions = [
 
 const mockBlock2 = ['薪酬定位：对标市场 P50（非明确策略，凭感觉）', '调薪机制：每年一次，预算约 8%', '奖金机制：年终奖，无明确绩效分化'];
 
-export default function InterviewView({ onComplete, addMsg, setShowTyping, textHandlerRef }: InterviewViewProps) {
+export default function InterviewView({ onComplete, onSkip, addMsg, setShowTyping, textHandlerRef }: InterviewViewProps) {
   const [interviewStep, setInterviewStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>({
     goal: null,
@@ -168,7 +169,7 @@ export default function InterviewView({ onComplete, addMsg, setShowTyping, textH
         setInterviewStep(step + 1);
       });
     } else {
-      sendBotMsg('访谈差不多了！我已经把关键信息整理好了，左边可以看纪要。确认没问题的话，我就开始跑诊断分析了', 400).then(() => {
+      sendBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据', 400).then(() => {
         setShowFindings(true);
         setInterviewStep(7);
       });
@@ -376,8 +377,18 @@ export default function InterviewView({ onComplete, addMsg, setShowTyping, textH
   return (
     <div className="fade-enter">
       <div className="interview-header">
-        <div className="interview-title">业务访谈</div>
-        <div className="interview-subtitle">Sparky 正在了解你的业务背景，访谈结果将用于提升诊断洞察的针对性</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div className="interview-title">业务访谈</div>
+            <div className="interview-subtitle">Sparky 正在了解你的业务背景，访谈结果将用于提升诊断洞察的针对性</div>
+          </div>
+          <span
+            style={{ fontSize: 13, color: 'var(--blue)', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 16, marginTop: 4 }}
+            onClick={onSkip}
+          >
+            跳过访谈，直接上传数据 →
+          </span>
+        </div>
       </div>
 
       {renderBlock1()}
@@ -386,8 +397,8 @@ export default function InterviewView({ onComplete, addMsg, setShowTyping, textH
       {renderFindings()}
 
       {showFindings && (
-        <button className="interview-confirm-btn fade-enter" onClick={onComplete}>
-          确认纪要，开始诊断 →
+        <button className="interview-confirm-btn fade-enter" onClick={() => onComplete({ answers, blockContents })}>
+          下一步：上传数据 →
         </button>
       )}
     </div>

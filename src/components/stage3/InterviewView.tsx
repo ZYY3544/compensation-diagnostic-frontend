@@ -62,6 +62,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const [findingsText, setFindingsText] = useState<string>('');
   const [findingsLoading, setFindingsLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const isFollowUpRef = useRef(false);
+  const lastSparkyQuestionRef = useRef('');
 
   // Stream bot message character by character into left panel
   const streamBotMsg = useCallback((text: string, chips?: string[]): Promise<void> => {
@@ -233,6 +235,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
           question_id: `Q${step}`,
           question_text: questions[step - 1] || '',
           answer: answerText,
+          is_follow_up: isFollowUpRef.current,
+          follow_up_question: isFollowUpRef.current ? lastSparkyQuestionRef.current : '',
           previous_value: getPreviousValue(step),
           context: buildContext(),
         }),
@@ -250,8 +254,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
       // Step 1: Stream Sparky's reply first
       if (followUp) {
+        // Extract the follow-up question from reply for next call
+        const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
+        lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
+        isFollowUpRef.current = true;
         await streamBotMsg(reply);
       } else if (step < 6) {
+        isFollowUpRef.current = false;
+        lastSparkyQuestionRef.current = '';
         const nextStep = step + 1;
         const nextQ = questions[step] || '';
         const fullReply = reply + '\n\n' + nextQ;
@@ -259,6 +269,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await streamBotMsg(fullReply, chips);
         setInterviewStep(nextStep);
       } else {
+        isFollowUpRef.current = false;
+        lastSparkyQuestionRef.current = '';
         await streamBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据 🚀');
         setShowFindings(true);
         setInterviewStep(7);

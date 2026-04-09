@@ -97,6 +97,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
       const handled = onNonChatSend(text);
       if (handled) {
         setInputValue('');
+        if (inputRef.current) inputRef.current.style.height = 'auto';
         return;
       }
     }
@@ -104,6 +105,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
     // Add user message and clear input
     setMessages(prev => [...prev, { role: 'user', text }]);
     setInputValue('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsLoading(true);
 
     // Add "thinking" message
@@ -365,8 +367,12 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             value={inputValue}
             onChange={e => {
               setInputValue(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              if (e.target.value) {
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              } else {
+                e.target.style.height = 'auto';
+              }
             }}
             onKeyDown={handleKeyDown}
             disabled={isLoading}

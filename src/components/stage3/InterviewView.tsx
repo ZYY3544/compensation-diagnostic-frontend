@@ -240,7 +240,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
-    // Show "thinking" placeholder immediately
+    // Wait a tick so user message is added first by SparkyPanel, then show thinking
+    await new Promise(r => setTimeout(r, 50));
     setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
 
     try {

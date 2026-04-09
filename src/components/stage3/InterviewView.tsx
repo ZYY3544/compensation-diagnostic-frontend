@@ -120,6 +120,9 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     raise_mechanism: 'raise',
   };
 
+  // Track which field_name occupies which slot index in each block
+  const fieldSlotMapRef = useRef<Record<string, Record<string, number>>>({});
+
   // Stream card content character by character into right panel cards
   const streamCardContent = useCallback((items: Array<{field_name: string; value: string}>): Promise<void> => {
     return new Promise<void>((resolve) => {
@@ -135,8 +138,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
         if (!block) { itemIdx++; processNext(); return; }
 
-        // Track the slot index for this item within its block
-        let slotIdx = -1;
+        // Determine slot: reuse existing slot for same field_name, or create new
+        const blockSlots = fieldSlotMapRef.current[block] || {};
+        let slotIdx: number;
+
+        if (item.field_name in blockSlots) {
+          // Same field_name already has a slot — overwrite it
+          slotIdx = blockSlots[item.field_name];
+        } else {
+          // New field — assign next available slot
+          slotIdx = Object.keys(blockSlots).length;
+          blockSlots[item.field_name] = slotIdx;
+          fieldSlotMapRef.current[block] = blockSlots;
+        }
 
         const timer = setInterval(() => {
           charIdx = Math.min(charIdx + 2, item.value.length);
@@ -145,30 +159,15 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
           setBlockContents(prev => {
             const existing = prev[block] || [];
-
-            if (slotIdx === -1) {
-              // First tick: check if there's an existing entry with the same field prefix to replace
-              const prefix = item.value.split('\uff1a')[0]; // '：'
-              const replaceIdx = existing.findIndex(v => v.startsWith(prefix + '\uff1a'));
-              if (replaceIdx >= 0) {
-                slotIdx = replaceIdx;
-              } else {
-                slotIdx = existing.length; // new slot at end
-              }
-            }
-
             const updated = [...existing];
-            if (slotIdx < updated.length) {
-              updated[slotIdx] = partial;
-            } else {
-              updated.push(partial);
-            }
+            // Ensure array is long enough
+            while (updated.length <= slotIdx) updated.push('');
+            updated[slotIdx] = partial;
             return { ...prev, [block]: updated };
           });
 
           if (isDone) {
             clearInterval(timer);
-            // Set answer state
             if (answerKey) {
               setAnswers(prev => ({
                 ...prev,
@@ -177,7 +176,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
             }
             itemIdx++;
             charIdx = 0;
-            slotIdx = -1;
             processNext();
           }
         }, 30);

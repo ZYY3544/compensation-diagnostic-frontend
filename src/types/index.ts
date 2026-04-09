@@ -1,6 +1,7 @@
 export interface Message {
   role: 'user' | 'bot';
   text: string;
+  chips?: string[];
 }
 
 export interface SessionData {

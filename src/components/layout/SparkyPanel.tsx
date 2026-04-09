@@ -256,7 +256,29 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
         {messages.map((m, i) => (
           <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
             {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
-            <div className="msg-bubble">{m.text}</div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="msg-bubble">{m.text}</div>
+              {m.role === 'bot' && m.chips && m.chips.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {m.chips.map((chip, ci) => (
+                    <button
+                      key={ci}
+                      className="chip"
+                      onClick={() => {
+                        // Remove chips from this message to prevent re-click
+                        setMessages(prev => prev.map((msg, idx) =>
+                          idx === i ? { ...msg, chips: [] } : msg
+                        ));
+                        sendMessage(chip);
+                      }}
+                      style={{ fontSize: 13, padding: '6px 14px', borderRadius: 16, border: '1px solid var(--border)', background: '#F1F5F9', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
         <div ref={msgEnd} />

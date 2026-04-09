@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
 import type { Message } from '../../types';
 
 interface InterviewViewProps {
@@ -74,8 +74,17 @@ const questions = [
 
 const mockBlock2 = ['薪酬定位：对标市场 P50（非明确策略，凭感觉）', '调薪机制：每年一次，预算约 8%', '奖金机制：年终奖，无明确绩效分化'];
 
+const questionChips: Record<number, string[]> = {
+  1: ['留人', '招人', '控成本', '公平性'],
+  2: ['领先市场', '跟随市场', '没明确定过'],
+  3: ['每年一次', '不定期', '没有固定机制'],
+  4: ['研发', '销售', '产品', '运营'],
+  5: ['研发', '销售', '市场', '人力资源', '无明显流失'],
+  6: ['业务扩张', '降本增效', '数字化转型', '新市场开拓'],
+};
+
 export default function InterviewView({ onComplete, onSkip, addMsg, setShowTyping, textHandlerRef }: InterviewViewProps) {
-  const [interviewStep, setInterviewStep] = useState(0);
+  const [interviewStep, setInterviewStep] = useState(1);
   const [answers, setAnswers] = useState<Answers>({
     goal: null,
     strategy: null,
@@ -90,30 +99,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     block3: null,
   });
   const [showFindings, setShowFindings] = useState(false);
-  const initRef = useRef(false);
 
-  const sendBotMsg = useCallback((text: string, delay: number) => {
+  const sendBotMsg = useCallback((text: string, delay: number, chips?: string[]) => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         setShowTyping(true);
         setTimeout(() => {
           setShowTyping(false);
-          addMsg({ role: 'bot', text });
+          addMsg({ role: 'bot', text, chips });
           resolve();
         }, 800);
       }, delay);
     });
   }, [addMsg, setShowTyping]);
-
-  // Send Q1 on mount
-  useEffect(() => {
-    if (!initRef.current) {
-      initRef.current = true;
-      sendBotMsg(questions[0], 500).then(() => {
-        setInterviewStep(1);
-      });
-    }
-  }, [sendBotMsg]);
 
   // Process answer for a given question step
   const processAnswer = useCallback((step: number, answerText: string) => {
@@ -165,8 +163,9 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     }
 
     if (step < 6) {
-      sendBotMsg(response + '\n\n' + questions[step], 400).then(() => {
-        setInterviewStep(step + 1);
+      const nextStep = step + 1;
+      sendBotMsg(response + '\n\n' + questions[step], 400, questionChips[nextStep]).then(() => {
+        setInterviewStep(nextStep);
       });
     } else {
       sendBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据', 400).then(() => {
@@ -175,13 +174,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
       });
     }
   }, [sendBotMsg]);
-
-  // Handle chip click from left panel
-  const handleChipClick = (step: number, chipText: string) => {
-    if (interviewStep !== step) return;
-    addMsg({ role: 'user', text: chipText });
-    processAnswer(step, chipText);
-  };
 
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {
@@ -198,7 +190,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
   }, [handleTextAnswer, textHandlerRef]);
 
   const renderBlock1 = () => {
-    const chips = ['留人', '招人', '控成本', '公平性'];
     return (
       <div className="interview-block">
         <div className="interview-block-title">📋 诊断诉求</div>
@@ -214,30 +205,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
             ))}
           </div>
         )}
-        {interviewStep >= 1 && (
-          <div className="interview-chip-row">
-            <div className="chip-group">
-              {chips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.goal === c ? 'active' : ''}`}
-                  onClick={() => handleChipClick(1, c)}
-                  disabled={interviewStep !== 1}
-                  style={interviewStep !== 1 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
 
   const renderBlock2 = () => {
-    const strategyChips = ['领先市场', '跟随市场', '没明确定过'];
-    const raiseChips = ['每年一次', '不定期', '没有固定机制'];
+    if (interviewStep < 2) return null;
     return (
-      <div className="interview-block">
+      <div className="interview-block fade-in-up">
         <div className="interview-block-title">💰 薪酬策略现状</div>
         {!blockContents.block2 ? (
           <div className="interview-placeholder">等待访谈...</div>
@@ -251,48 +226,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
             ))}
           </div>
         )}
-        {interviewStep >= 2 && (
-          <div className="interview-chip-row">
-            <div className="interview-chip-label">薪酬定位</div>
-            <div className="chip-group">
-              {strategyChips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.strategy === c ? 'active' : ''}`}
-                  onClick={() => handleChipClick(2, c)}
-                  disabled={interviewStep !== 2}
-                  style={interviewStep !== 2 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {interviewStep >= 3 && (
-          <div className="interview-chip-row" style={{ marginTop: 8 }}>
-            <div className="interview-chip-label">调薪频率</div>
-            <div className="chip-group">
-              {raiseChips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.raise === c ? 'active' : ''}`}
-                  onClick={() => handleChipClick(3, c)}
-                  disabled={interviewStep !== 3}
-                  style={interviewStep !== 3 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
 
   const renderBlock3 = () => {
-    const funcChips = ['研发', '销售', '产品', '运营'];
-    const attrChips = ['研发', '销售', '市场', '人力资源', '无明显流失'];
-    const dirChips = ['业务扩张', '降本增效', '数字化转型', '新市场开拓'];
+    if (interviewStep < 4) return null;
     return (
-      <div className="interview-block">
+      <div className="interview-block fade-in-up">
         <div className="interview-block-title">🏢 组织与业务背景</div>
         {!blockContents.block3 ? (
           <div className="interview-placeholder">等待访谈...</div>
@@ -304,54 +245,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
                 <button className="edit-btn">✏️</button>
               </div>
             ))}
-          </div>
-        )}
-        {interviewStep >= 4 && (
-          <div className="interview-chip-row">
-            <div className="interview-chip-label">核心职能</div>
-            <div className="chip-group">
-              {funcChips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.coreFunc.includes(c) ? 'active' : ''}`}
-                  onClick={() => handleChipClick(4, c)}
-                  disabled={interviewStep !== 4}
-                  style={interviewStep !== 4 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {interviewStep >= 5 && (
-          <div className="interview-chip-row" style={{ marginTop: 8 }}>
-            <div className="interview-chip-label">流失部门</div>
-            <div className="chip-group">
-              {attrChips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.attrition === c ? 'active' : ''}`}
-                  onClick={() => handleChipClick(5, c)}
-                  disabled={interviewStep !== 5}
-                  style={interviewStep !== 5 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {interviewStep >= 6 && (
-          <div className="interview-chip-row" style={{ marginTop: 8 }}>
-            <div className="interview-chip-label">战略方向</div>
-            <div className="chip-group">
-              {dirChips.map(c => (
-                <button
-                  key={c}
-                  className={`chip ${answers.direction === c ? 'active' : ''}`}
-                  onClick={() => handleChipClick(6, c)}
-                  disabled={interviewStep !== 6}
-                  style={interviewStep !== 6 ? { opacity: 0.5, cursor: 'default' } : {}}
-                >{c}</button>
-              ))}
-            </div>
           </div>
         )}
       </div>
@@ -386,10 +279,25 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
             style={{ fontSize: 13, color: 'var(--blue)', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 16, marginTop: 4 }}
             onClick={onSkip}
           >
-            跳过访谈，直接上传数据 →
+            已准备好数据？直接上传 →
           </span>
         </div>
       </div>
+
+      {interviewStep <= 1 && !answers.goal && (
+        <div className="card fade-in-up" style={{ marginBottom: 20, background: 'linear-gradient(135deg, #f0f7ff, #f8fafc)', border: '1px solid #dbeafe' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--blue)' }}>铭曦 · AI 薪酬诊断</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>上传薪酬数据，5 分钟获取专业级诊断报告</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <div>✓ 外部竞争力分析</div>
+            <div>✓ 内部公平性分析</div>
+            <div>✓ 薪酬结构分析</div>
+            <div>✓ 绩效关联分析</div>
+            <div>✓ 人工成本趋势</div>
+          </div>
+          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>🔒 数据加密传输，诊断完成后可随时删除</div>
+        </div>
+      )}
 
       {renderBlock1()}
       {renderBlock2()}

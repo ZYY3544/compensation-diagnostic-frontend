@@ -291,7 +291,13 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
               {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
               <div className="msg-bubble">
-                {m.role === 'bot' ? renderBotText() : m.text}
+                {m.role === 'bot' && m.text === 'Sparky 正在思考...' ? (
+                  <div className="thinking-indicator">
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                  </div>
+                ) : m.role === 'bot' ? renderBotText() : m.text}
                 {hasChips && (
                   <>
                     <div style={{ borderTop: '1px solid #e5e7eb', margin: '12px 0 10px 0' }} />

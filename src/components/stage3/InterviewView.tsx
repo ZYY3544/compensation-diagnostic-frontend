@@ -207,6 +207,21 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     return map[step] || 'unknown';
   };
 
+  // Get current value of the field for this step (for AI to merge with)
+  const getPreviousValue = (step: number): string => {
+    const field = getFieldForStep(step);
+    const block = fieldToBlock[field] as keyof BlockContents | undefined;
+    if (!block) return '';
+    const entries = blockContents[block] || [];
+    // For fields that share a block (e.g. Q1+Q2 both in block1), find the right entry
+    const slotMap = fieldSlotMapRef.current[block] || {};
+    const slotIdx = slotMap[field];
+    if (slotIdx !== undefined && slotIdx < entries.length) {
+      return entries[slotIdx];
+    }
+    return '';
+  };
+
   // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     try {
@@ -218,6 +233,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
           question_id: `Q${step}`,
           question_text: questions[step - 1] || '',
           answer: answerText,
+          previous_value: getPreviousValue(step),
           context: buildContext(),
         }),
       });

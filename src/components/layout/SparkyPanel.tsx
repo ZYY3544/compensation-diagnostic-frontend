@@ -14,8 +14,8 @@ async function parseSseStream(
   let displayedLen = 0;
   let streamDone = false;
 
-  const RENDER_INTERVAL = 50;
-  const CHARS_PER_TICK = 2;
+  const RENDER_INTERVAL = 30;
+  const CHARS_PER_TICK = 1;
   let renderTimer: ReturnType<typeof setInterval> | null = null;
 
   const startRenderLoop = () => {

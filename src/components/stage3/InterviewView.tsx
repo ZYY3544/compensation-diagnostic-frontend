@@ -70,7 +70,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       setMessages(prev => [...prev, { role: 'bot', text: '' }]);
 
       let displayed = 0;
-      const CHARS_PER_TICK = 2;
+      const CHARS_PER_TICK = 1;
       const INTERVAL = 30;
 
       const timer = setInterval(() => {
@@ -153,7 +153,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         }
 
         const timer = setInterval(() => {
-          charIdx = Math.min(charIdx + 2, item.value.length);
+          charIdx = Math.min(charIdx + 1, item.value.length);
           const partial = item.value.slice(0, charIdx);
           const isDone = charIdx >= item.value.length;
 
@@ -389,8 +389,16 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       })
         .then(res => res.json())
         .then(data => {
-          setFindingsText(data.findings || '');
-          setFindingsLoading(false);
+          const fullText = data.findings || '';
+          let displayed = 0;
+          const timer = setInterval(() => {
+            displayed = Math.min(displayed + 1, fullText.length);
+            setFindingsText(fullText.slice(0, displayed));
+            if (displayed >= fullText.length) {
+              clearInterval(timer);
+              setFindingsLoading(false);
+            }
+          }, 30);
         })
         .catch(() => {
           setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');

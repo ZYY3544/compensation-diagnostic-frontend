@@ -11,13 +11,14 @@ import type { Message, ParseResult } from '../../types';
 interface DataConfirmProps {
   onComplete: () => void;
   addMsg: (msg: Message) => void;
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setShowTyping: (v: boolean) => void;
   textInputRef: MutableRefObject<((text: string) => boolean) | null>;
   parseResult?: ParseResult | null;
   interviewNotes?: any;
 }
 
-export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
+export default function DataConfirm({ onComplete, addMsg, setMessages, setShowTyping: _setShowTyping, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);
@@ -33,19 +34,32 @@ export default function DataConfirm({ onComplete, addMsg, setShowTyping, textInp
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
   const [step6MsgsSent, setStep6MsgsSent] = useState(false);
 
-  // Helper: send Sparky message with typing indicator
+  // Helper: send Sparky message with streaming output
   const sendBotMsg = useCallback((text: string, delay: number) => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        setShowTyping(true);
-        setTimeout(() => {
-          setShowTyping(false);
-          addMsg({ role: 'bot', text });
-          resolve();
-        }, 600);
+        // Add empty bot message
+        addMsg({ role: 'bot', text: '' });
+
+        let displayed = 0;
+        const timer = setInterval(() => {
+          displayed = Math.min(displayed + 1, text.length);
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+              updated[lastIdx] = { role: 'bot', text: text.slice(0, displayed) };
+            }
+            return updated;
+          });
+          if (displayed >= text.length) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 30);
       }, delay);
     });
-  }, [addMsg, setShowTyping]);
+  }, [addMsg, setMessages]);
 
   // Advance to next step
   const advanceStep = useCallback((fromStep: number) => {

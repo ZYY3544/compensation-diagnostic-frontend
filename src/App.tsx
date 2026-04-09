@@ -62,7 +62,7 @@ function App() {
     setMessages([{ role: 'bot', text: '' }]);
 
     let displayed = 0;
-    const CHARS_PER_TICK = 2;
+    const CHARS_PER_TICK = 1;
     const INTERVAL = 30;
 
     const startDelay = setTimeout(() => {
@@ -88,6 +88,23 @@ function App() {
     setMessages(prev => [...prev, msg]);
   }, []);
 
+  const streamMsg = useCallback((text: string) => {
+    setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+    let displayed = 0;
+    const timer = setInterval(() => {
+      displayed = Math.min(displayed + 1, text.length);
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: text.slice(0, displayed) };
+        }
+        return updated;
+      });
+      if (displayed >= text.length) clearInterval(timer);
+    }, 30);
+  }, []);
+
   // Handle upload click — call backend
   const handleUpload = async (file: File) => {
     setLoading(true);
@@ -104,12 +121,12 @@ function App() {
       const uploadRes = await uploadFile(sid!, file);
       setParseResult(uploadRes.data as ParseResult);
 
-      addMsg({ role: 'bot', text: `文件 "${file.name}" 上传成功，让我先看看数据结构...` });
+      streamMsg(`文件 "${file.name}" 上传成功，让我先看看数据结构...`);
       setLoading(false);
       setStage(3);
     } catch (err) {
       console.warn('Upload API failed', err);
-      addMsg({ role: 'bot', text: '让我先看看你的数据结构...' });
+      streamMsg('让我先看看你的数据结构...');
       setLoading(false);
       setStage(3);
     }
@@ -118,14 +135,14 @@ function App() {
   // Handle interview complete -> save notes, go to upload
   const handleInterviewComplete = (notes: any) => {
     setInterviewNotes(notes);
-    addMsg({ role: 'bot', text: '好的，我已经了解了你们的情况。现在上传薪酬数据 Excel，我来帮你做一次全面体检。' });
+    streamMsg('好的，我已经了解了你们的情况。现在上传薪酬数据 Excel，我来帮你做一次全面体检。');
     setStage(2);
   };
 
   // Handle skip interview -> go to upload
   const handleSkipInterview = () => {
     setSkippedInterview(true);
-    addMsg({ role: 'bot', text: '没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。' });
+    streamMsg('没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。');
     setStage(2);
   };
 
@@ -151,9 +168,9 @@ function App() {
       setStage(4);
 
       const score = reportData?.health_score;
-      addMsg({ role: 'bot', text: score
+      streamMsg(score
         ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
-        : '诊断报告已生成，点击各模块查看详情，有问题随时问我。' });
+        : '诊断报告已生成，点击各模块查看详情，有问题随时问我。');
     }, 1000);
   };
 
@@ -217,6 +234,7 @@ function App() {
             <DataConfirm
               onComplete={handleStart}
               addMsg={addMsg}
+              setMessages={setMessages}
               setShowTyping={setShowTyping}
               textInputRef={stage2InputHandlerRef}
               parseResult={parseResult}

@@ -5,6 +5,7 @@ interface InterviewViewProps {
   onComplete: (notes: any) => void;
   onSkip: () => void;
   addMsg: (msg: Message) => void;
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setShowTyping: (v: boolean) => void;
   textHandlerRef: MutableRefObject<((text: string) => boolean) | null>;
 }
@@ -42,7 +43,7 @@ const questionChips: Record<number, string[]> = {
   6: ['有明确策略', '大概跟随市场', '没怎么定过'],
 };
 
-export default function InterviewView({ onComplete, onSkip, addMsg, setShowTyping, textHandlerRef }: InterviewViewProps) {
+export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, setMessages, setShowTyping: _setShowTyping, textHandlerRef }: InterviewViewProps) {
   const [interviewStep, setInterviewStep] = useState(1);
   const [answers, setAnswers] = useState<Answers>({
     goal: null,
@@ -62,18 +63,41 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
   const [findingsLoading, setFindingsLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
-  const sendBotMsg = useCallback((text: string, delay: number, chips?: string[]) => {
+  // Stream bot message character by character into left panel
+  const streamBotMsg = useCallback((text: string, chips?: string[]): Promise<void> => {
     return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        setShowTyping(true);
-        setTimeout(() => {
-          setShowTyping(false);
-          addMsg({ role: 'bot', text, chips });
+      // Add empty bot message
+      setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+
+      let displayed = 0;
+      const CHARS_PER_TICK = 2;
+      const INTERVAL = 30;
+
+      const timer = setInterval(() => {
+        displayed = Math.min(displayed + CHARS_PER_TICK, text.length);
+        const currentText = text.slice(0, displayed);
+        const isDone = displayed >= text.length;
+
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+            updated[lastIdx] = {
+              role: 'bot',
+              text: currentText,
+              chips: isDone ? chips : undefined,
+            };
+          }
+          return updated;
+        });
+
+        if (isDone) {
+          clearInterval(timer);
           resolve();
-        }, 800);
-      }, delay);
+        }
+      }, INTERVAL);
     });
-  }, [addMsg, setShowTyping]);
+  }, [setMessages]);
 
   // Map field_name from AI to card block
   const fieldToBlock: Record<string, string> = {
@@ -96,29 +120,72 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     raise_mechanism: 'raise',
   };
 
-  // Fill card content from extracted array
-  const fillFromExtracted = (extractedArr: Array<{field_name: string; value: string}>) => {
-    for (const item of extractedArr) {
-      const block = fieldToBlock[item.field_name];
-      const answerKey = fieldToAnswer[item.field_name];
-      if (block) {
-        setBlockContents(prev => ({
-          ...prev,
-          [block]: [...(prev[block as keyof typeof prev] || []).filter(v => {
-            // Replace existing entry for same field if updating
-            const prefix = item.value.split('：')[0];
-            return !v.startsWith(prefix + '：');
-          }), item.value],
-        }));
-      }
-      if (answerKey) {
-        setAnswers(prev => ({
-          ...prev,
-          [answerKey]: answerKey === 'coreFunc' ? [item.value] : item.value,
-        }));
-      }
-    }
-  };
+  // Stream card content character by character into right panel cards
+  const streamCardContent = useCallback((items: Array<{field_name: string; value: string}>): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      let itemIdx = 0;
+      let charIdx = 0;
+
+      const processNext = () => {
+        if (itemIdx >= items.length) { resolve(); return; }
+
+        const item = items[itemIdx];
+        const block = fieldToBlock[item.field_name] as keyof BlockContents;
+        const answerKey = fieldToAnswer[item.field_name];
+
+        if (!block) { itemIdx++; processNext(); return; }
+
+        // Track the slot index for this item within its block
+        let slotIdx = -1;
+
+        const timer = setInterval(() => {
+          charIdx = Math.min(charIdx + 2, item.value.length);
+          const partial = item.value.slice(0, charIdx);
+          const isDone = charIdx >= item.value.length;
+
+          setBlockContents(prev => {
+            const existing = prev[block] || [];
+
+            if (slotIdx === -1) {
+              // First tick: check if there's an existing entry with the same field prefix to replace
+              const prefix = item.value.split('\uff1a')[0]; // '：'
+              const replaceIdx = existing.findIndex(v => v.startsWith(prefix + '\uff1a'));
+              if (replaceIdx >= 0) {
+                slotIdx = replaceIdx;
+              } else {
+                slotIdx = existing.length; // new slot at end
+              }
+            }
+
+            const updated = [...existing];
+            if (slotIdx < updated.length) {
+              updated[slotIdx] = partial;
+            } else {
+              updated.push(partial);
+            }
+            return { ...prev, [block]: updated };
+          });
+
+          if (isDone) {
+            clearInterval(timer);
+            // Set answer state
+            if (answerKey) {
+              setAnswers(prev => ({
+                ...prev,
+                [answerKey]: answerKey === 'coreFunc' ? [item.value] : item.value,
+              }));
+            }
+            itemIdx++;
+            charIdx = 0;
+            slotIdx = -1;
+            processNext();
+          }
+        }, 30);
+      };
+
+      processNext();
+    });
+  }, []);
 
   // Build context string from current answers for AI
   const buildContext = (): string => {
@@ -127,26 +194,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     if (blockContents.block2?.length) parts.push('【诊断诉求与人才现状】' + blockContents.block2.join('；'));
     if (blockContents.block3?.length) parts.push('【薪酬管理现状】' + blockContents.block3.join('；'));
     return parts.join('\n');
-  };
-
-  // Advance to next question
-  const advanceToNext = (step: number, reply: string) => {
-    if (step < 6) {
-      const nextStep = step + 1;
-      sendBotMsg(reply + '\n\n' + questions[step], 400, questionChips[nextStep]).then(() => {
-        setInterviewStep(nextStep);
-      });
-    } else {
-      sendBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据 🚀', 400).then(() => {
-        setShowFindings(true);
-        setInterviewStep(7);
-      });
-    }
-  };
-
-  // Show AI reply without advancing (follow_up mode)
-  const showFollowUp = (reply: string) => {
-    sendBotMsg(reply, 400);
   };
 
   // Get fallback field_name for a given step
@@ -162,7 +209,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     return map[step] || 'unknown';
   };
 
-  // Process answer: always call AI (chip or free text)
+  // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -177,37 +224,53 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const extracted = data.extracted || [];
-        const reply = data.reply || '好的，了解了。';
-        const followUp = data.follow_up === true;
+      if (!res.ok) throw new Error('API failed');
 
-        // Delay card update so Sparky's reply appears first
-        setTimeout(() => {
-          if (Array.isArray(extracted)) {
-            fillFromExtracted(extracted);
-          } else if (extracted.value) {
-            fillFromExtracted([extracted]);
-          }
-        }, 800);
+      const data = await res.json();
+      const extracted = data.extracted || [];
+      const reply = data.reply || '好的，了解了。';
+      const followUp = data.follow_up === true;
+      const items: Array<{field_name: string; value: string}> = Array.isArray(extracted)
+        ? extracted
+        : extracted.value ? [extracted] : [];
 
-        if (followUp) {
-          showFollowUp(reply);
-        } else {
-          advanceToNext(step, reply);
-        }
+      // Step 1: Stream Sparky's reply first
+      if (followUp) {
+        await streamBotMsg(reply);
+      } else if (step < 6) {
+        const nextStep = step + 1;
+        const nextQ = questions[step] || '';
+        const fullReply = reply + '\n\n' + nextQ;
+        const chips = questionChips[nextStep];
+        await streamBotMsg(fullReply, chips);
+        setInterviewStep(nextStep);
       } else {
-        throw new Error('API failed');
+        await streamBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据 🚀');
+        setShowFindings(true);
+        setInterviewStep(7);
       }
+
+      // Step 2: Stream card content after Sparky's reply is done
+      if (items.length > 0) {
+        await streamCardContent(items);
+      }
+
     } catch {
-      // Fallback: fill card with raw answer, advance with generic reply
-      setTimeout(() => {
-        fillFromExtracted([{ field_name: getFieldForStep(step), value: answerText }]);
-      }, 800);
-      advanceToNext(step, '好的，了解了。');
+      // Fallback: stream generic reply, then stream raw answer into card
+      const field = getFieldForStep(step);
+      await streamBotMsg('好的，了解了。');
+      await streamCardContent([{ field_name: field, value: answerText }]);
+
+      if (step < 6) {
+        const nextStep = step + 1;
+        await streamBotMsg(questions[step], questionChips[nextStep]);
+        setInterviewStep(nextStep);
+      } else {
+        setShowFindings(true);
+        setInterviewStep(7);
+      }
     }
-  }, [sendBotMsg, blockContents]);
+  }, [streamBotMsg, streamCardContent, blockContents]);
 
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {
@@ -367,7 +430,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         </div>
       </div>
 
-      {interviewStep <= 1 && (
+      {interviewStep <= 1 && !blockContents.block1 && (
         <div className="card fade-in-up" style={{ marginBottom: 20, background: 'linear-gradient(135deg, #f0f7ff, #f8fafc)', border: '1px solid #dbeafe' }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--blue)' }}>铭曦 · AI 薪酬诊断</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>上传薪酬数据，5 分钟获取专业级诊断报告</div>

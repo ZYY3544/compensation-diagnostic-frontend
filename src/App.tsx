@@ -207,6 +207,7 @@ function App() {
               onComplete={handleInterviewComplete}
               onSkip={handleSkipInterview}
               addMsg={addMsg}
+              setMessages={setMessages}
               setShowTyping={setShowTyping}
               textHandlerRef={stage3TextHandlerRef}
             />

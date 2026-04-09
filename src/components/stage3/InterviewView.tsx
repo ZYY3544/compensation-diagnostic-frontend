@@ -68,10 +68,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const lastSparkyQuestionRef = useRef('');
 
   // Stream bot message character by character into left panel
+  // Replaces the last bot message (e.g. "thinking" placeholder) instead of adding new
   const streamBotMsg = useCallback((text: string, chips?: string[]): Promise<void> => {
     return new Promise<void>((resolve) => {
-      // Add empty bot message
-      setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+      // Replace last bot message with empty text to start streaming
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '' };
+          return updated;
+        }
+        return [...prev, { role: 'bot', text: '' }];
+      });
 
       let displayed = 0;
       const CHARS_PER_TICK = 1;
@@ -231,6 +240,9 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
+    // Show "thinking" placeholder immediately
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+
     try {
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
       const res = await fetch(`${API_BASE}/chat/_/extract`, {

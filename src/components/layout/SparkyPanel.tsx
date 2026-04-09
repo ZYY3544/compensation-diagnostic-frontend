@@ -255,20 +255,31 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
           </div>
         )}
         {messages.map((m, i) => {
-          // Split bot message into intro + question for visual hierarchy
+          // Render text with **bold** markdown support
+          const renderMarkdown = (text: string) => {
+            const parts = text.split(/(\*\*[^*]+\*\*)/g);
+            return parts.map((part, idx) => {
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={idx} style={{ fontWeight: 600, color: '#CA7C5E' }}>{part.slice(2, -2)}</strong>;
+              }
+              return <span key={idx}>{part}</span>;
+            });
+          };
+
           const renderBotText = () => {
             if (m.role !== 'bot') return m.text;
-            // Check for bold question pattern: text contains \n\n + question
+            // Check for multi-paragraph with chips: first para normal, rest bold
             const parts = m.text.split('\n\n');
             if (parts.length >= 2 && m.chips && m.chips.length > 0) {
               return (
                 <>
-                  <span>{parts[0]}</span>
+                  <span>{renderMarkdown(parts[0])}</span>
                   <div style={{ marginTop: 12, fontWeight: 600, color: '#CA7C5E' }}>{parts.slice(1).join('\n\n')}</div>
                 </>
               );
             }
-            return m.text;
+            // Render **bold** in all bot messages
+            return renderMarkdown(m.text);
           };
 
           const selected = selectedChips[i] || [];

@@ -121,27 +121,83 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     return chips ? chips.includes(text) : false;
   };
 
-  // Fill card content from extracted value
-  const fillCard = (step: number, value: string, answerText: string) => {
+  // Map field_name from AI to card block
+  const fieldToBlock: Record<string, string> = {
+    core_goal: 'block1',
+    attrition: 'block3',
+    core_functions: 'block3',
+    strategy: 'block3',
+    pay_strategy: 'block2',
+    raise_mechanism: 'block2',
+  };
+
+  const fieldToAnswer: Record<string, keyof Answers> = {
+    core_goal: 'goal',
+    attrition: 'attrition',
+    core_functions: 'coreFunc',
+    strategy: 'direction',
+    pay_strategy: 'strategy',
+    raise_mechanism: 'raise',
+  };
+
+  // Fill card content from extracted array
+  const fillFromExtracted = (extractedArr: Array<{field_name: string; value: string}>) => {
+    for (const item of extractedArr) {
+      const block = fieldToBlock[item.field_name];
+      const answerKey = fieldToAnswer[item.field_name];
+      if (block) {
+        if (block === 'block1') {
+          setBlockContents(prev => ({ ...prev, block1: [item.value] }));
+        } else {
+          setBlockContents(prev => ({
+            ...prev,
+            [block]: [...(prev[block as keyof typeof prev] || []).filter(v => {
+              // Replace existing entry for same field if updating
+              const prefix = item.value.split('：')[0];
+              return !v.startsWith(prefix + '：');
+            }), item.value],
+          }));
+        }
+      }
+      if (answerKey) {
+        setAnswers(prev => ({
+          ...prev,
+          [answerKey]: answerKey === 'coreFunc' ? [item.value] : item.value,
+        }));
+      }
+    }
+  };
+
+  // Fill card from chip mapping (simple, single field)
+  const fillCardFromChip = (step: number, value: string, answerText: string) => {
     if (step === 1) {
       setBlockContents(prev => ({ ...prev, block1: [value] }));
       setAnswers(prev => ({ ...prev, goal: answerText }));
     } else if (step === 2) {
-      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, strategy: answerText }));
-    } else if (step === 3) {
-      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, raise: answerText }));
-    } else if (step === 4) {
-      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
-      setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
-    } else if (step === 5) {
       setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
       setAnswers(prev => ({ ...prev, attrition: answerText }));
-    } else if (step === 6) {
+    } else if (step === 3) {
+      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
+      setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
+    } else if (step === 4) {
       setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
       setAnswers(prev => ({ ...prev, direction: answerText }));
+    } else if (step === 5) {
+      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
+      setAnswers(prev => ({ ...prev, strategy: answerText }));
+    } else if (step === 6) {
+      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
+      setAnswers(prev => ({ ...prev, raise: answerText }));
     }
+  };
+
+  // Build context string from current answers for AI
+  const buildContext = (): string => {
+    const parts: string[] = [];
+    if (blockContents.block1?.length) parts.push('【诊断诉求】' + blockContents.block1.join('；'));
+    if (blockContents.block2?.length) parts.push('【薪酬策略】' + blockContents.block2.join('；'));
+    if (blockContents.block3?.length) parts.push('【组织背景】' + blockContents.block3.join('；'));
+    return parts.join('\n');
   };
 
   // Advance to next question
@@ -152,30 +208,35 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         setInterviewStep(nextStep);
       });
     } else {
-      sendBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据', 400).then(() => {
+      sendBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据 🚀', 400).then(() => {
         setShowFindings(true);
         setInterviewStep(7);
       });
     }
   };
 
-  // Process answer: chip click → direct mapping; free text → call AI
+  // Show AI reply without advancing (follow_up mode)
+  const showFollowUp = (reply: string) => {
+    sendBotMsg(reply, 400);
+  };
+
+  // Process answer: chip click → direct mapping; free text → call AI with follow_up
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     if (isChipAnswer(step, answerText)) {
-      // Chip click: use hardcoded mapping, zero delay
+      // Chip click: hardcoded mapping, skip AI, always advance
       let value = '';
       if (step === 1) value = goalMap[answerText] || answerText;
-      else if (step === 2) value = strategyMap[answerText] || answerText;
-      else if (step === 3) value = raiseMap[answerText] || answerText;
-      else if (step === 4) value = '核心职能：' + answerText;
-      else if (step === 5) value = '流失重灾区：' + answerText;
-      else if (step === 6) value = '明年战略：' + answerText;
+      else if (step === 2) value = '流失重灾区：' + answerText;
+      else if (step === 3) value = '核心职能：' + answerText;
+      else if (step === 4) value = '明年战略：' + answerText;
+      else if (step === 5) value = strategyMap[answerText] || '薪酬定位：' + answerText;
+      else if (step === 6) value = raiseMap[answerText] || '调薪机制：' + answerText;
 
-      fillCard(step, value, answerText);
+      fillCardFromChip(step, value, answerText);
       const reply = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
       advanceToNext(step, reply);
     } else {
-      // Free text: call AI to extract structured info
+      // Free text: call AI with context
       try {
         const API_BASE = import.meta.env.VITE_API_URL || '/api';
         const res = await fetch(`${API_BASE}/chat/_/extract`, {
@@ -185,33 +246,47 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
             question_id: `Q${step}`,
             question_text: questions[step - 1] || '',
             answer: answerText,
+            context: buildContext(),
           }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          const extracted = data.extracted || {};
-          const value = extracted.value || answerText;
+          const extracted = data.extracted || [];
           const reply = data.reply || '好的，了解了。';
+          const followUp = data.follow_up === true;
 
-          fillCard(step, value, answerText);
-          advanceToNext(step, reply);
+          // Fill cards from extracted array
+          if (Array.isArray(extracted)) {
+            fillFromExtracted(extracted);
+          } else if (extracted.value) {
+            // Legacy single-object format
+            fillFromExtracted([extracted]);
+          }
+
+          if (followUp) {
+            // AI is asking a follow-up, don't advance question
+            showFollowUp(reply);
+          } else {
+            // AI is done with this topic, advance
+            advanceToNext(step, reply);
+          }
         } else {
           throw new Error('API failed');
         }
       } catch {
-        // Fallback: use raw answer
+        // Fallback: fill card with raw answer, advance
         let value = answerText;
-        if (step === 4) value = '核心职能：' + answerText;
-        else if (step === 5) value = '流失重灾区：' + answerText;
-        else if (step === 6) value = '明年战略：' + answerText;
+        if (step === 2) value = '流失重灾区：' + answerText;
+        else if (step === 3) value = '核心职能：' + answerText;
+        else if (step === 4) value = '明年战略：' + answerText;
 
-        fillCard(step, value, answerText);
+        fillCardFromChip(step, value, answerText);
         const reply = defaultResponses[step - 1] || '好的，了解了。';
         advanceToNext(step, reply);
       }
     }
-  }, [sendBotMsg]);
+  }, [sendBotMsg, blockContents]);
 
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {

@@ -77,6 +77,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend }: SparkyPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedChips, setSelectedChips] = useState<Record<number, string[]>>({});
   const msgEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -253,34 +254,95 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             有任何问题随时问我
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
-            {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="msg-bubble">{m.text}</div>
-              {m.role === 'bot' && m.chips && m.chips.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  {m.chips.map((chip, ci) => (
-                    <button
-                      key={ci}
-                      className="chip"
-                      onClick={() => {
-                        // Remove chips from this message to prevent re-click
-                        setMessages(prev => prev.map((msg, idx) =>
-                          idx === i ? { ...msg, chips: [] } : msg
-                        ));
-                        sendMessage(chip);
-                      }}
-                      style={{ fontSize: 13, padding: '6px 14px', borderRadius: 16, border: '1px solid var(--border)', background: '#F1F5F9', color: 'var(--text-secondary)', cursor: 'pointer' }}
-                    >
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              )}
+        {messages.map((m, i) => {
+          // Split bot message into intro + question for visual hierarchy
+          const renderBotText = () => {
+            if (m.role !== 'bot') return m.text;
+            // Check for bold question pattern: text contains \n\n + question
+            const parts = m.text.split('\n\n');
+            if (parts.length >= 2 && m.chips && m.chips.length > 0) {
+              return (
+                <>
+                  <span>{parts[0]}</span>
+                  <div style={{ marginTop: 12, fontWeight: 600, color: '#0A66C2' }}>{parts.slice(1).join('\n\n')}</div>
+                </>
+              );
+            }
+            return m.text;
+          };
+
+          const selected = selectedChips[i] || [];
+          const hasChips = m.role === 'bot' && m.chips && m.chips.length > 0;
+
+          return (
+            <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
+              {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
+              <div className="msg-bubble">
+                {m.role === 'bot' ? renderBotText() : m.text}
+                {hasChips && (
+                  <>
+                    <div style={{ borderTop: '1px solid #e5e7eb', margin: '12px 0 10px 0' }} />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      {m.chips!.map((chip, ci) => {
+                        const isSelected = selected.includes(chip);
+                        return (
+                          <button
+                            key={ci}
+                            onClick={() => {
+                              setSelectedChips(prev => {
+                                const current = prev[i] || [];
+                                const updated = current.includes(chip)
+                                  ? current.filter(c => c !== chip)
+                                  : [...current, chip];
+                                return { ...prev, [i]: updated };
+                              });
+                            }}
+                            style={{
+                              fontSize: 13,
+                              padding: '5px 14px',
+                              borderRadius: 16,
+                              border: isSelected ? '1px solid #0A66C2' : '1px solid #d1d5db',
+                              background: isSelected ? '#0A66C2' : '#f9fafb',
+                              color: isSelected ? '#fff' : '#475569',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {chip}
+                          </button>
+                        );
+                      })}
+                      {selected.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const answer = selected.join('、');
+                            setSelectedChips(prev => ({ ...prev, [i]: [] }));
+                            setMessages(prev => prev.map((msg, idx) =>
+                              idx === i ? { ...msg, chips: [] } : msg
+                            ));
+                            sendMessage(answer);
+                          }}
+                          style={{
+                            fontSize: 12,
+                            padding: '4px 12px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: '#0A66C2',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            marginLeft: 4,
+                          }}
+                        >
+                          确认
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={msgEnd} />
       </div>
       <div className="sparky-input-area">

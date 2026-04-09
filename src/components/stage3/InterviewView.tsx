@@ -72,7 +72,7 @@ const questions = [
   '最后一个——明年的业务战略重点是什么方向？',
 ];
 
-const mockBlock2 = ['薪酬定位：对标市场 P50（非明确策略，凭感觉）', '调薪机制：每年一次，预算约 8%', '奖金机制：年终奖，无明确绩效分化'];
+// mockBlock2 removed - now using AI extraction or chip mapping
 
 const questionChips: Record<number, string[]> = {
   1: ['留人', '招人', '控成本', '公平性'],
@@ -113,58 +113,44 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     });
   }, [addMsg, setShowTyping]);
 
-  // Process answer for a given question step
-  const processAnswer = useCallback((step: number, answerText: string) => {
-    const response = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
+  // Check if answer is a chip click (has direct mapping)
+  const isChipAnswer = (step: number, text: string): boolean => {
+    if (step === 1) return !!goalMap[text];
+    if (step === 2) return !!strategyMap[text];
+    if (step === 3) return !!raiseMap[text];
+    // Q4-Q6 chips are direct values, check against questionChips
+    const chips = questionChips[step];
+    return chips ? chips.includes(text) : false;
+  };
 
+  // Fill card content from extracted value
+  const fillCard = (step: number, value: string, answerText: string) => {
     if (step === 1) {
-      const content = goalMap[answerText] ? [goalMap[answerText]] : ['核心诉求：销售团队人才流失'];
-      setBlockContents(prev => ({ ...prev, block1: content }));
+      setBlockContents(prev => ({ ...prev, block1: [value] }));
       setAnswers(prev => ({ ...prev, goal: answerText }));
     } else if (step === 2) {
-      const content = strategyMap[answerText]
-        ? [strategyMap[answerText]]
-        : [mockBlock2[0]];
-      setBlockContents(prev => ({
-        ...prev,
-        block2: [...(prev.block2 || []), ...content],
-      }));
+      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
       setAnswers(prev => ({ ...prev, strategy: answerText }));
     } else if (step === 3) {
-      const content = raiseMap[answerText]
-        ? [raiseMap[answerText]]
-        : [mockBlock2[1], mockBlock2[2]];
-      setBlockContents(prev => ({
-        ...prev,
-        block2: [...(prev.block2 || []), ...content],
-      }));
+      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
       setAnswers(prev => ({ ...prev, raise: answerText }));
     } else if (step === 4) {
-      const content = ['核心职能：' + answerText];
-      setBlockContents(prev => ({
-        ...prev,
-        block3: [...(prev.block3 || []), ...content],
-      }));
+      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
       setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
     } else if (step === 5) {
-      const content = ['流失重灾区：' + answerText];
-      setBlockContents(prev => ({
-        ...prev,
-        block3: [...(prev.block3 || []), ...content],
-      }));
+      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
       setAnswers(prev => ({ ...prev, attrition: answerText }));
     } else if (step === 6) {
-      const content = ['明年战略：' + answerText];
-      setBlockContents(prev => ({
-        ...prev,
-        block3: [...(prev.block3 || []), ...content],
-      }));
+      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
       setAnswers(prev => ({ ...prev, direction: answerText }));
     }
+  };
 
+  // Advance to next question
+  const advanceToNext = (step: number, reply: string) => {
     if (step < 6) {
       const nextStep = step + 1;
-      sendBotMsg(response + '\n\n' + questions[step], 400, questionChips[nextStep]).then(() => {
+      sendBotMsg(reply + '\n\n' + questions[step], 400, questionChips[nextStep]).then(() => {
         setInterviewStep(nextStep);
       });
     } else {
@@ -172,6 +158,60 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         setShowFindings(true);
         setInterviewStep(7);
       });
+    }
+  };
+
+  // Process answer: chip click → direct mapping; free text → call AI
+  const processAnswer = useCallback(async (step: number, answerText: string) => {
+    if (isChipAnswer(step, answerText)) {
+      // Chip click: use hardcoded mapping, zero delay
+      let value = '';
+      if (step === 1) value = goalMap[answerText] || answerText;
+      else if (step === 2) value = strategyMap[answerText] || answerText;
+      else if (step === 3) value = raiseMap[answerText] || answerText;
+      else if (step === 4) value = '核心职能：' + answerText;
+      else if (step === 5) value = '流失重灾区：' + answerText;
+      else if (step === 6) value = '明年战略：' + answerText;
+
+      fillCard(step, value, answerText);
+      const reply = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
+      advanceToNext(step, reply);
+    } else {
+      // Free text: call AI to extract structured info
+      try {
+        const API_BASE = import.meta.env.VITE_API_URL || '/api';
+        const res = await fetch(`${API_BASE}/chat/_/extract`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question_id: `Q${step}`,
+            question_text: questions[step - 1] || '',
+            answer: answerText,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const extracted = data.extracted || {};
+          const value = extracted.value || answerText;
+          const reply = data.reply || '好的，了解了。';
+
+          fillCard(step, value, answerText);
+          advanceToNext(step, reply);
+        } else {
+          throw new Error('API failed');
+        }
+      } catch {
+        // Fallback: use raw answer
+        let value = answerText;
+        if (step === 4) value = '核心职能：' + answerText;
+        else if (step === 5) value = '流失重灾区：' + answerText;
+        else if (step === 6) value = '明年战略：' + answerText;
+
+        fillCard(step, value, answerText);
+        const reply = defaultResponses[step - 1] || '好的，了解了。';
+        advanceToNext(step, reply);
+      }
     }
   }, [sendBotMsg]);
 

@@ -24,6 +24,9 @@ export const confirmStep = (sessionId: string, step: string, value: any) =>
 export const sendMessage = (sessionId: string, message: string) =>
   api.post(`/chat/${sessionId}`, { message });
 
+export const extractInterviewAnswer = (sessionId: string, questionId: string, questionText: string, answer: string) =>
+  api.post(`/chat/${sessionId}/extract`, { question_id: questionId, question_text: questionText, answer });
+
 export const runAnalysis = (sessionId: string) =>
   api.post(`/report/${sessionId}/analyze`);
 

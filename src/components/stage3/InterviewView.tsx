@@ -226,11 +226,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
       const data = await res.json();
       const extracted = data.extracted || [];
-      const reply = data.reply || '好的，了解了。';
+      const reply = (data.reply || '好的，了解了。').trim();
       const followUp = data.follow_up === true;
-      const items: Array<{field_name: string; value: string}> = Array.isArray(extracted)
+      const items: Array<{field_name: string; value: string}> = (Array.isArray(extracted)
         ? extracted
-        : extracted.value ? [extracted] : [];
+        : extracted.value ? [extracted] : []).map(e => ({ ...e, value: (e.value || '').trim() }));
 
       // Step 1: Stream Sparky's reply first
       if (followUp) {

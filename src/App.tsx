@@ -37,7 +37,7 @@ function App() {
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [_skippedInterview, setSkippedInterview] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', text: '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 2-3 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？', chips: ['留人', '招人', '控成本', '公平性'] }
+    { role: 'bot', text: '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？', chips: ['留人', '招人', '控成本', '公平性'] }
   ]);
   // Ref for Stage2 to register its text input handler
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);

@@ -64,7 +64,7 @@ const defaultResponses = [
 ];
 
 const questions = [
-  '好的，我们先聊聊你们的业务背景，大概 2-3 分钟就好。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？',
+  '好的，我们先聊聊你们的业务背景，大概 5-10 分钟就好。\n\n先问第一个——这次做薪酬诊断，最想解决什么问题？是留人、招人、控成本、还是内部公平性？',
   '你们有没有明确的薪酬策略？比如对标市场什么水位——是想领先、跟随、还是从来没明确定过？',
   '调薪是怎么做的？每年固定调一次还是不定期？调薪预算大概多少？',
   '你们的核心职能是哪些？就是对业务增长最关键的部门或岗位。',
@@ -97,6 +97,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     block3: null,
   });
   const [showFindings, setShowFindings] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const sendBotMsg = useCallback((text: string, delay: number, chips?: string[]) => {
     return new Promise<void>((resolve) => {
@@ -232,9 +233,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
       else if (step === 5) value = strategyMap[answerText] || '薪酬定位：' + answerText;
       else if (step === 6) value = raiseMap[answerText] || '调薪机制：' + answerText;
 
-      fillCardFromChip(step, value, answerText);
       const reply = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
       advanceToNext(step, reply);
+      // Delay card update so Sparky's reply appears first
+      setTimeout(() => {
+        fillCardFromChip(step, value, answerText);
+      }, 800);
     } else {
       // Free text: call AI with context
       try {
@@ -256,13 +260,15 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
           const reply = data.reply || '好的，了解了。';
           const followUp = data.follow_up === true;
 
-          // Fill cards from extracted array
-          if (Array.isArray(extracted)) {
-            fillFromExtracted(extracted);
-          } else if (extracted.value) {
-            // Legacy single-object format
-            fillFromExtracted([extracted]);
-          }
+          // Delay card update so Sparky's reply appears first
+          setTimeout(() => {
+            if (Array.isArray(extracted)) {
+              fillFromExtracted(extracted);
+            } else if (extracted.value) {
+              // Legacy single-object format
+              fillFromExtracted([extracted]);
+            }
+          }, 800);
 
           if (followUp) {
             // AI is asking a follow-up, don't advance question
@@ -281,9 +287,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
         else if (step === 3) value = '核心职能：' + answerText;
         else if (step === 4) value = '明年战略：' + answerText;
 
-        fillCardFromChip(step, value, answerText);
         const reply = defaultResponses[step - 1] || '好的，了解了。';
         advanceToNext(step, reply);
+        // Delay card update so Sparky's reply appears first
+        setTimeout(() => {
+          fillCardFromChip(step, value, answerText);
+        }, 800);
       }
     }
   }, [sendBotMsg, blockContents]);
@@ -302,6 +311,50 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     textHandlerRef.current = handleTextAnswer;
   }, [handleTextAnswer, textHandlerRef]);
 
+  const PenIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+      <path d="m15 5 4 4"/>
+    </svg>
+  );
+
+  const renderContentLine = (blockKey: keyof BlockContents, line: string, idx: number) => {
+    const editKey = `${blockKey}-${idx}`;
+    if (editing === editKey) {
+      return (
+        <div key={idx} className="interview-content-line">
+          <input
+            autoFocus
+            defaultValue={line}
+            onBlur={(e) => {
+              setBlockContents(prev => ({
+                ...prev,
+                [blockKey]: (prev[blockKey] || []).map((v, i) => i === idx ? e.target.value : v),
+              }));
+              setEditing(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 13, outline: 'none' }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div key={idx} className="interview-content-line">
+        <span>{line}</span>
+        <span
+          className="edit-btn"
+          style={{ cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}
+          onClick={() => setEditing(editKey)}
+        >
+          <PenIcon />
+        </span>
+      </div>
+    );
+  };
+
   const renderBlock1 = () => {
     return (
       <div className="interview-block">
@@ -310,12 +363,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
           <div>
-            {blockContents.block1.map((line, i) => (
-              <div key={i} className="interview-content-line">
-                <span>{line}</span>
-                <button className="edit-btn">✏️</button>
-              </div>
-            ))}
+            {blockContents.block1.map((line, i) => renderContentLine('block1', line, i))}
           </div>
         )}
       </div>
@@ -331,12 +379,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
           <div>
-            {blockContents.block2.map((line, i) => (
-              <div key={i} className="interview-content-line">
-                <span>{line}</span>
-                <button className="edit-btn">✏️</button>
-              </div>
-            ))}
+            {blockContents.block2.map((line, i) => renderContentLine('block2', line, i))}
           </div>
         )}
       </div>
@@ -352,12 +395,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
           <div className="interview-placeholder">等待访谈...</div>
         ) : (
           <div>
-            {blockContents.block3.map((line, i) => (
-              <div key={i} className="interview-content-line">
-                <span>{line}</span>
-                <button className="edit-btn">✏️</button>
-              </div>
-            ))}
+            {blockContents.block3.map((line, i) => renderContentLine('block3', line, i))}
           </div>
         )}
       </div>

@@ -66,6 +66,9 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const [editing, setEditing] = useState<string | null>(null);
   const isFollowUpRef = useRef(false);
   const lastSparkyQuestionRef = useRef('');
+  // Ref to always get latest blockContents (avoids stale closure in processAnswer)
+  const blockContentsRef = useRef(blockContents);
+  blockContentsRef.current = blockContents;
 
   // Stream bot message character by character into left panel
   // Replaces the last bot message (e.g. "thinking" placeholder) instead of adding new
@@ -198,15 +201,16 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     });
   }, []);
 
-  // Build context string from current answers for AI
+  // Build context string from current answers for AI (uses ref for latest values)
   const buildContext = (): string => {
+    const bc = blockContentsRef.current;
     const parts: string[] = [];
-    if (blockContents.block1?.length) parts.push('【公司基本情况】' + blockContents.block1.join('；'));
-    if (blockContents.block2?.length) parts.push('【战略方向】' + blockContents.block2.join('；'));
-    if (blockContents.block3?.length) parts.push('【诊断诉求】' + blockContents.block3.join('；'));
-    if (blockContents.block4?.length) parts.push('【流失情况】' + blockContents.block4.join('；'));
-    if (blockContents.block5?.length) parts.push('【核心职能】' + blockContents.block5.join('；'));
-    if (blockContents.block6?.length) parts.push('【薪酬管理现状】' + blockContents.block6.join('；'));
+    if (bc.block1?.length) parts.push('【公司基本情况】' + bc.block1.join('；'));
+    if (bc.block2?.length) parts.push('【战略方向】' + bc.block2.join('；'));
+    if (bc.block3?.length) parts.push('【诊断诉求】' + bc.block3.join('；'));
+    if (bc.block4?.length) parts.push('【流失情况】' + bc.block4.join('；'));
+    if (bc.block5?.length) parts.push('【核心职能】' + bc.block5.join('；'));
+    if (bc.block6?.length) parts.push('【薪酬管理现状】' + bc.block6.join('；'));
     return parts.join('\n');
   };
 
@@ -223,12 +227,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     return map[step] || 'unknown';
   };
 
-  // Get current value of the field for this step (for AI to merge with)
+  // Get current value of the field for this step (for AI to merge with, uses ref for latest)
   const getPreviousValue = (step: number): string => {
     const field = getFieldForStep(step);
     const block = fieldToBlock[field] as keyof BlockContents | undefined;
     if (!block) return '';
-    const entries = blockContents[block] || [];
+    const entries = blockContentsRef.current[block] || [];
     // For fields that share a block (e.g. Q1+Q2 both in block1), find the right entry
     const slotMap = fieldSlotMapRef.current[block] || {};
     const slotIdx = slotMap[field];
@@ -301,7 +305,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         if (!block) return false;
         const slotMap = fieldSlotMapRef.current[block] || {};
         const slotIdx = slotMap[item.field_name];
-        const entries = blockContents[block] || [];
+        const entries = blockContentsRef.current[block] || [];
         const currentVal = (slotIdx !== undefined && slotIdx < entries.length) ? entries[slotIdx] : '';
         return item.value !== currentVal;
       });

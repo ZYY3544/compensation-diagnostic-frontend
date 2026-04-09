@@ -264,7 +264,10 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
               if (part.startsWith('**') && part.endsWith('**')) {
                 return <div key={idx} style={{ fontWeight: 600, color: '#CA7C5E', marginTop: 8 }}>{part.slice(2, -2)}</div>;
               }
-              return <span key={idx}>{part}</span>;
+              // Trim leading newline after a bold block to prevent extra space
+              const cleaned = part.replace(/^\n/, '');
+              if (!cleaned) return null;
+              return <span key={idx}>{cleaned}</span>;
             });
           };
 

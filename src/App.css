@@ -186,7 +186,6 @@ body {
 .msg-row:not(.user) .msg-bubble {
   background: #f9fafb;
   color: #374151;
-  border: 1px solid #f3f4f6;
 }
 .msg-row.user .msg-bubble {
   background: #CA7C5E;

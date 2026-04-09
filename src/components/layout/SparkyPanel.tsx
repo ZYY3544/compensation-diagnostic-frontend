@@ -264,7 +264,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
               return (
                 <>
                   <span>{parts[0]}</span>
-                  <div style={{ marginTop: 12, fontWeight: 600, color: '#0A66C2' }}>{parts.slice(1).join('\n\n')}</div>
+                  <div style={{ marginTop: 12, fontWeight: 600, color: '#CA7C5E' }}>{parts.slice(1).join('\n\n')}</div>
                 </>
               );
             }
@@ -301,8 +301,8 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
                               fontSize: 13,
                               padding: '5px 14px',
                               borderRadius: 16,
-                              border: isSelected ? '1px solid #0A66C2' : '1px solid #d1d5db',
-                              background: isSelected ? '#0A66C2' : '#f9fafb',
+                              border: isSelected ? '1px solid #CA7C5E' : '1px solid #d1d5db',
+                              background: isSelected ? '#CA7C5E' : '#f9fafb',
                               color: isSelected ? '#fff' : '#475569',
                               cursor: 'pointer',
                               transition: 'all 0.15s ease',
@@ -324,11 +324,11 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
                           }}
                           style={{
                             fontSize: 12,
-                            padding: '4px 12px',
-                            borderRadius: 8,
-                            border: 'none',
-                            background: '#0A66C2',
-                            color: '#fff',
+                            padding: '5px 14px',
+                            borderRadius: 16,
+                            border: '1px solid #a8604a',
+                            background: 'transparent',
+                            color: '#a8604a',
                             cursor: 'pointer',
                             marginLeft: 4,
                           }}

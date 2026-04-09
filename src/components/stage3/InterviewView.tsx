@@ -24,47 +24,6 @@ interface BlockContents {
   block3: string[] | null;
 }
 
-const goalMap: Record<string, string> = {
-  '留人': '核心诉求：人才保留与流失防控',
-  '招人': '核心诉求：提升薪酬竞争力以吸引人才',
-  '控成本': '核心诉求：优化人工成本结构',
-  '公平性': '核心诉求：解决内部薪酬公平性问题',
-};
-const strategyMap: Record<string, string> = {
-  '业务扩张': '明年战略：业务扩张',
-  '降本增效': '明年战略：降本增效',
-  '数字化转型': '明年战略：数字化转型',
-  '新市场开拓': '明年战略：新市场开拓',
-};
-const payStrategyMap: Record<string, string> = {
-  '有明确策略': '薪酬定位：有明确的市场对标策略',
-  '大概跟随市场': '薪酬定位：大致跟随市场，未精确定位',
-  '没怎么定过': '薪酬定位：无明确策略，凭经验定薪',
-};
-
-const sparkyResponses: Record<string, string> = {
-  '留人': '明白，留住关键人才确实是重中之重。',
-  '招人': '了解，吸引外部人才需要有竞争力的薪酬包。',
-  '控成本': '理解，人工成本控制是当前很多企业的核心议题。',
-  '公平性': '收到，内部公平性问题如果不解决，容易引发连锁反应。',
-  '业务扩张': '扩张期薪酬竞争力是关键，得确保 offer 在市场上有吸引力。',
-  '降本增效': '降本增效不一定是砍人砍钱，更多是看钱有没有花在刀刃上。',
-  '数字化转型': '数字化转型对人才结构影响很大，薪酬策略也要跟着调。',
-  '新市场开拓': '开拓新市场意味着新的人才需求，薪酬定位要有吸引力。',
-  '有明确策略': '不错，有明确策略的公司在薪酬管理上更主动。',
-  '大概跟随市场': '了解，大致跟随市场是比较常见的做法。',
-  '没怎么定过': '这很常见，很多快速成长的公司薪酬定位其实是模糊的。',
-};
-
-const defaultResponses = [
-  '好的，了解了。',
-  '收到，这个信息很有用。',
-  '明白了，继续往下看。',
-  '了解，这对诊断很重要。',
-  '好的，记下了。',
-  '收到。',
-];
-
 const questions = [
   '先简单介绍下你们公司吧——主要做什么业务？大概多少人？发展到什么阶段了？',
   '明年公司大方向是什么？扩张、收缩、还是转型？',
@@ -99,6 +58,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     block3: null,
   });
   const [showFindings, setShowFindings] = useState(false);
+  const [findingsText, setFindingsText] = useState<string>('');
+  const [findingsLoading, setFindingsLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
   const sendBotMsg = useCallback((text: string, delay: number, chips?: string[]) => {
@@ -113,16 +74,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
       }, delay);
     });
   }, [addMsg, setShowTyping]);
-
-  // Check if answer is a chip click (has direct mapping)
-  const isChipAnswer = (step: number, text: string): boolean => {
-    if (step === 1) return false; // Q1 has no chips
-    if (step === 2) return !!strategyMap[text];
-    if (step === 3) return !!goalMap[text];
-    if (step === 6) return !!payStrategyMap[text];
-    const chips = questionChips[step];
-    return chips ? chips.includes(text) : false;
-  };
 
   // Map field_name from AI to card block
   const fieldToBlock: Record<string, string> = {
@@ -169,26 +120,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     }
   };
 
-  // Fill card from chip mapping (simple, single field)
-  const fillCardFromChip = (step: number, value: string, answerText: string) => {
-    if (step === 2) {
-      setBlockContents(prev => ({ ...prev, block1: [...(prev.block1 || []), value] }));
-      setAnswers(prev => ({ ...prev, direction: answerText }));
-    } else if (step === 3) {
-      setBlockContents(prev => ({ ...prev, block2: [value, ...(prev.block2 || [])] }));
-      setAnswers(prev => ({ ...prev, goal: answerText }));
-    } else if (step === 4) {
-      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, attrition: answerText }));
-    } else if (step === 5) {
-      setBlockContents(prev => ({ ...prev, block2: [...(prev.block2 || []), value] }));
-      setAnswers(prev => ({ ...prev, coreFunc: [answerText] }));
-    } else if (step === 6) {
-      setBlockContents(prev => ({ ...prev, block3: [...(prev.block3 || []), value] }));
-      setAnswers(prev => ({ ...prev, strategy: answerText }));
-    }
-  };
-
   // Build context string from current answers for AI
   const buildContext = (): string => {
     const parts: string[] = [];
@@ -218,80 +149,63 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     sendBotMsg(reply, 400);
   };
 
-  // Process answer: chip click → direct mapping; free text → call AI with follow_up
+  // Get fallback field_name for a given step
+  const getFieldForStep = (step: number): string => {
+    const map: Record<number, string> = {
+      1: 'company_profile',
+      2: 'strategy',
+      3: 'core_goal',
+      4: 'attrition',
+      5: 'core_functions',
+      6: 'pay_strategy',
+    };
+    return map[step] || 'unknown';
+  };
+
+  // Process answer: always call AI (chip or free text)
   const processAnswer = useCallback(async (step: number, answerText: string) => {
-    if (isChipAnswer(step, answerText)) {
-      // Chip click: hardcoded mapping, skip AI, always advance
-      let value = '';
-      if (step === 2) value = strategyMap[answerText] || '明年战略：' + answerText;
-      else if (step === 3) value = goalMap[answerText] || answerText;
-      else if (step === 4) value = '流失重灾区：' + answerText;
-      else if (step === 5) value = '核心职能：' + answerText;
-      else if (step === 6) value = payStrategyMap[answerText] || '薪酬定位：' + answerText;
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${API_BASE}/chat/_/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_id: `Q${step}`,
+          question_text: questions[step - 1] || '',
+          answer: answerText,
+          context: buildContext(),
+        }),
+      });
 
-      const reply = sparkyResponses[answerText] || defaultResponses[step - 1] || '好的，了解了。';
-      advanceToNext(step, reply);
-      // Delay card update so Sparky's reply appears first
-      setTimeout(() => {
-        fillCardFromChip(step, value, answerText);
-      }, 800);
-    } else {
-      // Free text: call AI with context
-      try {
-        const API_BASE = import.meta.env.VITE_API_URL || '/api';
-        const res = await fetch(`${API_BASE}/chat/_/extract`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question_id: `Q${step}`,
-            question_text: questions[step - 1] || '',
-            answer: answerText,
-            context: buildContext(),
-          }),
-        });
+      if (res.ok) {
+        const data = await res.json();
+        const extracted = data.extracted || [];
+        const reply = data.reply || '好的，了解了。';
+        const followUp = data.follow_up === true;
 
-        if (res.ok) {
-          const data = await res.json();
-          const extracted = data.extracted || [];
-          const reply = data.reply || '好的，了解了。';
-          const followUp = data.follow_up === true;
-
-          // Delay card update so Sparky's reply appears first
-          setTimeout(() => {
-            if (Array.isArray(extracted)) {
-              fillFromExtracted(extracted);
-            } else if (extracted.value) {
-              // Legacy single-object format
-              fillFromExtracted([extracted]);
-            }
-          }, 800);
-
-          if (followUp) {
-            // AI is asking a follow-up, don't advance question
-            showFollowUp(reply);
-          } else {
-            // AI is done with this topic, advance
-            advanceToNext(step, reply);
-          }
-        } else {
-          throw new Error('API failed');
-        }
-      } catch {
-        // Fallback: fill card with raw answer, advance
-        let value = answerText;
-        if (step === 2) value = '明年战略：' + answerText;
-        else if (step === 3) value = '核心诉求：' + answerText;
-        else if (step === 4) value = '流失重灾区：' + answerText;
-        else if (step === 5) value = '核心职能：' + answerText;
-        else if (step === 6) value = '薪酬定位：' + answerText;
-
-        const reply = defaultResponses[step - 1] || '好的，了解了。';
-        advanceToNext(step, reply);
         // Delay card update so Sparky's reply appears first
         setTimeout(() => {
-          fillCardFromChip(step, value, answerText);
+          if (Array.isArray(extracted)) {
+            fillFromExtracted(extracted);
+          } else if (extracted.value) {
+            fillFromExtracted([extracted]);
+          }
         }, 800);
+
+        if (followUp) {
+          showFollowUp(reply);
+        } else {
+          advanceToNext(step, reply);
+        }
+      } else {
+        throw new Error('API failed');
       }
+    } catch {
+      // Fallback: fill card with raw answer, advance with generic reply
+      setTimeout(() => {
+        fillFromExtracted([{ field_name: getFieldForStep(step), value: answerText }]);
+      }, 800);
+      advanceToNext(step, '好的，了解了。');
     }
   }, [sendBotMsg, blockContents]);
 
@@ -400,67 +314,37 @@ export default function InterviewView({ onComplete, onSkip, addMsg, setShowTypin
     );
   };
 
+  // Generate findings via dedicated AI endpoint when all 6 questions are done
+  useEffect(() => {
+    if (interviewStep === 7 && !findingsText && !findingsLoading) {
+      setFindingsLoading(true);
+      const API_BASE = import.meta.env.VITE_API_URL || '/api';
+      fetch(`${API_BASE}/chat/findings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interview_notes: buildContext(),
+        }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          setFindingsText(data.findings || '');
+          setFindingsLoading(false);
+        })
+        .catch(() => {
+          setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
+          setFindingsLoading(false);
+        });
+    }
+  }, [interviewStep, findingsText, findingsLoading, blockContents]);
+
   const renderFindings = () => {
     if (!showFindings) return null;
-
-    // Dynamically generate findings from actual interview answers
-    // block1 = company profile + strategy
-    // block2 = core goal + attrition + core functions
-    // block3 = pay strategy + raise mechanism
-    const b1 = blockContents.block1 || [];
-    const b2 = blockContents.block2 || [];
-    const b3 = blockContents.block3 || [];
-
-    const companyInfo = b1.find(s => !s.includes('战略')) || '';
-    const direction = b1.find(s => s.includes('战略')) || '';
-    const goal = b2.find(s => s.includes('核心诉求')) || '';
-    const attrition = b2.find(s => s.includes('流失')) || '';
-    const coreFunc = b2.find(s => s.includes('核心职能')) || '';
-    const payStrategy = b3.find(s => s.includes('薪酬定位')) || '';
-    const raise = b3.find(s => s.includes('调薪') || s.includes('机制')) || '';
-
-    // Build summary paragraph
-    let summary = '';
-    if (companyInfo) summary += `${companyInfo}。`;
-    if (goal) summary += `${goal.replace('核心诉求：', '核心诉求为')}。`;
-    if (payStrategy) summary += `${payStrategy}。`;
-    if (raise) summary += `${raise}。`;
-    if (!summary) summary = '访谈信息收集完成。';
-
-    // Build focus points based on actual answers
-    const focusPoints: string[] = [];
-    if (attrition) {
-      const dept = attrition.replace('流失重灾区：', '');
-      focusPoints.push(`${dept}的外部竞争力`);
-    }
-    if (goal.includes('公平') || goal.includes('内部')) {
-      focusPoints.push('内部薪酬公平性与离散度');
-    }
-    if (goal.includes('成本') || (direction && direction.includes('降本'))) {
-      focusPoints.push('人工成本结构与增速');
-    }
-    if (coreFunc) {
-      const func = coreFunc.replace('核心职能：', '');
-      focusPoints.push(`${func}职能的薪酬资源倾斜度`);
-    }
-    if (focusPoints.length === 0) {
-      focusPoints.push('各职能的外部竞争力', '绩效与薪酬的关联度', '薪酬资源分配合理性');
-    }
-
     return (
       <div className="interview-findings fade-enter">
         <div className="interview-findings-title">✨ 关键发现提炼</div>
         <div className="interview-findings-text">
-          {summary}
-          {focusPoints.length > 0 && (
-            <>
-              建议诊断重点关注：
-              <br/><br/>
-              {focusPoints.map((p, idx) => (
-                <span key={idx}>{idx + 1}. {p}<br/></span>
-              ))}
-            </>
-          )}
+          {findingsLoading ? '正在生成关键发现...' : findingsText || '暂无'}
         </div>
       </div>
     );

@@ -245,6 +245,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
+    console.log('[Interview] processAnswer START step=', step, 'isFollowUp=', isFollowUpRef.current, 'answer=', answerText);
     // Wait a tick so user message is added first by SparkyPanel, then show thinking
     await new Promise(r => setTimeout(r, 50));
     setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
@@ -275,21 +276,24 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       const extracted = data.extracted || [];
       const reply = (data.reply || '好的，了解了。').trim();
       const followUp = data.follow_up === true;
+      console.log('[Interview] API OK step=', step, 'followUp=', followUp, 'isFollowUp=', isFollowUpRef.current, 'extractedCount=', Array.isArray(extracted) ? extracted.length : 0, 'replyLen=', reply.length);
       const items: Array<{field_name: string; value: string}> = (Array.isArray(extracted)
         ? extracted
         : extracted.value ? [extracted] : []).map(e => ({ ...e, value: (e.value || '').trim() }));
 
       // Step 1: Stream Sparky's reply first
       if (followUp) {
+        console.log('[Interview] BRANCH=followUp, stay at step', step);
         // Extract the follow-up question from reply for next call
         const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
         lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
         isFollowUpRef.current = true;
         await streamBotMsg(reply);
       } else if (step < 6) {
+        const nextStep = step + 1;
+        console.log('[Interview] BRANCH=advance, step', step, '->', nextStep);
         isFollowUpRef.current = false;
         lastSparkyQuestionRef.current = '';
-        const nextStep = step + 1;
         const chips = questionChips[nextStep];
         await streamBotMsg(reply, chips);
         setInterviewStep(nextStep);
@@ -318,7 +322,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       }
 
     } catch (err) {
-      console.warn('Interview extract failed:', err);
+      console.error('[Interview] CATCH step=', step, 'isFollowUp=', isFollowUpRef.current, 'err=', err);
       // Fallback: 不推进 step，停在当前问题让用户重试。
       // 仅在卡片完全空白时才用原文兜底，避免覆盖之前的好内容。
       const field = getFieldForStep(step);

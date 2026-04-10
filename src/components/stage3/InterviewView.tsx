@@ -250,9 +250,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
     try {
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
       const res = await fetch(`${API_BASE}/chat/_/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           question_id: `Q${step}`,
           question_text: questions[step - 1] || '',
@@ -264,6 +267,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         }),
       });
 
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error('API failed');
 
       const data = await res.json();
@@ -313,11 +317,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await streamCardContent(changedItems);
       }
 
-    } catch {
-      // Fallback: stream generic reply, then stream raw answer into card
+    } catch (err) {
+      console.warn('Interview extract failed:', err);
+      // Fallback: summarize user answer into a short note, don't dump raw text
       const field = getFieldForStep(step);
-      await streamBotMsg('好的，了解了。');
-      await streamCardContent([{ field_name: field, value: answerText }]);
+      const summary = answerText.length > 80 ? answerText.slice(0, 80) + '...' : answerText;
+
+      // Only update card if it doesn't already have content (don't overwrite good content with fallback)
+      const prevVal = getPreviousValue(step);
+      if (!prevVal) {
+        await streamCardContent([{ field_name: field, value: '（待 AI 整理）' + summary }]);
+      }
+
+      await streamBotMsg('好的，记下了。我们继续往下聊。');
 
       if (step < 6) {
         const nextStep = step + 1;

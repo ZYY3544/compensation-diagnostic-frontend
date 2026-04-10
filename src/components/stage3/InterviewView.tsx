@@ -348,8 +348,17 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       processAnswer(interviewStep, text);
       return true;
     }
+    // step >= 7：访谈已结束。拦截用户输入，引导到「下一步：上传数据」按钮，
+    // 避免走到普通 chat 流程里让 SparkyAgent 继续追问 Q6
+    if (interviewStep >= 7) {
+      setMessages(prev => [
+        ...prev,
+        { role: 'bot', text: '访谈已经结束啦~ 右侧的关键发现提炼可以看一下，确认没问题就点击「下一步：上传数据 →」进入诊断环节。' },
+      ]);
+      return true;
+    }
     return false;
-  }, [interviewStep, processAnswer]);
+  }, [interviewStep, processAnswer, setMessages]);
 
   // Register handler with parent
   useEffect(() => {

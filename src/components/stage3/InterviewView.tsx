@@ -67,6 +67,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const [editing, setEditing] = useState<string | null>(null);
   const isFollowUpRef = useRef(false);
   const lastSparkyQuestionRef = useRef('');
+  // 当前问题的回答轮次：1=首次回答，2=第一次追问回答，3=第二次追问回答 ...
+  const roundRef = useRef(1);
   // Ref to always get latest blockContents (avoids stale closure in processAnswer)
   const blockContentsRef = useRef(blockContents);
   blockContentsRef.current = blockContents;
@@ -245,7 +247,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // Process answer: call AI, then stream reply + card content in sequence
   const processAnswer = useCallback(async (step: number, answerText: string) => {
-    console.log('[Interview] processAnswer START step=', step, 'isFollowUp=', isFollowUpRef.current, 'answer=', answerText);
+    console.log('[Interview] processAnswer START step=', step, 'round=', roundRef.current, 'isFollowUp=', isFollowUpRef.current, 'answer=', answerText);
     // Wait a tick so user message is added first by SparkyPanel, then show thinking
     await new Promise(r => setTimeout(r, 50));
     setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
@@ -263,6 +265,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
           question_text: questionTopics[step - 1] || '',
           answer: answerText,
           is_follow_up: isFollowUpRef.current,
+          round: roundRef.current,
           follow_up_question: isFollowUpRef.current ? lastSparkyQuestionRef.current : '',
           previous_value: getPreviousValue(step),
           context: buildContext(),
@@ -283,22 +286,26 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
       // Step 1: Stream Sparky's reply first
       if (followUp) {
-        console.log('[Interview] BRANCH=followUp, stay at step', step);
+        console.log('[Interview] BRANCH=followUp, stay at step', step, 'round', roundRef.current, '->', roundRef.current + 1);
         // Extract the follow-up question from reply for next call
         const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
         lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
         isFollowUpRef.current = true;
+        roundRef.current += 1;
         await streamBotMsg(reply);
       } else if (step < 6) {
         const nextStep = step + 1;
-        console.log('[Interview] BRANCH=advance, step', step, '->', nextStep);
+        console.log('[Interview] BRANCH=advance, step', step, '->', nextStep, 'round reset to 1');
         isFollowUpRef.current = false;
+        roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
         const chips = questionChips[nextStep];
         await streamBotMsg(reply, chips);
         setInterviewStep(nextStep);
       } else {
+        console.log('[Interview] BRANCH=finish (Q6), advance to findings');
         isFollowUpRef.current = false;
+        roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
         // Q6 prompt 里已经要求 AI 在最后做整体收束，直接用 AI 的 reply 作为结束语
         await streamBotMsg(reply);

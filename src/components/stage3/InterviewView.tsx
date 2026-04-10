@@ -65,6 +65,16 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const [findingsText, setFindingsText] = useState<string>('');
   const [findingsLoading, setFindingsLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  // 审阅阶段状态机：
+  // 'none'              = 尚未进入审阅（访谈进行中）
+  // 'reviewing'         = Sparky 正在审阅纪要
+  // 'waiting_confirm'   = 展示审阅结果，等待用户补充或点确认按钮
+  // 'processing_supp'   = 正在处理用户的补充内容
+  // 'generating_findings' = 用户已确认，正在生成关键发现
+  // 'done'              = 关键发现已生成，显示上传按钮
+  type ReviewState = 'none' | 'reviewing' | 'waiting_confirm' | 'processing_supp' | 'generating_findings' | 'done';
+  const [reviewState, setReviewState] = useState<ReviewState>('none');
+  const reviewTriggeredRef = useRef(false);
   const isFollowUpRef = useRef(false);
   const lastSparkyQuestionRef = useRef('');
   // 当前问题的回答轮次：1=首次回答，2=第一次追问回答，3=第二次追问回答 ...
@@ -303,13 +313,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await streamBotMsg(reply, chips);
         setInterviewStep(nextStep);
       } else {
-        console.log('[Interview] BRANCH=finish (Q6), advance to findings');
+        console.log('[Interview] BRANCH=finish (Q6), enter review phase');
         isFollowUpRef.current = false;
         roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
-        // Q6 prompt 里已经要求 AI 在最后做整体收束，直接用 AI 的 reply 作为结束语
+        // 先展示 Q6 的收束 reply，然后进入审阅阶段（不直接生成 findings）
         await streamBotMsg(reply);
-        setShowFindings(true);
         setInterviewStep(7);
       }
 
@@ -348,17 +357,30 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       processAnswer(interviewStep, text);
       return true;
     }
-    // step >= 7：访谈已结束。拦截用户输入，引导到「下一步：上传数据」按钮，
-    // 避免走到普通 chat 流程里让 SparkyAgent 继续追问 Q6
+    // step=7 时根据 reviewState 分发
     if (interviewStep >= 7) {
+      if (reviewState === 'waiting_confirm') {
+        // 用户在审阅阶段补充信息 → 走 /supplement 流程
+        handleSupplement(text);
+        return true;
+      }
+      if (reviewState === 'reviewing' || reviewState === 'processing_supp' || reviewState === 'generating_findings') {
+        // 正在处理中，让用户等一下
+        setMessages(prev => [
+          ...prev,
+          { role: 'bot', text: '稍等一下，我还在整理呢~' },
+        ]);
+        return true;
+      }
+      // reviewState === 'done' → findings 已生成，引导到上传
       setMessages(prev => [
         ...prev,
-        { role: 'bot', text: '访谈已经结束啦~ 右侧的关键发现提炼可以看一下，确认没问题就点击「下一步：上传数据 →」进入诊断环节。' },
+        { role: 'bot', text: '访谈已经结束啦~ 点击下方「下一步：上传数据 →」进入诊断环节。' },
       ]);
       return true;
     }
     return false;
-  }, [interviewStep, processAnswer, setMessages]);
+  }, [interviewStep, reviewState, processAnswer, handleSupplement, setMessages]);
 
   // Register handler with parent
   useEffect(() => {
@@ -435,37 +457,108 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     { key: 'block6' as const, title: '💰 薪酬管理现状', showAt: 6 },
   ];
 
-  // Generate findings via dedicated AI endpoint when all 6 questions are done
+  // 审阅阶段：Q6 结束后触发 Sparky 审阅访谈纪要
   useEffect(() => {
-    if (interviewStep === 7 && !findingsText && !findingsLoading) {
-      setFindingsLoading(true);
+    if (interviewStep !== 7 || reviewTriggeredRef.current) return;
+    reviewTriggeredRef.current = true;
+
+    (async () => {
+      setReviewState('reviewing');
+      // 显示 loading 占位消息（SparkyPanel 会识别 /^Sparky 正在.+\.\.\.$/ 显示动画）
+      setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在审阅访谈纪要...' }]);
+
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
-      fetch(`${API_BASE}/chat/findings`, {
+      try {
+        const res = await fetch(`${API_BASE}/chat/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interview_notes: buildContext() }),
+        });
+        if (!res.ok) throw new Error('review API failed');
+        const data = await res.json();
+        const reviewText = (data.review || '纪要整理得比较完整。你看看右边的卡片，有没有需要补充或修改的地方？没问题的话，点击下方「确认纪要 →」继续。').trim();
+        // 把 loading 消息替换成实际的审阅文本（streamBotMsg 会替换最后一条 bot 消息）
+        await streamBotMsg(reviewText);
+      } catch (err) {
+        console.warn('[Interview] review failed:', err);
+        await streamBotMsg('纪要整理得比较完整。你看看右边的卡片，有没有需要补充或修改的地方？没问题的话，点击下方「确认纪要 →」继续。');
+      }
+      setReviewState('waiting_confirm');
+    })();
+  }, [interviewStep, streamBotMsg, setMessages]);
+
+  // 用户确认纪要 → 生成关键发现
+  const handleConfirmReview = useCallback(() => {
+    if (reviewState !== 'waiting_confirm') return;
+    setReviewState('generating_findings');
+    setShowFindings(true);
+    setFindingsLoading(true);
+
+    const API_BASE = import.meta.env.VITE_API_URL || '/api';
+    fetch(`${API_BASE}/chat/findings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interview_notes: buildContext() }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const fullText = data.findings || '';
+        let displayed = 0;
+        const timer = setInterval(() => {
+          displayed = Math.min(displayed + 1, fullText.length);
+          setFindingsText(fullText.slice(0, displayed));
+          if (displayed >= fullText.length) {
+            clearInterval(timer);
+            setFindingsLoading(false);
+            setReviewState('done');
+          }
+        }, 30);
+      })
+      .catch(() => {
+        setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
+        setFindingsLoading(false);
+        setReviewState('done');
+      });
+  }, [reviewState]);
+
+  // 处理用户在审阅阶段的补充输入
+  const handleSupplement = useCallback(async (text: string) => {
+    setReviewState('processing_supp');
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在整理补充内容...' }]);
+
+    const API_BASE = import.meta.env.VITE_API_URL || '/api';
+    try {
+      const res = await fetch(`${API_BASE}/chat/supplement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           interview_notes: buildContext(),
+          supplement: text,
         }),
-      })
-        .then(res => res.json())
-        .then(data => {
-          const fullText = data.findings || '';
-          let displayed = 0;
-          const timer = setInterval(() => {
-            displayed = Math.min(displayed + 1, fullText.length);
-            setFindingsText(fullText.slice(0, displayed));
-            if (displayed >= fullText.length) {
-              clearInterval(timer);
-              setFindingsLoading(false);
-            }
-          }, 30);
-        })
-        .catch(() => {
-          setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
-          setFindingsLoading(false);
-        });
+      });
+      if (!res.ok) throw new Error('supplement API failed');
+      const data = await res.json();
+      const updates = Array.isArray(data.updates) ? data.updates : [];
+      const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
+
+      // 先展示 Sparky 的回复（会替换 loading 消息）
+      await streamBotMsg(reply);
+
+      // 然后更新对应的卡片内容
+      if (updates.length > 0) {
+        const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
+          u.field_name && u.value && fieldToBlock[u.field_name]
+        );
+        if (validUpdates.length > 0) {
+          await streamCardContent(validUpdates);
+        }
+      }
+    } catch (err) {
+      console.warn('[Interview] supplement failed:', err);
+      await streamBotMsg('好的，我记下了。还有其他想补充的吗？没问题的话，点击下方「确认纪要 →」继续。');
     }
-  }, [interviewStep, findingsText, findingsLoading, blockContents]);
+    setReviewState('waiting_confirm');
+  }, [streamBotMsg, streamCardContent]);
 
   const renderFindings = () => {
     if (!showFindings) return null;
@@ -528,7 +621,13 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       })}
       {renderFindings()}
 
-      {showFindings && (
+      {reviewState === 'waiting_confirm' && (
+        <button className="interview-confirm-btn fade-enter" onClick={handleConfirmReview}>
+          确认纪要 →
+        </button>
+      )}
+
+      {reviewState === 'done' && (
         <button className="interview-confirm-btn fade-enter" onClick={() => onComplete({ answers, blockContents })}>
           下一步：上传数据 →
         </button>

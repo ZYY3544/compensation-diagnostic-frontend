@@ -43,45 +43,34 @@ function App() {
   // Ref for Stage3 interview text handler
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
 
-  // Create session on app load so Sparky can chat from Stage 1
-  useEffect(() => {
-    createSession().then(res => {
-      setSessionId(res.data.id);
-    }).catch(() => {});
-  }, []);
-
-  // Stream welcome message on mount
+  // Create session on app load and stream welcome message
   useEffect(() => {
     if (welcomeSent.current) return;
     welcomeSent.current = true;
 
-    const fullText = '你好！我是 Sparky，你的 AI 薪酬诊断助手。在上传数据之前，我想先花 5-10 分钟了解一下你们的业务背景，这样诊断会更有针对性。\n\n**先简单介绍下你们公司吧——主要做什么业务？大概多少人？发展到什么阶段了？**';
-    const chips: string[] = [];
-
-    // Show typing indicator briefly
+    // Show typing indicator
     setMessages([{ role: 'bot', text: '' }]);
 
-    let displayed = 0;
-    const CHARS_PER_TICK = 1;
-    const INTERVAL = 30;
+    createSession().then(res => {
+      setSessionId(res.data.id);
+      const fullText = res.data.welcome || '';
+      if (!fullText) return;
 
-    const startDelay = setTimeout(() => {
-      const timer = setInterval(() => {
-        displayed = Math.min(displayed + CHARS_PER_TICK, fullText.length);
-        const currentText = fullText.slice(0, displayed);
-        const isDone = displayed >= fullText.length;
+      let displayed = 0;
+      const CHARS_PER_TICK = 1;
+      const INTERVAL = 30;
 
-        setMessages([{
-          role: 'bot',
-          text: currentText,
-          chips: isDone && chips.length > 0 ? chips : undefined,
-        }]);
-
-        if (isDone) clearInterval(timer);
-      }, INTERVAL);
-    }, 600);
-
-    return () => clearTimeout(startDelay);
+      const startDelay = setTimeout(() => {
+        const timer = setInterval(() => {
+          displayed = Math.min(displayed + CHARS_PER_TICK, fullText.length);
+          const currentText = fullText.slice(0, displayed);
+          if (displayed >= fullText.length) {
+            clearInterval(timer);
+          }
+          setMessages([{ role: 'bot', text: currentText }]);
+        }, INTERVAL);
+      }, 600);
+    }).catch(() => {});
   }, []);
 
   const addMsg = useCallback((msg: Message) => {

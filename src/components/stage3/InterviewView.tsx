@@ -296,7 +296,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       } else {
         isFollowUpRef.current = false;
         lastSparkyQuestionRef.current = '';
-        await streamBotMsg('访谈差不多了！我已经把关键信息整理好了，右边可以看纪要。确认没问题的话，就进入下一步上传数据 🚀');
+        // Q6 prompt 里已经要求 AI 在最后做整体收束，直接用 AI 的 reply 作为结束语
+        await streamBotMsg(reply);
         setShowFindings(true);
         setInterviewStep(7);
       }

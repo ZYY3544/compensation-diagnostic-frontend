@@ -349,6 +349,79 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     }
   }, [streamBotMsg, streamCardContent, blockContents]);
 
+  // 用户确认纪要 → 生成关键发现
+  const handleConfirmReview = useCallback(() => {
+    if (reviewState !== 'waiting_confirm') return;
+    setReviewState('generating_findings');
+    setShowFindings(true);
+    setFindingsLoading(true);
+
+    const API_BASE = import.meta.env.VITE_API_URL || '/api';
+    fetch(`${API_BASE}/chat/findings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interview_notes: buildContext() }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const fullText = data.findings || '';
+        let displayed = 0;
+        const timer = setInterval(() => {
+          displayed = Math.min(displayed + 1, fullText.length);
+          setFindingsText(fullText.slice(0, displayed));
+          if (displayed >= fullText.length) {
+            clearInterval(timer);
+            setFindingsLoading(false);
+            setReviewState('done');
+          }
+        }, 30);
+      })
+      .catch(() => {
+        setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
+        setFindingsLoading(false);
+        setReviewState('done');
+      });
+  }, [reviewState]);
+
+  // 处理用户在审阅阶段的补充输入
+  const handleSupplement = useCallback(async (text: string) => {
+    setReviewState('processing_supp');
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在整理补充内容...' }]);
+
+    const API_BASE = import.meta.env.VITE_API_URL || '/api';
+    try {
+      const res = await fetch(`${API_BASE}/chat/supplement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interview_notes: buildContext(),
+          supplement: text,
+        }),
+      });
+      if (!res.ok) throw new Error('supplement API failed');
+      const data = await res.json();
+      const updates = Array.isArray(data.updates) ? data.updates : [];
+      const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
+
+      // 先展示 Sparky 的回复（会替换 loading 消息）
+      await streamBotMsg(reply);
+
+      // 然后更新对应的卡片内容
+      if (updates.length > 0) {
+        const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
+          u.field_name && u.value && fieldToBlock[u.field_name]
+        );
+        if (validUpdates.length > 0) {
+          await streamCardContent(validUpdates);
+        }
+      }
+    } catch (err) {
+      console.warn('[Interview] supplement failed:', err);
+      await streamBotMsg('好的，我记下了。还有其他想补充的吗？没问题的话，点击下方「确认纪要 →」继续。');
+    }
+    setReviewState('waiting_confirm');
+  }, [streamBotMsg, streamCardContent]);
+
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {
     if (interviewStep >= 1 && interviewStep <= 6) {
@@ -499,79 +572,6 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       setReviewState('waiting_confirm');
     })();
   }, [interviewStep, streamBotMsg, streamCardContent, setMessages]);
-
-  // 用户确认纪要 → 生成关键发现
-  const handleConfirmReview = useCallback(() => {
-    if (reviewState !== 'waiting_confirm') return;
-    setReviewState('generating_findings');
-    setShowFindings(true);
-    setFindingsLoading(true);
-
-    const API_BASE = import.meta.env.VITE_API_URL || '/api';
-    fetch(`${API_BASE}/chat/findings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ interview_notes: buildContext() }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        const fullText = data.findings || '';
-        let displayed = 0;
-        const timer = setInterval(() => {
-          displayed = Math.min(displayed + 1, fullText.length);
-          setFindingsText(fullText.slice(0, displayed));
-          if (displayed >= fullText.length) {
-            clearInterval(timer);
-            setFindingsLoading(false);
-            setReviewState('done');
-          }
-        }, 30);
-      })
-      .catch(() => {
-        setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
-        setFindingsLoading(false);
-        setReviewState('done');
-      });
-  }, [reviewState]);
-
-  // 处理用户在审阅阶段的补充输入
-  const handleSupplement = useCallback(async (text: string) => {
-    setReviewState('processing_supp');
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在整理补充内容...' }]);
-
-    const API_BASE = import.meta.env.VITE_API_URL || '/api';
-    try {
-      const res = await fetch(`${API_BASE}/chat/supplement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          interview_notes: buildContext(),
-          supplement: text,
-        }),
-      });
-      if (!res.ok) throw new Error('supplement API failed');
-      const data = await res.json();
-      const updates = Array.isArray(data.updates) ? data.updates : [];
-      const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
-
-      // 先展示 Sparky 的回复（会替换 loading 消息）
-      await streamBotMsg(reply);
-
-      // 然后更新对应的卡片内容
-      if (updates.length > 0) {
-        const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
-          u.field_name && u.value && fieldToBlock[u.field_name]
-        );
-        if (validUpdates.length > 0) {
-          await streamCardContent(validUpdates);
-        }
-      }
-    } catch (err) {
-      console.warn('[Interview] supplement failed:', err);
-      await streamBotMsg('好的，我记下了。还有其他想补充的吗？没问题的话，点击下方「确认纪要 →」继续。');
-    }
-    setReviewState('waiting_confirm');
-  }, [streamBotMsg, streamCardContent]);
 
   const renderFindings = () => {
     if (!showFindings) return null;

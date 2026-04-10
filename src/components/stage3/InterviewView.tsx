@@ -28,13 +28,14 @@ interface BlockContents {
   block6: string[] | null;
 }
 
-const questions = [
-  '先简单介绍下你们公司吧——主要做什么业务？大概多少人？发展到什么阶段了？',
-  '明年公司大方向是什么？扩张、收缩、还是转型？',
-  '了解了你们的业务和方向。那这次想做薪酬诊断，主要是想解决什么问题？',
-  '最近有没有觉得某个部门人特别不稳定？',
-  '你们公司最核心的部门是哪些？就是如果这些人走了业务就转不动的那种',
-  '最后聊聊你们薪酬是怎么管的——有没有明确的薪酬定位？调薪一般怎么操作？',
+// 仅传主题给 AI，具体问题由 AI 根据 prompt 自由发挥
+const questionTopics = [
+  '公司基本情况',
+  '战略方向',
+  '诊断诉求',
+  '流失情况',
+  '核心职能',
+  '薪酬管理现状',
 ];
 
 const questionChips: Record<number, string[]> = {
@@ -258,7 +259,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         signal: controller.signal,
         body: JSON.stringify({
           question_id: `Q${step}`,
-          question_text: questions[step - 1] || '',
+          question_text: questionTopics[step - 1] || '',
           answer: answerText,
           is_follow_up: isFollowUpRef.current,
           follow_up_question: isFollowUpRef.current ? lastSparkyQuestionRef.current : '',

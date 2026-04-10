@@ -60,7 +60,7 @@ function App() {
       const CHARS_PER_TICK = 1;
       const INTERVAL = 30;
 
-      const startDelay = setTimeout(() => {
+      setTimeout(() => {
         const timer = setInterval(() => {
           displayed = Math.min(displayed + CHARS_PER_TICK, fullText.length);
           const currentText = fullText.slice(0, displayed);

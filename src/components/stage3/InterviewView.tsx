@@ -577,11 +577,57 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   const renderFindings = () => {
     if (!showFindings) return null;
+
+    // 解析换行 + **加粗**，逐段渲染
+    const renderFindingsBody = () => {
+      if (findingsLoading && !findingsText) {
+        return <span style={{ color: 'var(--text-muted)' }}>正在生成关键发现...</span>;
+      }
+      if (!findingsText) return <span>暂无</span>;
+
+      // 按空行分段
+      const paragraphs = findingsText.split(/\n\s*\n/).filter(p => p.trim());
+      return paragraphs.map((para, pi) => {
+        // 每段内部按单个换行再分行
+        const lines = para.split('\n').filter(l => l.trim());
+        // 检测是否是编号段（以"数字." 开头）
+        const isNumbered = /^\d+\./.test(lines[0]?.trim() || '');
+        return (
+          <div
+            key={pi}
+            style={{
+              marginBottom: pi < paragraphs.length - 1 ? 12 : 0,
+              paddingLeft: isNumbered ? 4 : 0,
+            }}
+          >
+            {lines.map((line, li) => {
+              // 解析行内 **加粗**
+              const parts = line.split(/(\*\*[^*]+\*\*)/g);
+              return (
+                <div key={li} style={{ lineHeight: 1.7 }}>
+                  {parts.map((part, ppi) => {
+                    if (part.startsWith('**') && part.endsWith('**')) {
+                      return (
+                        <strong key={ppi} style={{ color: '#0A66C2' }}>
+                          {part.slice(2, -2)}
+                        </strong>
+                      );
+                    }
+                    return <span key={ppi}>{part}</span>;
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      });
+    };
+
     return (
       <div className="interview-findings fade-enter">
         <div className="interview-findings-title">✨ 关键发现提炼</div>
         <div className="interview-findings-text">
-          {findingsLoading ? '正在生成关键发现...' : findingsText || '暂无'}
+          {renderFindingsBody()}
         </div>
       </div>
     );

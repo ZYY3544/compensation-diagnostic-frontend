@@ -289,10 +289,8 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         isFollowUpRef.current = false;
         lastSparkyQuestionRef.current = '';
         const nextStep = step + 1;
-        const nextQ = questions[step] || '';
-        const fullReply = reply + '\n\n' + nextQ;
         const chips = questionChips[nextStep];
-        await streamBotMsg(fullReply, chips);
+        await streamBotMsg(reply, chips);
         setInterviewStep(nextStep);
       } else {
         isFollowUpRef.current = false;
@@ -333,7 +331,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
       if (step < 6) {
         const nextStep = step + 1;
-        await streamBotMsg(questions[step], questionChips[nextStep]);
+        await streamBotMsg('好的，我们继续。', questionChips[nextStep]);
         setInterviewStep(nextStep);
       } else {
         setShowFindings(true);

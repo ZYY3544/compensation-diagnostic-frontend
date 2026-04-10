@@ -317,26 +317,15 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
     } catch (err) {
       console.warn('Interview extract failed:', err);
-      // Fallback: summarize user answer into a short note, don't dump raw text
+      // Fallback: 不推进 step，停在当前问题让用户重试。
+      // 仅在卡片完全空白时才用原文兜底，避免覆盖之前的好内容。
       const field = getFieldForStep(step);
       const summary = answerText.length > 80 ? answerText.slice(0, 80) + '...' : answerText;
-
-      // Only update card if it doesn't already have content (don't overwrite good content with fallback)
       const prevVal = getPreviousValue(step);
       if (!prevVal) {
         await streamCardContent([{ field_name: field, value: '（待 AI 整理）' + summary }]);
       }
-
-      await streamBotMsg('好的，记下了。我们继续往下聊。');
-
-      if (step < 6) {
-        const nextStep = step + 1;
-        await streamBotMsg('好的，我们继续。', questionChips[nextStep]);
-        setInterviewStep(nextStep);
-      } else {
-        setShowFindings(true);
-        setInterviewStep(7);
-      }
+      await streamBotMsg('网络有点问题，没收到回复。可以再说一遍吗？');
     }
   }, [streamBotMsg, streamCardContent, blockContents]);
 

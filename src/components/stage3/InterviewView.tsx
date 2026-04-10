@@ -135,8 +135,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     core_goal: 'block3',
     attrition: 'block4',
     core_functions: 'block5',
-    pay_strategy: 'block6',
-    raise_mechanism: 'block6',
+    pay_management: 'block6',
   };
 
   const fieldToAnswer: Record<string, keyof Answers> = {
@@ -145,8 +144,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     core_goal: 'goal',
     attrition: 'attrition',
     core_functions: 'coreFunc',
-    pay_strategy: 'strategy',
-    raise_mechanism: 'raise',
+    pay_management: 'strategy',
   };
 
   // Track which field_name occupies which slot index in each block
@@ -235,7 +233,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       3: 'core_goal',
       4: 'attrition',
       5: 'core_functions',
-      6: 'pay_strategy',
+      6: 'pay_management',
     };
     return map[step] || 'unknown';
   };

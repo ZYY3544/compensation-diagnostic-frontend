@@ -273,16 +273,6 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
 
           const renderBotText = () => {
             if (m.role !== 'bot') return m.text;
-            // Check for multi-paragraph with chips: first para normal, rest bold
-            const parts = m.text.split('\n\n');
-            if (parts.length >= 2 && m.chips && m.chips.length > 0) {
-              return (
-                <>
-                  <span>{renderMarkdown(parts[0])}</span>
-                  <div style={{ marginTop: 12, fontWeight: 600, color: '#CA7C5E' }}>{parts.slice(1).join('\n\n')}</div>
-                </>
-              );
-            }
             // Render **bold** in all bot messages
             return renderMarkdown(m.text);
           };

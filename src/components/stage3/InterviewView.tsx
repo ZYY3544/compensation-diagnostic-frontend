@@ -631,6 +631,66 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     );
   };
 
+  // 开发快捷入口：URL 带 ?dev=1 才启用，用于跳过 Q1-Q5/Q6 直接测后面的流程
+  const devMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1';
+
+  const MOCK_BLOCKS: Record<string, { field: string; value: string }> = {
+    block1: {
+      field: 'company_profile',
+      value: '**行业**：跨境电商，主营消费电子出海\n**规模**：正式员工约 6000 人，2025 年营收约 280 亿\n**阶段**：规模化增长，同时拓展新业务线\n**组织**：按 BU 划分（charging / 影音 / 智新 / 机器人），设有中枢职能和中台部门\n**布局**：总部深圳，国内多城市 + 海外主要国家设有 office',
+    },
+    block2: {
+      field: 'strategy',
+      value: '**战略重点**：AI 转型、业务扩张并行\n**AI 转型路径**：内部提效先行，先用在流程和协同环节，不是一上来就押注产品化\n**扩张方向**：海外新市场 + 新业务线（机器人）持续投入',
+    },
+    block3: {
+      field: 'core_goal',
+      value: '**核心诉求**：控成本 + 留人\n**优先级**：控成本偏结构性（扩张和降本同时要），留人集中在研发核心岗\n**诉求来源**：业务扩张阶段，薪酬预算压力大，同时核心人才流失加剧',
+    },
+    block4: {
+      field: 'attrition',
+      value: '**流失部门**：研发（主要）、产品（次要）\n**流失层级**：P6-P7 中高级工程师，影响业务连续性\n**流失去向**：同行大厂、AI 初创公司\n**流失原因**：薪酬竞争力 + 职业发展空间',
+    },
+    block5: {
+      field: 'core_functions',
+      value: '**核心职能**：研发（充电 / 影音 BU）、产品设计、跨境运营\n**关键岗位**：硬件研发、算法、海外市场运营\n**市场竞争**：研发岗位竞争激烈，主要对手是同行大厂和 AI 创业公司\n**重合信号**：流失最重的研发部门就是核心职能，风险集中',
+    },
+    block6: {
+      field: 'pay_management',
+      value: '**薪酬定位**：跟随市场（没有明确的 P50/P75 定位）\n**岗位差异化**：基本一把尺子走到底，核心岗位没有特别倾斜\n**数据来源**：主要靠 HR 的同行交流，没有体系化的市场报告\n**调薪机制**：年度普调，没有明确的预算分配规则\n**固浮比**：固定为主，年终奖占比较低',
+    },
+  };
+
+  const mockFillBlocks = (targetStep: number) => {
+    const nextContents: BlockContents = { block1: null, block2: null, block3: null, block4: null, block5: null, block6: null };
+    const nextSlotMap: Record<string, Record<string, number>> = {};
+    const fillUpTo = targetStep === 7 ? 6 : targetStep - 1;
+    for (let i = 1; i <= fillUpTo; i++) {
+      const key = `block${i}` as keyof BlockContents;
+      const mock = MOCK_BLOCKS[key];
+      if (mock) {
+        nextContents[key] = [mock.value];
+        nextSlotMap[key] = { [mock.field]: 0 };
+      }
+    }
+    setBlockContents(nextContents);
+    blockContentsRef.current = nextContents;
+    fieldSlotMapRef.current = nextSlotMap;
+    isFollowUpRef.current = false;
+    roundRef.current = 1;
+    lastSparkyQuestionRef.current = '';
+    // 清空聊天历史，避免残留
+    setMessages([]);
+    if (targetStep === 7) {
+      reviewTriggeredRef.current = false;
+      setReviewState('none');
+      setShowFindings(false);
+      setFindingsText('');
+      setFindingsLoading(false);
+    }
+    setInterviewStep(targetStep);
+  };
+
   return (
     <div className="fade-enter">
       <div className="interview-header">
@@ -646,6 +706,50 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
             已准备好数据？直接上传 →
           </span>
         </div>
+        {devMode && (
+          <div style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            background: '#fff7ed',
+            border: '1px dashed #f59e0b',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: 12,
+          }}>
+            <span style={{ color: '#b45309', fontWeight: 600 }}>🧪 DEV</span>
+            <button
+              onClick={() => mockFillBlocks(6)}
+              style={{
+                fontSize: 12,
+                padding: '4px 10px',
+                borderRadius: 4,
+                border: '1px solid #f59e0b',
+                background: '#fff',
+                color: '#b45309',
+                cursor: 'pointer',
+              }}
+            >
+              跳到 Q6（预填 Q1-Q5）
+            </button>
+            <button
+              onClick={() => mockFillBlocks(7)}
+              style={{
+                fontSize: 12,
+                padding: '4px 10px',
+                borderRadius: 4,
+                border: '1px solid #f59e0b',
+                background: '#fff',
+                color: '#b45309',
+                cursor: 'pointer',
+              }}
+            >
+              跳到审阅（预填全部 6 张卡）
+            </button>
+            <span style={{ color: '#92400e', fontSize: 11 }}>⚠️ 仅开发测试用，会清空当前状态</span>
+          </div>
+        )}
       </div>
 
       {interviewStep <= 1 && !blockContents.block1 && (

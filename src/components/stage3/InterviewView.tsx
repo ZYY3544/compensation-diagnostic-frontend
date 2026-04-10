@@ -457,14 +457,15 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     { key: 'block6' as const, title: '💰 薪酬管理现状', showAt: 6 },
   ];
 
-  // 审阅阶段：Q6 结束后触发 Sparky 审阅访谈纪要
+  // 审阅阶段：Q6 结束后触发 Sparky 审阅访谈纪要（两个闭环）
+  // 闭环 1：Sparky 自主修订卡片（格式整理/重复合并/矛盾标记）
+  // 闭环 2：Sparky 告诉用户改了什么 + 问有没有补充
   useEffect(() => {
     if (interviewStep !== 7 || reviewTriggeredRef.current) return;
     reviewTriggeredRef.current = true;
 
     (async () => {
       setReviewState('reviewing');
-      // 显示 loading 占位消息（SparkyPanel 会识别 /^Sparky 正在.+\.\.\.$/ 显示动画）
       setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在审阅访谈纪要...' }]);
 
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -476,16 +477,30 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         });
         if (!res.ok) throw new Error('review API failed');
         const data = await res.json();
-        const reviewText = (data.review || '纪要整理得比较完整。你看看右边的卡片，有没有需要补充或修改的地方？没问题的话，点击下方「确认纪要 →」继续。').trim();
-        // 把 loading 消息替换成实际的审阅文本（streamBotMsg 会替换最后一条 bot 消息）
-        await streamBotMsg(reviewText);
+        const updates = Array.isArray(data.updates) ? data.updates : [];
+        const reply = (data.reply || '纪要整理下来挺完整的。你看看还有什么想补充或者想改的？').trim();
+
+        // 闭环 1：先把 Sparky 自主修订的卡片内容流式更新到右侧
+        // loading 消息暂时不动，让用户先看到卡片在被"整理"
+        if (updates.length > 0) {
+          const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
+            u.field_name && u.value && fieldToBlock[u.field_name]
+          );
+          if (validUpdates.length > 0) {
+            await streamCardContent(validUpdates);
+          }
+        }
+
+        // 闭环 2：卡片整理完了，Sparky 再说明做了什么 + 问用户
+        // streamBotMsg 会把 loading 消息替换成这段 reply
+        await streamBotMsg(reply);
       } catch (err) {
         console.warn('[Interview] review failed:', err);
-        await streamBotMsg('纪要整理得比较完整。你看看右边的卡片，有没有需要补充或修改的地方？没问题的话，点击下方「确认纪要 →」继续。');
+        await streamBotMsg('纪要整理下来挺完整的。你看看右边的卡片，有没有想补充或者修改的地方？没问题的话点下方「确认纪要 →」继续。');
       }
       setReviewState('waiting_confirm');
     })();
-  }, [interviewStep, streamBotMsg, setMessages]);
+  }, [interviewStep, streamBotMsg, streamCardContent, setMessages]);
 
   // 用户确认纪要 → 生成关键发现
   const handleConfirmReview = useCallback(() => {

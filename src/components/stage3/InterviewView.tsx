@@ -558,10 +558,10 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
           }
           return updated;
         });
-      }, 1200);
+      }, 2000);
 
-      // 保证思考动画至少跑 4 秒，避免 API 快速返回时动画一闪而过
-      const minThinkingDuration = 4000;
+      // 保证思考动画至少跑 8 秒，避免 API 快速返回时动画一闪而过
+      const minThinkingDuration = 8000;
       const startTime = Date.now();
 
       const API_BASE = import.meta.env.VITE_API_URL || '/api';

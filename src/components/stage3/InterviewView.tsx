@@ -530,16 +530,45 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // 审阅阶段：Q6 结束后触发 Sparky 审阅访谈纪要（两个闭环）
   // 闭环 1：Sparky 自主修订卡片（格式整理/重复合并/矛盾标记）
-  // 闭环 2：Sparky 告诉用户改了什么 + 问有没有补充
+  // 闭环 2：Sparky 输出整体总结（summary）+ 修订说明（reply）两条独立消息 + 问补充
   useEffect(() => {
     if (interviewStep !== 7 || reviewTriggeredRef.current) return;
     reviewTriggeredRef.current = true;
 
     (async () => {
       setReviewState('reviewing');
-      setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在审阅访谈纪要...' }]);
+
+      // 分阶段思考动画：每 1.2s 轮播一个阶段文本，让用户感觉 Sparky 真的在认真 review
+      const THINKING_STAGES = [
+        'Sparky 正在通读六块访谈纪要...',
+        'Sparky 正在检查字段完整性...',
+        'Sparky 正在梳理前后信息的一致性...',
+        'Sparky 正在整理格式和关键词标记...',
+        'Sparky 正在提炼核心判断...',
+      ];
+      let stageIdx = 0;
+      setMessages(prev => [...prev, { role: 'bot', text: THINKING_STAGES[0] }]);
+      const stageTimer = setInterval(() => {
+        stageIdx = (stageIdx + 1) % THINKING_STAGES.length;
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+            updated[lastIdx] = { role: 'bot', text: THINKING_STAGES[stageIdx] };
+          }
+          return updated;
+        });
+      }, 1200);
+
+      // 保证思考动画至少跑 4 秒，避免 API 快速返回时动画一闪而过
+      const minThinkingDuration = 4000;
+      const startTime = Date.now();
 
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
+      let summary = '';
+      let reply = '纪要整理下来挺完整的。你看看右边的卡片，有没有想补充或者修改的地方？没问题的话点下方「确认纪要 →」继续。';
+      let updates: Array<{ field_name: string; value: string }> = [];
+
       try {
         const res = await fetch(`${API_BASE}/chat/review`, {
           method: 'POST',
@@ -548,27 +577,41 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         });
         if (!res.ok) throw new Error('review API failed');
         const data = await res.json();
-        const updates = Array.isArray(data.updates) ? data.updates : [];
-        const reply = (data.reply || '纪要整理下来挺完整的。你看看还有什么想补充或者想改的？').trim();
-
-        // 闭环 1：先把 Sparky 自主修订的卡片内容流式更新到右侧
-        // loading 消息暂时不动，让用户先看到卡片在被"整理"
-        if (updates.length > 0) {
-          const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
-            u.field_name && u.value && fieldToBlock[u.field_name]
-          );
-          if (validUpdates.length > 0) {
-            await streamCardContent(validUpdates);
-          }
-        }
-
-        // 闭环 2：卡片整理完了，Sparky 再说明做了什么 + 问用户
-        // streamBotMsg 会把 loading 消息替换成这段 reply
-        await streamBotMsg(reply);
+        updates = Array.isArray(data.updates) ? data.updates : [];
+        summary = (data.summary || '').trim();
+        reply = (data.reply || reply).trim();
       } catch (err) {
         console.warn('[Interview] review failed:', err);
-        await streamBotMsg('纪要整理下来挺完整的。你看看右边的卡片，有没有想补充或者修改的地方？没问题的话点下方「确认纪要 →」继续。');
       }
+
+      // 等待思考动画至少跑完最小时长
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minThinkingDuration) {
+        await new Promise(r => setTimeout(r, minThinkingDuration - elapsed));
+      }
+      clearInterval(stageTimer);
+
+      // 闭环 1：先把 Sparky 自主修订的卡片内容流式更新到右侧
+      if (updates.length > 0) {
+        const validUpdates = updates.filter((u: { field_name: string; value: string }) =>
+          u.field_name && u.value && fieldToBlock[u.field_name]
+        );
+        if (validUpdates.length > 0) {
+          await streamCardContent(validUpdates);
+        }
+      }
+
+      // 闭环 2：先展示整体总结（把最后一条 loading 消息替换成 summary）
+      if (summary) {
+        await streamBotMsg(summary);
+        // 然后追加一条新的 bot 消息展示 reply（修订说明 + 问补充）
+        setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+        await streamBotMsg(reply);
+      } else {
+        // 没有 summary，直接把 loading 替换成 reply
+        await streamBotMsg(reply);
+      }
+
       setReviewState('waiting_confirm');
     })();
   }, [interviewStep, streamBotMsg, streamCardContent, setMessages]);

@@ -14,6 +14,9 @@ export const uploadFile = (sessionId: string, file: File) => {
   return api.post(`/upload/${sessionId}`, formData);
 };
 
+export const getParseSummary = (sessionId: string, summary: string) =>
+  api.post(`/pipeline/${sessionId}/parse-summary`, { summary });
+
 export const runCleansing = (sessionId: string) =>
   api.post(`/pipeline/${sessionId}/cleansing`);
 

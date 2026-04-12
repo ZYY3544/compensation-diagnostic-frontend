@@ -6,7 +6,7 @@ import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
-import { runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
+import { getParseSummary, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -135,10 +135,29 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       await sendBotMsg('接下来做一下数据完整度分析...', 1200);
       await sendBotMsg('正在检查各字段填充情况...', 1500);
 
-      const sheetMsg = sheetCount >= 2
-        ? `数据读完了，${sheetCount} 张表都识别到了。你看看右边的字段和数量对不对，没问题的话我们往下走。`
-        : '数据读完了。你看看右边的字段和数量对不对，没问题的话我们往下走。';
-      await sendBotMsg(sheetMsg, 1500);
+      // 调 AI 生成总结（和动画并行，结果回来再展示）
+      const filledCount = (parseResult?.all_columns_status || []).filter(c => c.has_data).length;
+      const totalCount = (parseResult?.all_columns_status || []).length;
+      const summaryText = [
+        `员工记录 ${emp} 条，职级 ${gradeCount} 个（${gradeRange}），部门 ${deptCount} 个`,
+        `Sheet 数量：${sheetCount}`,
+        `字段填充：${filledCount}/${totalCount} 列有数据`,
+        sheetCount >= 2 ? '包含公司经营数据表' : '无公司经营数据表',
+      ].join('；');
+
+      let aiMsg = '';
+      if (sessionId) {
+        try {
+          const res = await getParseSummary(sessionId, summaryText);
+          aiMsg = res.data.message || '';
+        } catch { /* fallback below */ }
+      }
+
+      const finalMsg = aiMsg
+        || (sheetCount >= 2
+          ? `数据读完了，${sheetCount} 张表都识别到了。你看看右边的字段和数量对不对，没问题的话我们往下走。`
+          : '数据读完了。你看看右边的字段和数量对不对，没问题的话我们往下走。');
+      await sendBotMsg(finalMsg, 1000);
 
       setOverviewReady(true);
     })();

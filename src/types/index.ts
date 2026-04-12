@@ -4,15 +4,6 @@ export interface Message {
   chips?: string[];
 }
 
-export interface SessionData {
-  id: string;
-  status: string;
-  employee_count: number;
-  data_completeness_score: number;
-  parse_result?: ParseResult;
-  analysis_results?: ReportData;
-}
-
 export interface ParseResult {
   employee_count: number;
   grade_count: number;

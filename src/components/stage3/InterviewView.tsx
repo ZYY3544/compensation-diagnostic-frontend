@@ -4,9 +4,7 @@ import type { Message } from '../../types';
 interface InterviewViewProps {
   onComplete: (notes: any) => void;
   onSkip: () => void;
-  addMsg: (msg: Message) => void;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  setShowTyping: (v: boolean) => void;
   textHandlerRef: MutableRefObject<((text: string) => boolean) | null>;
 }
 
@@ -47,7 +45,7 @@ const questionChips: Record<number, string[]> = {
   6: ['有明确策略', '大概跟随市场', '没怎么定过'],
 };
 
-export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, setMessages, setShowTyping: _setShowTyping, textHandlerRef }: InterviewViewProps) {
+export default function InterviewView({ onComplete, onSkip, setMessages, textHandlerRef }: InterviewViewProps) {
   const [interviewStep, setInterviewStep] = useState(1);
   const [answers, setAnswers] = useState<Answers>({
     goal: null,

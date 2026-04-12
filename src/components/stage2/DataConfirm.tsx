@@ -12,13 +12,12 @@ interface DataConfirmProps {
   onComplete: () => void;
   addMsg: (msg: Message) => void;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  setShowTyping: (v: boolean) => void;
   textInputRef: MutableRefObject<((text: string) => boolean) | null>;
   parseResult?: ParseResult | null;
   interviewNotes?: any;
 }
 
-export default function DataConfirm({ onComplete, addMsg, setMessages, setShowTyping: _setShowTyping, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
+export default function DataConfirm({ onComplete, addMsg, setMessages, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);

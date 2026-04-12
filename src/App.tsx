@@ -29,13 +29,11 @@ function LoadingView() {
 function App() {
   const [stage, setStage] = useState<Stage>(1);
   const [loading, setLoading] = useState(false);
-  const [, setShowTyping] = useState(false);
   const [panelVisible, setPanelVisible] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
-  const [_skippedInterview, setSkippedInterview] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const welcomeSent = useRef(false);
   // Ref for Stage2 to register its text input handler
@@ -130,7 +128,6 @@ function App() {
 
   // Handle skip interview -> go to upload
   const handleSkipInterview = () => {
-    setSkippedInterview(true);
     streamMsg('没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。');
     setStage(2);
   };
@@ -209,9 +206,7 @@ function App() {
             <InterviewView
               onComplete={handleInterviewComplete}
               onSkip={handleSkipInterview}
-              addMsg={addMsg}
               setMessages={setMessages}
-              setShowTyping={setShowTyping}
               textHandlerRef={stage3TextHandlerRef}
             />
           )}
@@ -221,7 +216,6 @@ function App() {
               onComplete={handleStart}
               addMsg={addMsg}
               setMessages={setMessages}
-              setShowTyping={setShowTyping}
               textInputRef={stage2InputHandlerRef}
               parseResult={parseResult}
               interviewNotes={interviewNotes}

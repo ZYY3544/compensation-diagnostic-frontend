@@ -150,13 +150,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       sendBotMsg('让我先看看你的数据结构...', 300).then(() => {
         setTimeout(() => {
           setParsing(false);
-          sendBotMsg(`好的，解析完成！识别到 ${empCount} 条员工记录，覆盖 ${gradeCount} 个职级（${grades}）、${deptCount} 个部门。`, 500).then(() => {
-            setTimeout(() => {
-              setCompletedSteps(prev => [...prev, 1]);
-              setSubstep(2);
-              setViewingStep(2);
-            }, 2000);
-          });
+          sendBotMsg(`好的，解析完成！识别到 ${empCount} 条员工记录，覆盖 ${gradeCount} 个职级（${grades}）、${deptCount} 个部门。右边确认无误后点下一步。`, 500);
         }, 2000);
       });
     }
@@ -347,7 +341,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const renderStepContent = () => {
     switch (viewingStep) {
       case 1:
-        return <StepParsing parsing={parsing} parseResult={parseResult} />;
+        return <StepParsing parsing={parsing} parseResult={parseResult} onNext={() => advanceStep(1)} />;
       case 2:
         return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
       case 3:

@@ -3,9 +3,10 @@ import type { ParseResult } from '../../types';
 interface StepParsingProps {
   parsing: boolean;
   parseResult?: ParseResult | null;
+  onNext: () => void;
 }
 
-export default function StepParsing({ parsing, parseResult }: StepParsingProps) {
+export default function StepParsing({ parsing, parseResult, onNext }: StepParsingProps) {
   const empCount = parseResult?.employee_count ?? 0;
   const gradeCount = parseResult?.grade_count ?? 0;
   const deptCount = parseResult?.department_count ?? 0;
@@ -57,6 +58,7 @@ export default function StepParsing({ parsing, parseResult }: StepParsingProps) 
           ))}
         </div>
       </div>
+      <button className="next-step-btn" onClick={onNext} style={{ marginTop: 20 }}>确认，下一步 →</button>
     </div>
   );
 }

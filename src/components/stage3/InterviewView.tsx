@@ -464,12 +464,17 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   }, [reviewState]);
 
   // 处理用户在审阅阶段的补充输入
+  // 跟 processAnswer 一样的模式：立刻显示 loading → API 并行跑 → 替换成回复
   const handleSupplement = useCallback(async (text: string) => {
     setReviewState('processing_supp');
 
+    // 立刻显示 loading
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+    const thinkingStart = Date.now();
+    const minThinkingMs = 1000 + Math.random() * 500;
+
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
     try {
-      // 先调 API 拿结果（用户等待期间没有任何 loading 消息干扰）
       const res = await fetch(`${API_BASE}/chat/supplement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -484,41 +489,74 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
       const noSupplement = data.no_supplement === true;
 
-      // API 结果已拿到，现在展示
-      if (noSupplement) {
-        // 用户表示没有要补充的：不需要 loading，直接展示确认引导
-        await showBotReply(reply);
-      } else {
-        // 有实际补充：loading → 流式回复
-        await showBotReply(reply, { loadingText: 'Sparky 正在思考...' });
+      // 确保 loading 至少跑够
+      const elapsed = Date.now() - thinkingStart;
+      if (elapsed < minThinkingMs) {
+        await new Promise(r => setTimeout(r, minThinkingMs - elapsed));
+      }
 
-        // 处理 updates：区分现有卡片更新 vs 新建卡片
-        if (updates.length > 0) {
-          for (const u of updates) {
-            if (!u.field_name || !u.value) continue;
-            if (u.new_card_title && !fieldToBlock[u.field_name]) {
-              const newBlockKey = `extra_${u.field_name}`;
-              fieldToBlock[u.field_name] = newBlockKey;
-              setExtraBlocks(prev => {
-                if (prev.some(b => b.key === newBlockKey)) return prev;
-                return [...prev, { key: newBlockKey, title: u.new_card_title! }];
-              });
+      // 把 loading 替换成空文本，开始流式填充
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '' };
+        }
+        return updated;
+      });
+
+      // 流式展示回复
+      await new Promise<void>((resolve) => {
+        let displayed = 0;
+        const timer = setInterval(() => {
+          displayed = Math.min(displayed + 1, reply.length);
+          const currentText = reply.slice(0, displayed);
+          const isDone = displayed >= reply.length;
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+              updated[lastIdx] = { role: 'bot', text: currentText };
             }
+            return updated;
+          });
+          if (isDone) { clearInterval(timer); resolve(); }
+        }, 30);
+      });
+
+      // 有实际补充时才更新卡片
+      if (!noSupplement && updates.length > 0) {
+        for (const u of updates) {
+          if (!u.field_name || !u.value) continue;
+          if (u.new_card_title && !fieldToBlock[u.field_name]) {
+            const newBlockKey = `extra_${u.field_name}`;
+            fieldToBlock[u.field_name] = newBlockKey;
+            setExtraBlocks(prev => {
+              if (prev.some(b => b.key === newBlockKey)) return prev;
+              return [...prev, { key: newBlockKey, title: u.new_card_title! }];
+            });
           }
-          const validUpdates = updates.filter(u =>
-            u.field_name && u.value && fieldToBlock[u.field_name]
-          );
-          if (validUpdates.length > 0) {
-            await streamCardContent(validUpdates);
-          }
+        }
+        const validUpdates = updates.filter(u =>
+          u.field_name && u.value && fieldToBlock[u.field_name]
+        );
+        if (validUpdates.length > 0) {
+          await streamCardContent(validUpdates);
         }
       }
     } catch (err) {
       console.warn('[Interview] supplement failed:', err);
-      await showBotReply('好的。点击右边的「确认纪要 →」，我来生成关键提炼发现。');
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '好的。点击右边的「确认纪要 →」，我来生成关键提炼发现。' };
+        }
+        return updated;
+      });
     }
     setReviewState('waiting_confirm');
-  }, [showBotReply, streamCardContent]);
+  }, [streamCardContent]);
 
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {

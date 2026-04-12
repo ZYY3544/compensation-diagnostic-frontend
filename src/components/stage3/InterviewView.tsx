@@ -383,7 +383,16 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   // 处理用户在审阅阶段的补充输入
   const handleSupplement = useCallback(async (text: string) => {
     setReviewState('processing_supp');
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+
+    // 快速判断：用户是不是表示"没有要补充的"
+    // 如果是，不显示 loading 动画，直接发 API 拿确认引导语
+    const NO_SUPPLEMENT_PATTERNS = /^(没有|暂时没有|没什么|没了|差不多|不用了|OK|ok|好了|可以了|就这些|没其他|不需要|nope|no)/i;
+    const isLikelyNoSupplement = NO_SUPPLEMENT_PATTERNS.test(text.trim());
+
+    if (!isLikelyNoSupplement) {
+      // 有实际补充内容才显示 loading
+      setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在整理补充内容...' }]);
+    }
 
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
     try {
@@ -400,35 +409,39 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       const updates: Array<{ field_name: string; value: string; new_card_title?: string }> = Array.isArray(data.updates) ? data.updates : [];
       const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
 
-      // 先展示 Sparky 的回复（会替换 loading 消息）
-      await streamBotMsg(reply);
+      if (isLikelyNoSupplement) {
+        // 无补充：直接追加一条新消息展示 reply（不走 streamBotMsg 替换逻辑）
+        setMessages(prev => [...prev, { role: 'bot', text: reply }]);
+      } else {
+        // 有补充：把 loading 替换成 reply
+        await streamBotMsg(reply);
 
-      // 处理 updates：区分现有卡片更新 vs 新建卡片
-      if (updates.length > 0) {
-        for (const u of updates) {
-          if (!u.field_name || !u.value) continue;
+        // 处理 updates：区分现有卡片更新 vs 新建卡片
+        if (updates.length > 0) {
+          for (const u of updates) {
+            if (!u.field_name || !u.value) continue;
 
-          if (u.new_card_title && !fieldToBlock[u.field_name]) {
-            // 新建卡片：动态注册 fieldToBlock 映射 + 追加 extraBlocks
-            const newBlockKey = `extra_${u.field_name}`;
-            fieldToBlock[u.field_name] = newBlockKey;
-            setExtraBlocks(prev => {
-              if (prev.some(b => b.key === newBlockKey)) return prev;
-              return [...prev, { key: newBlockKey, title: u.new_card_title! }];
-            });
+            if (u.new_card_title && !fieldToBlock[u.field_name]) {
+              const newBlockKey = `extra_${u.field_name}`;
+              fieldToBlock[u.field_name] = newBlockKey;
+              setExtraBlocks(prev => {
+                if (prev.some(b => b.key === newBlockKey)) return prev;
+                return [...prev, { key: newBlockKey, title: u.new_card_title! }];
+              });
+            }
           }
-        }
 
-        const validUpdates = updates.filter(u =>
-          u.field_name && u.value && fieldToBlock[u.field_name]
-        );
-        if (validUpdates.length > 0) {
-          await streamCardContent(validUpdates);
+          const validUpdates = updates.filter(u =>
+            u.field_name && u.value && fieldToBlock[u.field_name]
+          );
+          if (validUpdates.length > 0) {
+            await streamCardContent(validUpdates);
+          }
         }
       }
     } catch (err) {
       console.warn('[Interview] supplement failed:', err);
-      await streamBotMsg('好的，我记下了。还有其他想补充的吗？没问题的话，点击下方「确认纪要 →」继续。');
+      setMessages(prev => [...prev, { role: 'bot', text: '好的。点击右边的「确认纪要 →」，我来生成关键提炼发现。' }]);
     }
     setReviewState('waiting_confirm');
   }, [streamBotMsg, streamCardContent]);

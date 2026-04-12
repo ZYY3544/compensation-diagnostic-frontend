@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import WizardProgress from './WizardProgress';
+import DataOverview from './DataOverview';
 import StepCompleteness from './StepCompleteness';
 import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
@@ -20,9 +21,11 @@ interface DataConfirmProps {
 }
 
 export default function DataConfirm({ onComplete, addMsg, setMessages, textInputRef, parseResult, setParseResult, sessionId, interviewNotes }: DataConfirmProps) {
-  const [substep, setSubstep] = useState(1);
+  const [substep, setSubstep] = useState(0);  // 0 = 概览, 1-5 = wizard
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
-  const [viewingStep, setViewingStep] = useState(1);
+  const [viewingStep, setViewingStep] = useState(0);
+  const [overviewReady, setOverviewReady] = useState(false);
+  const overviewMsgsSent = useRef(false);
   const [taxChoice, setTaxChoice] = useState<string | null>(null);
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
@@ -106,6 +109,46 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       return false;
     };
   });
+
+  // =====================================================================
+  // Step 0: 概览阶段 — Sparky 多阶段动画 → 展示概览面板
+  // =====================================================================
+  useEffect(() => {
+    if (substep !== 0 || overviewMsgsSent.current) return;
+    overviewMsgsSent.current = true;
+
+    const emp = parseResult?.employee_count || 0;
+    const gradeCount = parseResult?.grade_count || 0;
+    const deptCount = parseResult?.department_count || 0;
+    const sheetCount = parseResult?.sheet_count || 1;
+    const gradeRange = parseResult?.grades?.length
+      ? `${parseResult.grades[0]}-${parseResult.grades[parseResult.grades.length - 1]}`
+      : '';
+
+    (async () => {
+      // 解析阶段
+      await sendBotMsg('正在读取 Excel 结构...', 300);
+      await sendBotMsg('正在识别字段和数据类型...', 1500);
+      await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 2000);
+
+      // 完整度分析阶段
+      await sendBotMsg('接下来做一下数据完整度分析...', 1200);
+      await sendBotMsg('正在检查各字段填充情况...', 1500);
+
+      const sheetMsg = sheetCount >= 2
+        ? `数据读完了，${sheetCount} 张表都识别到了。你看看右边的字段和数量对不对，没问题的话我们往下走。`
+        : '数据读完了。你看看右边的字段和数量对不对，没问题的话我们往下走。';
+      await sendBotMsg(sheetMsg, 1500);
+
+      setOverviewReady(true);
+    })();
+  }, [substep, parseResult, sendBotMsg]);
+
+  // 概览确认 → 进入 wizard step 1
+  const handleOverviewConfirm = useCallback(() => {
+    setSubstep(1);
+    setViewingStep(1);
+  }, []);
 
   // =====================================================================
   // Step 1: 完整性检查（纯展示，数据已在 upload 时算好）
@@ -277,6 +320,10 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
   const renderStepContent = () => {
     switch (viewingStep) {
+      case 0:
+        return overviewReady && parseResult
+          ? <DataOverview parseResult={parseResult} onConfirm={handleOverviewConfirm} />
+          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 1:
         return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
       case 2:
@@ -302,7 +349,9 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
   return (
     <div className="fade-enter">
-      <WizardProgress currentStep={viewingStep} completedSteps={completedSteps} maxReachedStep={substep} onStepClick={handleStepClick} />
+      {viewingStep >= 1 && (
+        <WizardProgress currentStep={viewingStep} completedSteps={completedSteps} maxReachedStep={substep} onStepClick={handleStepClick} />
+      )}
       {renderStepContent()}
     </div>
   );

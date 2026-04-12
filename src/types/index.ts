@@ -11,6 +11,14 @@ export interface ParseResult {
   grades: string[];
   departments: string[];
   fields_detected: { name: string; detected: boolean }[];
+  all_columns_status?: { name: string; has_data: boolean; mapped_to: string | null }[];
+  sheet_count?: number;
+  sheet_names?: string[];
+  sheet2_summary?: {
+    years: number[];
+    year_count: number;
+    metrics: { name: string; has_data: boolean }[];
+  };
   completeness_issues: {
     row_missing: { row: number; field: string; issue: string }[];
     column_missing: { field: string; impact: string }[];

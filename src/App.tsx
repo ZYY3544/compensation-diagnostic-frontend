@@ -133,14 +133,9 @@ function App() {
       const uploadRes = await uploadFile(sid!, file);
       const result = uploadRes.data as ParseResult;
       setParseResult(result);
-
-      // 解析播报走 Sparky 对话，不在右侧单独占一步
-      const emp = result.employee_count || 0;
-      const grade = result.grade_count || 0;
-      const dept = result.department_count || 0;
-      streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
       setLoading(false);
       setStage(3);
+      // 解析播报动画交给 DataConfirm step 0
     } catch (err) {
       console.warn('Upload API failed', err);
       // 把 "正在解析..." 替换成错误提示

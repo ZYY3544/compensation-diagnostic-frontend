@@ -383,7 +383,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   // 处理用户在审阅阶段的补充输入
   const handleSupplement = useCallback(async (text: string) => {
     setReviewState('processing_supp');
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在整理补充内容...' }]);
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
 
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
     try {

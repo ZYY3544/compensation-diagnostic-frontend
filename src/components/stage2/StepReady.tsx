@@ -29,19 +29,19 @@ export default function StepReady({ onStart, onStepClick, onReupload, parseResul
 
       {/* 汇总卡片 - 可点击回看 */}
       <div className="ready-summary" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(2)}>
+        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(1)}>
           <div className="ready-card-value">{rowMissingCount} 项排除</div>
           <div className="ready-card-label">完整性</div>
         </div>
-        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(3)}>
+        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(2)}>
           <div className="ready-card-value">{correctionCount} 项</div>
           <div className="ready-card-label">数据修正</div>
         </div>
-        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(4)}>
+        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(3)}>
           <div className="ready-card-value">{gradeTotal}/{gradeTotal}</div>
           <div className="ready-card-label">职级匹配</div>
         </div>
-        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(5)}>
+        <div className="ready-card" style={{ cursor: 'pointer' }} onClick={() => onStepClick(4)}>
           <div className="ready-card-value">{funcTotal}/{funcTotal}</div>
           <div className="ready-card-label">职能匹配</div>
         </div>

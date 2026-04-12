@@ -386,7 +386,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
           const updated = [...prev];
           const lastIdx = updated.length - 1;
           if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-            updated[lastIdx] = { role: 'bot', text: '关键提炼发现已生成，看看右边的结果吧。' };
+            updated[lastIdx] = { role: 'bot', text: '关键提炼发现已生成，看看右边的结果吧。如果没问题，可以点击「下一步：上传数据 →」，我们从薪酬数据维度做更量化的分析，看看有没有潜在的结构性问题。' };
           }
           return updated;
         });

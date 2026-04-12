@@ -233,7 +233,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
   // Build context string from current answers for AI (uses ref for latest values)
   const buildContext = (): string => {
-    const bc = blockContentsRef.current;
+    const bc = blockContentsRef.current as unknown as Record<string, string[] | null>;
     const parts: string[] = [];
     if (bc.block1?.length) parts.push('【公司基本情况】' + bc.block1.join('；'));
     if (bc.block2?.length) parts.push('【战略方向】' + bc.block2.join('；'));
@@ -241,6 +241,13 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     if (bc.block4?.length) parts.push('【流失情况】' + bc.block4.join('；'));
     if (bc.block5?.length) parts.push('【核心职能】' + bc.block5.join('；'));
     if (bc.block6?.length) parts.push('【薪酬管理现状】' + bc.block6.join('；'));
+    // 包含用户补充时新建的额外卡片
+    for (const eb of extraBlocks) {
+      const contents = bc[eb.key];
+      if (contents?.length) {
+        parts.push(`【${eb.title}】` + contents.join('；'));
+      }
+    }
     return parts.join('\n');
   };
 
@@ -272,9 +279,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     return '';
   };
 
-  // Process answer: 先调 API 拿结果，再用 showBotReply 展示（loading + 流式回复一条管道）
+  // Process answer: loading 和 API 并行，API 返回后 loading 切换成流式回复
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     console.log('[Interview] processAnswer START step=', step, 'round=', roundRef.current, 'isFollowUp=', isFollowUpRef.current);
+
+    // 立刻显示 loading（不等 API）
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
 
     try {
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -308,14 +318,43 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         ? extracted
         : extracted.value ? [extracted] : []).map(e => ({ ...e, value: (e.value || '').trim() }));
 
-      // API 结果已拿到，现在展示：loading 动画 → 流式回复（一条管道，强绑定）
+      // API 返回了，把 loading 消息替换成空文本，开始流式填充
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '' };
+        }
+        return updated;
+      });
+
+      const streamReply = (text: string, chips?: string[]): Promise<void> => {
+        return new Promise<void>((resolve) => {
+          let displayed = 0;
+          const timer = setInterval(() => {
+            displayed = Math.min(displayed + 1, text.length);
+            const currentText = text.slice(0, displayed);
+            const isDone = displayed >= text.length;
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+                updated[lastIdx] = { role: 'bot', text: currentText, chips: isDone ? chips : undefined };
+              }
+              return updated;
+            });
+            if (isDone) { clearInterval(timer); resolve(); }
+          }, 30);
+        });
+      };
+
       if (followUp) {
         console.log('[Interview] BRANCH=followUp, stay at step', step);
         const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
         lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
         isFollowUpRef.current = true;
         roundRef.current += 1;
-        await showBotReply(reply, { loadingText: 'Sparky 正在思考...', loadingMs: 800 });
+        await streamReply(reply);
       } else {
         const nextStep = step + 1;
         console.log('[Interview] BRANCH=advance, step', step, '->', nextStep);
@@ -323,11 +362,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
         const chips = questionChips[nextStep];
-        await showBotReply(reply, { loadingText: 'Sparky 正在思考...', loadingMs: 800, chips });
+        await streamReply(reply, chips);
         setInterviewStep(nextStep);
       }
 
-      // 卡片内容更新（reply 已经展示完了，现在更新右侧）
+      // 卡片内容更新
       const changedItems = items.filter(item => {
         if (!item.value) return false;
         const block = fieldToBlock[item.field_name] as keyof BlockContents | undefined;
@@ -344,15 +383,23 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
     } catch (err) {
       console.error('[Interview] CATCH step=', step, 'err=', err);
+      // 把 loading 替换成错误提示
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '网络有点问题，没收到回复。可以再说一遍吗？' };
+        }
+        return updated;
+      });
       const field = getFieldForStep(step);
       const summary = answerText.length > 80 ? answerText.slice(0, 80) + '...' : answerText;
       const prevVal = getPreviousValue(step);
       if (!prevVal) {
         await streamCardContent([{ field_name: field, value: '（待 AI 整理）' + summary }]);
       }
-      await showBotReply('网络有点问题，没收到回复。可以再说一遍吗？');
     }
-  }, [showBotReply, streamCardContent, blockContents]);
+  }, [streamCardContent, blockContents]);
 
   // 用户确认纪要 → 生成关键发现
   const handleConfirmReview = useCallback(() => {
@@ -360,6 +407,9 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     setReviewState('generating_findings');
     setShowFindings(true);
     setFindingsLoading(true);
+
+    // 左侧 Sparky 给一条反馈
+    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在生成关键提炼发现...' }]);
 
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
     fetch(`${API_BASE}/chat/findings`, {
@@ -370,6 +420,15 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       .then(res => res.json())
       .then(data => {
         const fullText = data.findings || '';
+        // 把 loading 消息替换成"已生成"
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+            updated[lastIdx] = { role: 'bot', text: '关键提炼发现已生成，看看右边的结果吧。' };
+          }
+          return updated;
+        });
         let displayed = 0;
         const timer = setInterval(() => {
           displayed = Math.min(displayed + 1, fullText.length);
@@ -385,6 +444,14 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         setFindingsText('关键发现生成失败，请确认网络连接后刷新重试。');
         setFindingsLoading(false);
         setReviewState('done');
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+            updated[lastIdx] = { role: 'bot', text: '生成失败了，请刷新重试。' };
+          }
+          return updated;
+        });
       });
   }, [reviewState]);
 

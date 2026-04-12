@@ -97,7 +97,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       chips?: string[];
     },
   ): Promise<void> => {
-    const { loadingText, loadingMs = 800, chips } = options || {};
+    const { loadingText, loadingMs = 1000 + Math.random() * 500, chips } = options || {};
 
     if (loadingText) {
       // 追加 loading 消息
@@ -283,8 +283,10 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     console.log('[Interview] processAnswer START step=', step, 'round=', roundRef.current, 'isFollowUp=', isFollowUpRef.current);
 
-    // 立刻显示 loading（不等 API）
+    // 立刻显示 loading（不等 API），同时记录开始时间
     setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+    const thinkingStart = Date.now();
+    const minThinkingMs = 1000 + Math.random() * 500; // 1.0-1.5 秒随机
 
     try {
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -318,7 +320,13 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         ? extracted
         : extracted.value ? [extracted] : []).map(e => ({ ...e, value: (e.value || '').trim() }));
 
-      // API 返回了，把 loading 消息替换成空文本，开始流式填充
+      // 确保 loading 至少跑 1-1.5 秒，避免一闪而过
+      const thinkingElapsed = Date.now() - thinkingStart;
+      if (thinkingElapsed < minThinkingMs) {
+        await new Promise(r => setTimeout(r, minThinkingMs - thinkingElapsed));
+      }
+
+      // loading 时间够了，把 loading 消息替换成空文本，开始流式填充
       setMessages(prev => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
@@ -482,7 +490,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await showBotReply(reply);
       } else {
         // 有实际补充：loading → 流式回复
-        await showBotReply(reply, { loadingText: 'Sparky 正在整理补充内容...', loadingMs: 800 });
+        await showBotReply(reply, { loadingText: 'Sparky 正在整理补充内容...' });
 
         // 处理 updates：区分现有卡片更新 vs 新建卡片
         if (updates.length > 0) {

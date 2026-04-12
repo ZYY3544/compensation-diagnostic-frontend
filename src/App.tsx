@@ -164,22 +164,19 @@ function App() {
   };
 
   // Handle Stage 1/3 non-chat text input (passed to SparkyPanel via onNonChatSend)
+  // 用户消息必须在 handler 之前添加，否则 handler 内部的 loading 消息会跑到用户消息上面
   const handleNonChatSend = useCallback((text: string): boolean => {
     // Stage 1 interview text sync
     if (stage === 1 && stage3TextHandlerRef.current) {
-      const handled = stage3TextHandlerRef.current(text);
-      if (handled) {
-        setMessages(prev => [...prev, { role: 'user', text }]);
-        return true;
-      }
+      setMessages(prev => [...prev, { role: 'user', text }]);
+      stage3TextHandlerRef.current(text);
+      return true;
     }
     // Stage 3 DataConfirm text sync
     if (stage === 3 && stage2InputHandlerRef.current) {
-      const handled = stage2InputHandlerRef.current(text);
-      if (handled) {
-        setMessages(prev => [...prev, { role: 'user', text }]);
-        return true;
-      }
+      setMessages(prev => [...prev, { role: 'user', text }]);
+      stage2InputHandlerRef.current(text);
+      return true;
     }
     return false;
   }, [stage]);

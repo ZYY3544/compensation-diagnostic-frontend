@@ -303,23 +303,18 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         isFollowUpRef.current = true;
         roundRef.current += 1;
         await streamBotMsg(reply);
-      } else if (step < 6) {
+      } else {
+        // Q1-Q6 统一逻辑：follow_up=false → 展示收束 reply → 推进 step
+        // Q1-Q5：reply 包含过渡到下一题的引子 + 下一题的 chips
+        // Q6：reply 是干净的收束总结，没有下一题 → step 推进到 7 → 触发 review 流程
         const nextStep = step + 1;
         console.log('[Interview] BRANCH=advance, step', step, '->', nextStep, 'round reset to 1');
         isFollowUpRef.current = false;
         roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
-        const chips = questionChips[nextStep];
+        const chips = questionChips[nextStep]; // Q6→7 时 questionChips[7] 是 undefined，不带 chips
         await streamBotMsg(reply, chips);
         setInterviewStep(nextStep);
-      } else {
-        console.log('[Interview] BRANCH=finish (Q6), enter review phase');
-        isFollowUpRef.current = false;
-        roundRef.current = 1;
-        lastSparkyQuestionRef.current = '';
-        // 先展示 Q6 的收束 reply，然后进入审阅阶段（不直接生成 findings）
-        await streamBotMsg(reply);
-        setInterviewStep(7);
       }
 
       // Step 2: Stream card content after Sparky's reply is done (only if value actually changed)

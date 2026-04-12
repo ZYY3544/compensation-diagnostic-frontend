@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
 import WizardProgress from './WizardProgress';
-import StepParsing from './StepParsing';
 import StepCompleteness from './StepCompleteness';
 import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
@@ -21,7 +20,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);
-  const [parsing, setParsing] = useState(true);
   const [taxChoice, setTaxChoice] = useState<string | null>(null);
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
@@ -31,7 +29,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
-  const [step6MsgsSent, setStep6MsgsSent] = useState(false);
 
   // Helper: send Sparky message with streaming output
   const sendBotMsg = useCallback((text: string, delay: number) => {
@@ -75,7 +72,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     setTimeout(() => {
       addMsg({ role: 'bot', text: `好的，按${label}数据处理 ✓` });
     }, 300);
-    setTimeout(() => advanceStep(3), 1200);
+    setTimeout(() => advanceStep(2), 1200);
   }, [addMsg, advanceStep]);
 
   // Handle L7 choice
@@ -85,7 +82,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     setTimeout(() => {
       addMsg({ role: 'bot', text: `明白了，L7 按${label}处理 ✓` });
     }, 300);
-    setTimeout(() => advanceStep(4), 1200);
+    setTimeout(() => advanceStep(3), 1200);
   }, [addMsg, advanceStep]);
 
   // Handle function choice
@@ -95,7 +92,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     setTimeout(() => {
       addMsg({ role: 'bot', text: `收到，增长黑客归入${label}类别 ✓` });
     }, 300);
-    setTimeout(() => advanceStep(5), 1200);
+    setTimeout(() => advanceStep(4), 1200);
   }, [addMsg, advanceStep]);
 
   // Register text input handler for right-panel chat sync
@@ -103,7 +100,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     textInputRef.current = (text: string) => {
       const lower = text.toLowerCase();
       // Tax choice
-      if (viewingStep === 3 && taxChoice === null) {
+      if (viewingStep === 2 && taxChoice === null) {
         if (lower.includes('税前')) {
           handleTaxChoice('pre');
           return true;
@@ -114,7 +111,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         }
       }
       // L7 choice
-      if (viewingStep === 4 && l7Choice === null) {
+      if (viewingStep === 3 && l7Choice === null) {
         if (lower.includes('总监')) {
           handleL7Choice('director');
           return true;
@@ -125,7 +122,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         }
       }
       // Func choice
-      if (viewingStep === 5 && funcChoice === null) {
+      if (viewingStep === 4 && funcChoice === null) {
         if (lower.includes('营销') || lower.includes('数字')) {
           handleFuncChoice('digital');
           return true;
@@ -139,32 +136,14 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     };
   });
 
-  // Step 1: auto messages + auto advance
+  // Step 1: completeness check messages
   useEffect(() => {
     if (substep === 1 && !step1MsgsSent) {
       setStep1MsgsSent(true);
-      const empCount = parseResult?.employee_count ?? 0;
-      const gradeCount = parseResult?.grade_count ?? 0;
-      const deptCount = parseResult?.department_count ?? 0;
-      const grades = parseResult?.grades?.join('-') || '—';
-      sendBotMsg('让我先看看你的数据结构...', 300).then(() => {
-        setTimeout(() => {
-          setParsing(false);
-          sendBotMsg(`好的，解析完成！识别到 ${empCount} 条员工记录，覆盖 ${gradeCount} 个职级（${grades}）、${deptCount} 个部门。右边确认无误后点下一步。`, 500);
-        }, 2000);
-      });
-    }
-  }, [substep, step1MsgsSent, sendBotMsg, parseResult]);
-
-  // Step 2: completeness check messages (dynamic from parseResult)
-  useEffect(() => {
-    if (substep === 2 && !step2MsgsSent) {
-      setStep2MsgsSent(true);
       const sparky = (parseResult as any)?.sparky_messages;
       const rowMissing = parseResult?.completeness_issues?.row_missing || [];
       const colMissing = parseResult?.completeness_issues?.column_missing || [];
 
-      // Build dynamic missing message
       let missingMsg: string;
       if (sparky?.step2_missing) {
         missingMsg = sparky.step2_missing;
@@ -175,7 +154,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         missingMsg = '所有记录的关键字段都有值，数据完整度很好！';
       }
 
-      // Build dynamic column message
       let colMsg: string;
       if (sparky?.step2_columns) {
         colMsg = sparky.step2_columns;
@@ -193,18 +171,17 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           return sendBotMsg(colMsg, 1200);
         }
       }).then(() => {
-        // 没有完整性问题时自动推进到下一步
         if (rowMissing.length === 0 && colMissing.length === 0) {
-          setTimeout(() => advanceStep(2), 1500);
+          setTimeout(() => advanceStep(1), 1500);
         }
       });
     }
-  }, [substep, step2MsgsSent, sendBotMsg, parseResult, advanceStep]);
+  }, [substep, step1MsgsSent, sendBotMsg, parseResult, advanceStep]);
 
-  // Step 3: data cleaning messages (dynamic from parseResult)
+  // Step 2: data cleaning messages
   useEffect(() => {
-    if (substep === 3 && !step3MsgsSent) {
-      setStep3MsgsSent(true);
+    if (substep === 2 && !step2MsgsSent) {
+      setStep2MsgsSent(true);
       const sparky = (parseResult as any)?.sparky_messages;
       const corrections = parseResult?.cleansing_corrections || [];
 
@@ -223,12 +200,12 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         return sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 800);
       });
     }
-  }, [substep, step3MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step2MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 4: grade matching messages (dynamic from parseResult)
+  // Step 3: grade matching messages
   useEffect(() => {
-    if (substep === 4 && !step4MsgsSent) {
-      setStep4MsgsSent(true);
+    if (substep === 3 && !step3MsgsSent) {
+      setStep3MsgsSent(true);
       const sparky = (parseResult as any)?.sparky_messages;
       const gradeMatching = parseResult?.grade_matching || [];
       const unconfirmed = gradeMatching.filter(g => !g.confirmed);
@@ -248,12 +225,12 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         return sendBotMsg(gradeMsg, 1000);
       });
     }
-  }, [substep, step4MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step3MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 5: function matching messages (dynamic from parseResult)
+  // Step 4: function matching messages
   useEffect(() => {
-    if (substep === 5 && !step5MsgsSent) {
-      setStep5MsgsSent(true);
+    if (substep === 4 && !step4MsgsSent) {
+      setStep4MsgsSent(true);
       const sparky = (parseResult as any)?.sparky_messages;
       const funcMatching = parseResult?.function_matching || [];
       const unconfirmed = funcMatching.filter(f => !f.confirmed);
@@ -273,12 +250,12 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         return sendBotMsg(funcMsg, 1000);
       });
     }
-  }, [substep, step5MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step4MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 6: ready messages (dynamic from parseResult)
+  // Step 5: ready messages
   useEffect(() => {
-    if (substep === 6 && !step6MsgsSent) {
-      setStep6MsgsSent(true);
+    if (substep === 5 && !step5MsgsSent) {
+      setStep5MsgsSent(true);
       const sparky = (parseResult as any)?.sparky_messages;
       const unlocked = parseResult?.unlocked_modules || [];
       const locked = parseResult?.locked_modules || [];
@@ -304,7 +281,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         return sendBotMsg(lockedMsg, 1200);
       });
     }
-  }, [substep, step6MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step5MsgsSent, sendBotMsg, parseResult]);
 
   // Handle completeness check accept
   const handleAcceptCompleteness = () => {
@@ -314,7 +291,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       ? `好的，这 ${count} 条缺失记录已排除，不影响整体分析。接下来检查一下数据口径问题...`
       : '好的，数据完整度没问题。接下来检查一下数据口径问题...';
     addMsg({ role: 'bot', text: msg });
-    setTimeout(() => advanceStep(2), 800);
+    setTimeout(() => advanceStep(1), 800);
   };
 
   const handleReupload = () => {
@@ -341,10 +318,8 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const renderStepContent = () => {
     switch (viewingStep) {
       case 1:
-        return <StepParsing parsing={parsing} parseResult={parseResult} onNext={() => advanceStep(1)} />;
-      case 2:
         return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
-      case 3:
+      case 2:
         return (
           <StepCleansing
             taxChoice={taxChoice}
@@ -352,28 +327,28 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
             reverted={reverted}
             onRevert={handleRevert}
             parseResult={parseResult}
-            onNext={() => advanceStep(3)}
+            onNext={() => advanceStep(2)}
           />
         );
-      case 4:
+      case 3:
         return (
           <StepGradeMatch
             l7Choice={l7Choice}
             onL7Choice={handleL7Choice}
             parseResult={parseResult}
-            onNext={() => advanceStep(4)}
+            onNext={() => advanceStep(3)}
           />
         );
-      case 5:
+      case 4:
         return (
           <StepFuncMatch
             funcChoice={funcChoice}
             onFuncChoice={handleFuncChoice}
             parseResult={parseResult}
-            onNext={() => advanceStep(5)}
+            onNext={() => advanceStep(4)}
           />
         );
-      case 6:
+      case 5:
         return (
           <StepReady
             onStart={onComplete}

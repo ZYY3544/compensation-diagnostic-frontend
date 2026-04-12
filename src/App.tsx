@@ -118,6 +118,8 @@ function App() {
   // Handle upload click — call backend
   const handleUpload = async (file: File) => {
     setLoading(true);
+    addMsg({ role: 'bot', text: '收到文件，正在解析...' });
+
     try {
       // 1. Create session if not already created
       let sid = sessionId;
@@ -129,16 +131,28 @@ function App() {
 
       // 2. Upload the real file
       const uploadRes = await uploadFile(sid!, file);
-      setParseResult(uploadRes.data as ParseResult);
+      const result = uploadRes.data as ParseResult;
+      setParseResult(result);
 
-      streamMsg(`文件 "${file.name}" 上传成功，让我先看看数据结构...`);
+      // 解析播报走 Sparky 对话，不在右侧单独占一步
+      const emp = result.employee_count || 0;
+      const grade = result.grade_count || 0;
+      const dept = result.department_count || 0;
+      streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
       setLoading(false);
       setStage(3);
     } catch (err) {
       console.warn('Upload API failed', err);
-      streamMsg('上传失败了，后端服务可能还在启动中（Render 冷启动约 30 秒）。请稍后重新上传。');
+      // 把 "正在解析..." 替换成错误提示
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
+          updated[lastIdx] = { role: 'bot', text: '上传失败了，后端服务可能还在启动中（Render 冷启动约 30 秒）。请稍后重新上传。' };
+        }
+        return updated;
+      });
       setLoading(false);
-      // 不跳转，留在上传页面让用户重试
     }
   };
 

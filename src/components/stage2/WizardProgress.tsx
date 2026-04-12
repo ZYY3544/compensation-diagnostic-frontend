@@ -8,12 +8,11 @@ interface WizardProgressProps {
 }
 
 const steps = [
-  { num: 1, label: '数据解析' },
-  { num: 2, label: '完整性检查' },
-  { num: 3, label: '数据清洗' },
-  { num: 4, label: '职级匹配' },
-  { num: 5, label: '职能匹配' },
-  { num: 6, label: '准备就绪' },
+  { num: 1, label: '完整性检查' },
+  { num: 2, label: '数据清洗' },
+  { num: 3, label: '职级匹配' },
+  { num: 4, label: '职能匹配' },
+  { num: 5, label: '准备就绪' },
 ];
 
 export default function WizardProgress({ currentStep, completedSteps, maxReachedStep, onStepClick }: WizardProgressProps) {

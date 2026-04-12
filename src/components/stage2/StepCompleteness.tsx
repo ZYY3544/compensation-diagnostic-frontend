@@ -44,8 +44,18 @@ export default function StepCompleteness({ onAccept, onReupload, parseResult }: 
   const uniqueRows = new Set(rowMissing.map(r => r.row));
   const totalAffected = uniqueRows.size;
 
+  // Sheet 2 经营数据状态
+  const sheet2 = parseResult?.sheet2_summary;
+  const sheetCount = parseResult?.sheet_count || 1;
+  const hasSheet2 = sheetCount >= 2;
+  const sheet2HasData = hasSheet2 && sheet2 && sheet2.metrics.some(m => m.has_data);
+  const sheet2FilledMetrics = sheet2?.metrics.filter(m => m.has_data).length || 0;
+  const sheet2Years = sheet2?.years || [];
+  // 如果有年份数据，检查哪些年有数据（简化：直接用 year_count）
+  const noSheet2 = !hasSheet2 || !sheet2HasData;
+
   const hasRowIssues = fieldGroups.length > 0;
-  const hasColIssues = colMissing.length > 0;
+  const hasColIssues = colMissing.length > 0 || noSheet2;
   const noIssues = !hasRowIssues && !hasColIssues;
 
   return (
@@ -88,12 +98,12 @@ export default function StepCompleteness({ onAccept, onReupload, parseResult }: 
         </div>
       )}
 
-      {/* 可选字段未填写 */}
+      {/* 可选字段未填写 + Sheet 2 状态 */}
       {hasColIssues && (
         <div className="optional-section">
           <div className="optional-section-header">
             <span className="optional-section-title">可选字段未填写</span>
-            <span className="optional-badge">{colMissing.length} 列</span>
+            <span className="optional-badge">{colMissing.length + (noSheet2 ? 1 : 0)} 项</span>
           </div>
           <div className="optional-desc">以下字段整列未填写，对应的深度分析将不可用</div>
 
@@ -107,9 +117,28 @@ export default function StepCompleteness({ onAccept, onReupload, parseResult }: 
             </div>
           ))}
 
+          {noSheet2 && (
+            <div className="optional-item">
+              <div className="optional-item-left">
+                <span style={{ color: 'var(--text-muted)' }}>○</span>
+                未检测到经营数据
+              </div>
+              <div className="optional-item-right">人工成本趋势分析不可用</div>
+            </div>
+          )}
+
           <div className="optional-footer">
             不影响核心诊断（外部竞争力、内部公平性等），仅影响部分深度分析
           </div>
+        </div>
+      )}
+
+      {/* Sheet 2 有数据时一行展示 */}
+      {sheet2HasData && (
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ color: 'var(--green)', fontWeight: 600 }}>✓</span>
+          公司经营数据（Sheet 2）：已识别 {sheet2FilledMetrics} 项指标
+          {sheet2Years.length > 0 && `，${sheet2Years[0]}-${sheet2Years[sheet2Years.length - 1]} 有数据`}
         </div>
       )}
 

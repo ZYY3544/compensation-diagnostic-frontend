@@ -384,8 +384,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   const handleSupplement = useCallback(async (text: string) => {
     setReviewState('processing_supp');
 
+    // 等一个 tick，让 handleNonChatSend 里的 user 消息先添加到 messages 里
+    // 否则 loading 消息会出现在 user 消息上面（和 processAnswer 同样的处理）
+    await new Promise(r => setTimeout(r, 50));
+
     // 快速判断：用户是不是表示"没有要补充的"
-    // 如果是，不显示 loading 动画，直接发 API 拿确认引导语
     const NO_SUPPLEMENT_PATTERNS = /^(没有|暂时没有|没什么|没了|差不多|不用了|OK|ok|好了|可以了|就这些|没其他|不需要|nope|no)/i;
     const isLikelyNoSupplement = NO_SUPPLEMENT_PATTERNS.test(text.trim());
 

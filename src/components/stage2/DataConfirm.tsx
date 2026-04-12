@@ -127,13 +127,13 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
     (async () => {
       // 解析阶段
-      await sendBotMsg('正在读取 Excel 结构...', 300);
-      await sendBotMsg('正在识别字段和数据类型...', 1500);
-      await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 2000);
+      await sendBotMsg('正在读取 Excel 结构...', 1500);
+      await sendBotMsg('正在识别字段和数据类型...', 2500);
+      await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 3000);
 
       // 完整度分析阶段
-      await sendBotMsg('接下来做一下数据完整度分析...', 1200);
-      await sendBotMsg('正在检查各字段填充情况...', 1500);
+      await sendBotMsg('接下来做一下数据完整度分析...', 2500);
+      await sendBotMsg('正在检查各字段填充情况...', 2500);
 
       // 调 AI 生成总结（和动画并行，结果回来再展示）
       const filledCount = (parseResult?.all_columns_status || []).filter(c => c.has_data).length;

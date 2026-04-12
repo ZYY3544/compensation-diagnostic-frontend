@@ -279,16 +279,12 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
     return '';
   };
 
-  // Process answer: loading 和 API 并行，API 返回后 loading 切换成流式回复
+  // Process answer: 先调 API 拿到结果 → 再 showBotReply（loading + 流式回复绑死）
   const processAnswer = useCallback(async (step: number, answerText: string) => {
     console.log('[Interview] processAnswer START step=', step, 'round=', roundRef.current, 'isFollowUp=', isFollowUpRef.current);
 
-    // 立刻显示 loading（不等 API），同时记录开始时间
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
-    const thinkingStart = Date.now();
-    const minThinkingMs = 1000 + Math.random() * 500; // 1.0-1.5 秒随机
-
     try {
+      // 1. 先调 API 拿结果（用户短暂等待，不显示任何东西）
       const API_BASE = import.meta.env.VITE_API_URL || '/api';
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 90000);
@@ -315,54 +311,19 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       const extracted = data.extracted || [];
       const reply = (data.reply || '好的，了解了。').trim();
       const followUp = data.follow_up === true;
-      console.log('[Interview] API OK step=', step, 'followUp=', followUp, 'isFollowUp=', isFollowUpRef.current);
+      console.log('[Interview] API OK step=', step, 'followUp=', followUp);
       const items: Array<{field_name: string; value: string}> = (Array.isArray(extracted)
         ? extracted
         : extracted.value ? [extracted] : []).map(e => ({ ...e, value: (e.value || '').trim() }));
 
-      // 确保 loading 至少跑 1-1.5 秒，避免一闪而过
-      const thinkingElapsed = Date.now() - thinkingStart;
-      if (thinkingElapsed < minThinkingMs) {
-        await new Promise(r => setTimeout(r, minThinkingMs - thinkingElapsed));
-      }
-
-      // loading 时间够了，把 loading 消息替换成空文本，开始流式填充
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '' };
-        }
-        return updated;
-      });
-
-      const streamReply = (text: string, chips?: string[]): Promise<void> => {
-        return new Promise<void>((resolve) => {
-          let displayed = 0;
-          const timer = setInterval(() => {
-            displayed = Math.min(displayed + 1, text.length);
-            const currentText = text.slice(0, displayed);
-            const isDone = displayed >= text.length;
-            setMessages(prev => {
-              const updated = [...prev];
-              const lastIdx = updated.length - 1;
-              if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-                updated[lastIdx] = { role: 'bot', text: currentText, chips: isDone ? chips : undefined };
-              }
-              return updated;
-            });
-            if (isDone) { clearInterval(timer); resolve(); }
-          }, 30);
-        });
-      };
-
+      // 2. API 结果已在手里 → showBotReply（loading 是回复的前置装饰，绑死在一起）
       if (followUp) {
         console.log('[Interview] BRANCH=followUp, stay at step', step);
         const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
         lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
         isFollowUpRef.current = true;
         roundRef.current += 1;
-        await streamReply(reply);
+        await showBotReply(reply, { loadingText: 'Sparky 正在思考...' });
       } else {
         const nextStep = step + 1;
         console.log('[Interview] BRANCH=advance, step', step, '->', nextStep);
@@ -370,11 +331,11 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         roundRef.current = 1;
         lastSparkyQuestionRef.current = '';
         const chips = questionChips[nextStep];
-        await streamReply(reply, chips);
+        await showBotReply(reply, { loadingText: 'Sparky 正在思考...', chips });
         setInterviewStep(nextStep);
       }
 
-      // 卡片内容更新
+      // 3. 卡片内容更新
       const changedItems = items.filter(item => {
         if (!item.value) return false;
         const block = fieldToBlock[item.field_name] as keyof BlockContents | undefined;
@@ -391,15 +352,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
 
     } catch (err) {
       console.error('[Interview] CATCH step=', step, 'err=', err);
-      // 把 loading 替换成错误提示
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '网络有点问题，没收到回复。可以再说一遍吗？' };
-        }
-        return updated;
-      });
+      await showBotReply('网络有点问题，没收到回复。可以再说一遍吗？');
       const field = getFieldForStep(step);
       const summary = answerText.length > 80 ? answerText.slice(0, 80) + '...' : answerText;
       const prevVal = getPreviousValue(step);
@@ -407,7 +360,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await streamCardContent([{ field_name: field, value: '（待 AI 整理）' + summary }]);
       }
     }
-  }, [streamCardContent, blockContents]);
+  }, [showBotReply, streamCardContent, blockContents]);
 
   // 用户确认纪要 → 生成关键发现
   const handleConfirmReview = useCallback(() => {
@@ -464,17 +417,13 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
   }, [reviewState]);
 
   // 处理用户在审阅阶段的补充输入
-  // 跟 processAnswer 一样的模式：立刻显示 loading → API 并行跑 → 替换成回复
+  // 先调 API 拿到结果 → 再 showBotReply（loading 是回复的前置装饰，绑死）
   const handleSupplement = useCallback(async (text: string) => {
     setReviewState('processing_supp');
 
-    // 立刻显示 loading
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
-    const thinkingStart = Date.now();
-    const minThinkingMs = 1000 + Math.random() * 500;
-
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
     try {
+      // 1. 先调 API 拿结果（不显示任何东西）
       const res = await fetch(`${API_BASE}/chat/supplement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -489,74 +438,41 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
       const reply = (data.reply || '好的，我记下了。还有其他想补充的吗？').trim();
       const noSupplement = data.no_supplement === true;
 
-      // 确保 loading 至少跑够
-      const elapsed = Date.now() - thinkingStart;
-      if (elapsed < minThinkingMs) {
-        await new Promise(r => setTimeout(r, minThinkingMs - elapsed));
-      }
+      // 2. API 结果已在手里 → showBotReply
+      if (noSupplement) {
+        // 用户说没有 → 没有 loading，直接展示回复
+        await showBotReply(reply);
+      } else {
+        // 有实际补充 → loading + 流式回复
+        await showBotReply(reply, { loadingText: 'Sparky 正在思考...' });
 
-      // 把 loading 替换成空文本，开始流式填充
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '' };
-        }
-        return updated;
-      });
-
-      // 流式展示回复
-      await new Promise<void>((resolve) => {
-        let displayed = 0;
-        const timer = setInterval(() => {
-          displayed = Math.min(displayed + 1, reply.length);
-          const currentText = reply.slice(0, displayed);
-          const isDone = displayed >= reply.length;
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-              updated[lastIdx] = { role: 'bot', text: currentText };
+        // 3. 更新卡片
+        if (updates.length > 0) {
+          for (const u of updates) {
+            if (!u.field_name || !u.value) continue;
+            if (u.new_card_title && !fieldToBlock[u.field_name]) {
+              const newBlockKey = `extra_${u.field_name}`;
+              fieldToBlock[u.field_name] = newBlockKey;
+              setExtraBlocks(prev => {
+                if (prev.some(b => b.key === newBlockKey)) return prev;
+                return [...prev, { key: newBlockKey, title: u.new_card_title! }];
+              });
             }
-            return updated;
-          });
-          if (isDone) { clearInterval(timer); resolve(); }
-        }, 30);
-      });
-
-      // 有实际补充时才更新卡片
-      if (!noSupplement && updates.length > 0) {
-        for (const u of updates) {
-          if (!u.field_name || !u.value) continue;
-          if (u.new_card_title && !fieldToBlock[u.field_name]) {
-            const newBlockKey = `extra_${u.field_name}`;
-            fieldToBlock[u.field_name] = newBlockKey;
-            setExtraBlocks(prev => {
-              if (prev.some(b => b.key === newBlockKey)) return prev;
-              return [...prev, { key: newBlockKey, title: u.new_card_title! }];
-            });
           }
-        }
-        const validUpdates = updates.filter(u =>
-          u.field_name && u.value && fieldToBlock[u.field_name]
-        );
-        if (validUpdates.length > 0) {
-          await streamCardContent(validUpdates);
+          const validUpdates = updates.filter(u =>
+            u.field_name && u.value && fieldToBlock[u.field_name]
+          );
+          if (validUpdates.length > 0) {
+            await streamCardContent(validUpdates);
+          }
         }
       }
     } catch (err) {
       console.warn('[Interview] supplement failed:', err);
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '好的。点击右边的「确认纪要 →」，我来生成关键提炼发现。' };
-        }
-        return updated;
-      });
+      await showBotReply('好的。点击右边的「确认纪要 →」，我来生成关键提炼发现。');
     }
     setReviewState('waiting_confirm');
-  }, [streamCardContent]);
+  }, [showBotReply, streamCardContent]);
 
   // Handle text input from Sparky panel
   const handleTextAnswer = useCallback((text: string) => {

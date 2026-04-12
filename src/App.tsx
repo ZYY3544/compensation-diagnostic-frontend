@@ -26,15 +26,32 @@ function LoadingView() {
   );
 }
 
+// Dev 模式：?dev=1 跳过访谈，直接进入上传阶段
+const DEV_MODE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1';
+
+const MOCK_INTERVIEW_NOTES = {
+  answers: {},
+  blockContents: {
+    block1: ['**行业**：跨境电商，主营消费电子出海\n**规模**：正式员工约 6000 人，2025 年营收约 280 亿\n**阶段**：规模化增长，同时拓展新业务线\n**组织**：按 BU 划分（charging / 影音 / 智新 / 机器人），设有中枢职能和中台部门\n**布局**：总部深圳，国内多城市 + 海外主要国家设有 office'],
+    block2: ['**战略重点**：AI 转型、业务扩张并行\n**AI 转型路径**：内部提效先行，先用在流程和协同环节，不是一上来就押注产品化\n**扩张方向**：海外新市场 + 新业务线（机器人）持续投入'],
+    block3: ['**核心诉求**：控成本 + 留人\n**优先级**：控成本偏结构性（扩张和降本同时要），留人集中在研发核心岗\n**诉求来源**：业务扩张阶段，薪酬预算压力大，同时核心人才流失加剧'],
+    block4: ['**流失部门**：研发（主要）、产品（次要）\n**流失层级**：P6-P7 中高级工程师，影响业务连续性\n**流失去向**：同行大厂、AI 初创公司\n**流失原因**：薪酬竞争力 + 职业发展空间'],
+    block5: ['**核心职能**：研发（充电 / 影音 BU）、产品设计、跨境运营\n**关键岗位**：硬件研发、算法、海外市场运营\n**市场竞争**：研发岗位竞争激烈，主要对手是同行大厂和 AI 创业公司\n**重合信号**：流失最重的研发部门就是核心职能，风险集中'],
+    block6: ['**薪酬定位**：跟随市场（没有明确的 P50/P75 定位）\n**岗位差异化**：基本一把尺子走到底，核心岗位没有特别倾斜\n**数据来源**：主要靠 HR 的同行交流，没有体系化的市场报告\n**调薪机制**：年度普调，没有明确的预算分配规则\n**固浮比**：固定为主，年终奖占比较低'],
+  },
+};
+
 function App() {
-  const [stage, setStage] = useState<Stage>(1);
+  const [stage, setStage] = useState<Stage>(DEV_MODE ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [panelVisible, setPanelVisible] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [reportData, setReportData] = useState<ReportData | null>(null);
-  const [interviewNotes, setInterviewNotes] = useState<any>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [interviewNotes, setInterviewNotes] = useState<any>(DEV_MODE ? MOCK_INTERVIEW_NOTES : null);
+  const [messages, setMessages] = useState<Message[]>(
+    DEV_MODE ? [{ role: 'bot', text: '[ DEV ] 访谈已跳过，请直接上传薪酬数据 Excel。' }] : []
+  );
   const welcomeSent = useRef(false);
   // Ref for Stage2 to register its text input handler
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
@@ -45,6 +62,12 @@ function App() {
   useEffect(() => {
     if (welcomeSent.current) return;
     welcomeSent.current = true;
+
+    if (DEV_MODE) {
+      // Dev 模式：静默创建 session，不播欢迎语
+      createSession().then(res => setSessionId(res.data.id)).catch(() => {});
+      return;
+    }
 
     // Show typing indicator
     setMessages([{ role: 'bot', text: '' }]);

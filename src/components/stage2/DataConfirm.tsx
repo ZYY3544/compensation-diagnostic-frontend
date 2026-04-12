@@ -198,9 +198,14 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         if (colMsg) {
           return sendBotMsg(colMsg, 1200);
         }
+      }).then(() => {
+        // 没有完整性问题时自动推进到下一步
+        if (rowMissing.length === 0 && colMissing.length === 0) {
+          setTimeout(() => advanceStep(2), 1500);
+        }
       });
     }
-  }, [substep, step2MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step2MsgsSent, sendBotMsg, parseResult, advanceStep]);
 
   // Step 3: data cleaning messages (dynamic from parseResult)
   useEffect(() => {

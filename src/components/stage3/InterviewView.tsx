@@ -490,7 +490,7 @@ export default function InterviewView({ onComplete, onSkip, addMsg: _addMsg, set
         await showBotReply(reply);
       } else {
         // 有实际补充：loading → 流式回复
-        await showBotReply(reply, { loadingText: 'Sparky 正在整理补充内容...' });
+        await showBotReply(reply, { loadingText: 'Sparky 正在思考...' });
 
         // 处理 updates：区分现有卡片更新 vs 新建卡片
         if (updates.length > 0) {

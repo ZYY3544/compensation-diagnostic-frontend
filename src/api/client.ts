@@ -14,6 +14,15 @@ export const uploadFile = (sessionId: string, file: File) => {
   return api.post(`/upload/${sessionId}`, formData);
 };
 
+export const runCleansing = (sessionId: string) =>
+  api.post(`/pipeline/${sessionId}/cleansing`);
+
+export const runGradeMatch = (sessionId: string) =>
+  api.post(`/pipeline/${sessionId}/grade-match`);
+
+export const runFuncMatch = (sessionId: string) =>
+  api.post(`/pipeline/${sessionId}/func-match`);
+
 export const runAnalysis = (sessionId: string) =>
   api.post(`/report/${sessionId}/analyze`);
 

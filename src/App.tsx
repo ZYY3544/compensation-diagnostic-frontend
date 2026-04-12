@@ -255,6 +255,8 @@ function App() {
               setMessages={setMessages}
               textInputRef={stage2InputHandlerRef}
               parseResult={parseResult}
+              setParseResult={setParseResult}
+              sessionId={sessionId}
               interviewNotes={interviewNotes}
             />
           )}

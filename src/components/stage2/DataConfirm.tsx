@@ -5,6 +5,7 @@ import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
+import { runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -13,10 +14,12 @@ interface DataConfirmProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   textInputRef: MutableRefObject<((text: string) => boolean) | null>;
   parseResult?: ParseResult | null;
+  setParseResult: React.Dispatch<React.SetStateAction<ParseResult | null>>;
+  sessionId: string | null;
   interviewNotes?: any;
 }
 
-export default function DataConfirm({ onComplete, addMsg, setMessages, textInputRef, parseResult, interviewNotes }: DataConfirmProps) {
+export default function DataConfirm({ onComplete, addMsg, setMessages, textInputRef, parseResult, setParseResult, sessionId, interviewNotes }: DataConfirmProps) {
   const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [viewingStep, setViewingStep] = useState(1);
@@ -34,9 +37,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const sendBotMsg = useCallback((text: string, delay: number) => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        // Add empty bot message
         addMsg({ role: 'bot', text: '' });
-
         let displayed = 0;
         const timer = setInterval(() => {
           displayed = Math.min(displayed + 1, text.length);
@@ -57,7 +58,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     });
   }, [addMsg, setMessages]);
 
-  // Advance to next step
   const advanceStep = useCallback((fromStep: number) => {
     const nextStep = fromStep + 1;
     setCompletedSteps(prev => prev.includes(fromStep) ? prev : [...prev, fromStep]);
@@ -65,111 +65,75 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     setViewingStep(nextStep);
   }, []);
 
-  // Handle tax choice from left panel
+  // --- Choices ---
   const handleTaxChoice = useCallback((choice: string) => {
     setTaxChoice(choice);
     const label = choice === 'pre' ? '税前' : '税后';
-    setTimeout(() => {
-      addMsg({ role: 'bot', text: `好的，按${label}数据处理 ✓` });
-    }, 300);
+    setTimeout(() => addMsg({ role: 'bot', text: `好的，按${label}数据处理 ✓` }), 300);
     setTimeout(() => advanceStep(2), 1200);
   }, [addMsg, advanceStep]);
 
-  // Handle L7 choice
   const handleL7Choice = useCallback((choice: string) => {
     setL7Choice(choice);
     const label = choice === 'director' ? '总监级' : '高级经理级';
-    setTimeout(() => {
-      addMsg({ role: 'bot', text: `明白了，L7 按${label}处理 ✓` });
-    }, 300);
+    setTimeout(() => addMsg({ role: 'bot', text: `明白了，L7 按${label}处理 ✓` }), 300);
     setTimeout(() => advanceStep(3), 1200);
   }, [addMsg, advanceStep]);
 
-  // Handle function choice
   const handleFuncChoice = useCallback((choice: string) => {
     setFuncChoice(choice);
     const label = choice === 'digital' ? '数字营销' : '用户增长';
-    setTimeout(() => {
-      addMsg({ role: 'bot', text: `收到，增长黑客归入${label}类别 ✓` });
-    }, 300);
+    setTimeout(() => addMsg({ role: 'bot', text: `收到，增长黑客归入${label}类别 ✓` }), 300);
     setTimeout(() => advanceStep(4), 1200);
   }, [addMsg, advanceStep]);
 
-  // Register text input handler for right-panel chat sync
+  // --- Text input handler ---
   useEffect(() => {
     textInputRef.current = (text: string) => {
       const lower = text.toLowerCase();
-      // Tax choice
       if (viewingStep === 2 && taxChoice === null) {
-        if (lower.includes('税前')) {
-          handleTaxChoice('pre');
-          return true;
-        }
-        if (lower.includes('税后')) {
-          handleTaxChoice('post');
-          return true;
-        }
+        if (lower.includes('税前')) { handleTaxChoice('pre'); return true; }
+        if (lower.includes('税后')) { handleTaxChoice('post'); return true; }
       }
-      // L7 choice
       if (viewingStep === 3 && l7Choice === null) {
-        if (lower.includes('总监')) {
-          handleL7Choice('director');
-          return true;
-        }
-        if (lower.includes('高级经理') || lower.includes('经理')) {
-          handleL7Choice('senior_mgr');
-          return true;
-        }
+        if (lower.includes('总监')) { handleL7Choice('director'); return true; }
+        if (lower.includes('高级经理') || lower.includes('经理')) { handleL7Choice('senior_mgr'); return true; }
       }
-      // Func choice
       if (viewingStep === 4 && funcChoice === null) {
-        if (lower.includes('营销') || lower.includes('数字')) {
-          handleFuncChoice('digital');
-          return true;
-        }
-        if (lower.includes('增长') || lower.includes('运营') || lower.includes('用户')) {
-          handleFuncChoice('growth');
-          return true;
-        }
+        if (lower.includes('营销') || lower.includes('数字')) { handleFuncChoice('digital'); return true; }
+        if (lower.includes('增长') || lower.includes('运营') || lower.includes('用户')) { handleFuncChoice('growth'); return true; }
       }
       return false;
     };
   });
 
-  // Step 1: completeness check messages
+  // =====================================================================
+  // Step 1: 完整性检查（纯展示，数据已在 upload 时算好）
+  // =====================================================================
   useEffect(() => {
     if (substep === 1 && !step1MsgsSent) {
       setStep1MsgsSent(true);
-      const sparky = (parseResult as any)?.sparky_messages;
       const rowMissing = parseResult?.completeness_issues?.row_missing || [];
       const colMissing = parseResult?.completeness_issues?.column_missing || [];
 
       let missingMsg: string;
-      if (sparky?.step2_missing) {
-        missingMsg = sparky.step2_missing;
-      } else if (rowMissing.length > 0) {
+      if (rowMissing.length > 0) {
         const desc = rowMissing.slice(0, 3).map((r: any) => `第 ${r.row} 行${r.field}`).join('、');
         missingMsg = `有 ${rowMissing.length} 条记录关键字段缺失（${desc}）。建议你在 Excel 里补完后重新上传，或者直接跳过，我会排除这些记录继续分析。`;
       } else {
         missingMsg = '所有记录的关键字段都有值，数据完整度很好！';
       }
 
-      let colMsg: string;
-      if (sparky?.step2_columns) {
-        colMsg = sparky.step2_columns;
-      } else if (colMissing.length > 0) {
+      let colMsg = '';
+      if (colMissing.length > 0) {
         const colNames = colMissing.map((c: any) => c.field).join('、');
-        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。右边可以看详情。`;
-      } else {
-        colMsg = '';
+        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。`;
       }
 
       sendBotMsg('先看看数据完整度...', 300).then(() => {
         return sendBotMsg(missingMsg, 1000);
       }).then(() => {
-        if (colMsg) {
-          return sendBotMsg(colMsg, 1200);
-        }
+        if (colMsg) return sendBotMsg(colMsg, 1200);
       }).then(() => {
         if (rowMissing.length === 0 && colMissing.length === 0) {
           setTimeout(() => advanceStep(1), 1500);
@@ -178,117 +142,118 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     }
   }, [substep, step1MsgsSent, sendBotMsg, parseResult, advanceStep]);
 
-  // Step 2: data cleaning messages
+  // =====================================================================
+  // Step 2: 数据清洗（进入时后台调 AI cleansing LLM）
+  // =====================================================================
   useEffect(() => {
     if (substep === 2 && !step2MsgsSent) {
       setStep2MsgsSent(true);
-      const sparky = (parseResult as any)?.sparky_messages;
       const corrections = parseResult?.cleansing_corrections || [];
 
-      let corrMsg: string;
-      if (sparky?.step3_corrections) {
-        corrMsg = sparky.step3_corrections;
-      } else if (corrections.length > 0) {
-        corrMsg = `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。右边可以看到详情，有不对的可以撤回。`;
-      } else {
-        corrMsg = '数据口径看起来没有明显问题，不需要额外修正。';
-      }
+      // 先用代码层结果展示
+      const corrMsg = corrections.length > 0
+        ? `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。右边可以看到详情，有不对的可以撤回。`
+        : '数据口径看起来没有明显问题，不需要额外修正。';
 
       sendBotMsg('让我检查一下数据质量...', 300).then(() => {
         return sendBotMsg(corrMsg, 1000);
       }).then(() => {
         return sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 800);
       });
-    }
-  }, [substep, step2MsgsSent, sendBotMsg, parseResult]);
 
-  // Step 3: grade matching messages
+      // 后台并行调 AI cleansing，结果回来后更新 parseResult
+      if (sessionId) {
+        runCleansing(sessionId).then(res => {
+          const data = res.data;
+          if (data.cleansing_corrections) {
+            setParseResult(prev => prev ? { ...prev, cleansing_corrections: data.cleansing_corrections } : prev);
+          }
+        }).catch(err => console.warn('[DataConfirm] AI cleansing failed:', err));
+      }
+    }
+  }, [substep, step2MsgsSent, sendBotMsg, parseResult, sessionId, setParseResult]);
+
+  // =====================================================================
+  // Step 3: 职级匹配（进入时调 LLM）
+  // =====================================================================
   useEffect(() => {
     if (substep === 3 && !step3MsgsSent) {
       setStep3MsgsSent(true);
-      const sparky = (parseResult as any)?.sparky_messages;
-      const gradeMatching = parseResult?.grade_matching || [];
-      const unconfirmed = gradeMatching.filter(g => !g.confirmed);
 
-      let gradeMsg: string;
-      if (sparky?.step4_grades) {
-        gradeMsg = sparky.step4_grades;
-      } else if (unconfirmed.length > 0) {
-        const uncertain = unconfirmed.slice(0, 3).map(g => g.client_grade).join('、');
-        const confirmed = gradeMatching.filter(g => g.confirmed).length;
-        gradeMsg = `大部分职级都对上了（${confirmed} 个高置信度），但 ${uncertain} 我拿不准，需要你确认一下。`;
-      } else {
-        gradeMsg = `所有 ${gradeMatching.length} 个职级都高置信度匹配上了！`;
+      sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300);
+
+      if (sessionId) {
+        runGradeMatch(sessionId).then(res => {
+          const data = res.data;
+          if (data.grade_matching) {
+            setParseResult(prev => prev ? { ...prev, grade_matching: data.grade_matching } : prev);
+          }
+          const confirmed = (data.grade_matching || []).filter((g: any) => g.confirmed).length;
+          const unconfirmed = (data.grade_matching || []).filter((g: any) => !g.confirmed);
+          const msg = unconfirmed.length > 0
+            ? `大部分职级都对上了（${confirmed} 个高置信度），但 ${unconfirmed.slice(0, 3).map((g: any) => g.client_grade).join('、')} 我拿不准，需要你确认一下。`
+            : `所有 ${data.grade_matching?.length || 0} 个职级都高置信度匹配上了！`;
+          sendBotMsg(msg, 500);
+        }).catch(err => {
+          console.warn('[DataConfirm] grade matching failed:', err);
+          sendBotMsg('职级匹配服务暂时不可用，请手动确认各职级对应关系。', 500);
+        });
       }
-
-      sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300).then(() => {
-        return sendBotMsg(gradeMsg, 1000);
-      });
     }
-  }, [substep, step3MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step3MsgsSent, sendBotMsg, sessionId, setParseResult]);
 
-  // Step 4: function matching messages
+  // =====================================================================
+  // Step 4: 职能匹配（进入时调 LLM）
+  // =====================================================================
   useEffect(() => {
     if (substep === 4 && !step4MsgsSent) {
       setStep4MsgsSent(true);
-      const sparky = (parseResult as any)?.sparky_messages;
-      const funcMatching = parseResult?.function_matching || [];
-      const unconfirmed = funcMatching.filter(f => !f.confirmed);
 
-      let funcMsg: string;
-      if (sparky?.step5_functions) {
-        funcMsg = sparky.step5_functions;
-      } else if (unconfirmed.length > 0) {
-        const uncertain = unconfirmed.slice(0, 3).map(f => f.title).join('、');
-        const confirmed = funcMatching.filter(f => f.confirmed).length;
-        funcMsg = `大部分岗位都匹配上了（${confirmed} 个高置信度），但 ${uncertain} 我不太确定，需要你看一下。`;
-      } else {
-        funcMsg = `所有 ${funcMatching.length} 个岗位都匹配上了！`;
+      sendBotMsg('最后匹配一下岗位的职能类别...', 300);
+
+      if (sessionId) {
+        runFuncMatch(sessionId).then(res => {
+          const data = res.data;
+          if (data.function_matching) {
+            setParseResult(prev => prev ? { ...prev, function_matching: data.function_matching } : prev);
+          }
+          const confirmed = (data.function_matching || []).filter((f: any) => f.confirmed).length;
+          const unconfirmed = (data.function_matching || []).filter((f: any) => !f.confirmed);
+          const msg = unconfirmed.length > 0
+            ? `大部分岗位都匹配上了（${confirmed} 个高置信度），但 ${unconfirmed.slice(0, 3).map((f: any) => f.title).join('、')} 我不太确定，需要你看一下。`
+            : `所有 ${data.function_matching?.length || 0} 个岗位都匹配上了！`;
+          sendBotMsg(msg, 500);
+        }).catch(err => {
+          console.warn('[DataConfirm] func matching failed:', err);
+          sendBotMsg('职能匹配服务暂时不可用，请手动确认各岗位对应职能。', 500);
+        });
       }
-
-      sendBotMsg('最后匹配一下岗位的职能类别...', 300).then(() => {
-        return sendBotMsg(funcMsg, 1000);
-      });
     }
-  }, [substep, step4MsgsSent, sendBotMsg, parseResult]);
+  }, [substep, step4MsgsSent, sendBotMsg, sessionId, setParseResult]);
 
-  // Step 5: ready messages
+  // =====================================================================
+  // Step 5: 准备就绪
+  // =====================================================================
   useEffect(() => {
     if (substep === 5 && !step5MsgsSent) {
       setStep5MsgsSent(true);
-      const sparky = (parseResult as any)?.sparky_messages;
       const unlocked = parseResult?.unlocked_modules || [];
       const locked = parseResult?.locked_modules || [];
 
-      let readyMsg: string;
-      if (sparky?.step6_ready) {
-        readyMsg = sparky.step6_ready;
-      } else {
-        readyMsg = `数据准备好了！这次诊断将覆盖${unlocked.slice(0, 3).join('、')}等 ${unlocked.length} 个维度。`;
-      }
+      const readyMsg = `数据准备好了！这次诊断将覆盖${unlocked.slice(0, 3).join('、')}等 ${unlocked.length} 个维度。`;
+      const lockedMsg = locked.length > 0
+        ? `如果你能补充相关数据，我还能帮你做 ${locked.map(l => `${l.name}（${l.reason}）`).join('、')}。不补也没关系，点"开始诊断分析"直接跑报告。`
+        : '所有分析模块都已解锁！点"开始诊断分析"直接跑报告。';
 
-      let lockedMsg: string;
-      if (sparky?.step6_locked) {
-        lockedMsg = sparky.step6_locked;
-      } else if (locked.length > 0) {
-        const lockHints = locked.map(l => `${l.name}（${l.reason}）`).join('、');
-        lockedMsg = `如果你能补充相关数据，我还能帮你做 ${lockHints}。不补也没关系，点"开始诊断分析"直接跑报告。`;
-      } else {
-        lockedMsg = '所有分析模块都已解锁！点"开始诊断分析"直接跑报告。';
-      }
-
-      sendBotMsg(readyMsg, 300).then(() => {
-        return sendBotMsg(lockedMsg, 1200);
-      });
+      sendBotMsg(readyMsg, 300).then(() => sendBotMsg(lockedMsg, 1200));
     }
   }, [substep, step5MsgsSent, sendBotMsg, parseResult]);
 
-  // Handle completeness check accept
+  // --- Handlers ---
   const handleAcceptCompleteness = () => {
     const rowMissing = parseResult?.completeness_issues?.row_missing || [];
-    const count = rowMissing.length;
-    const msg = count > 0
-      ? `好的，这 ${count} 条缺失记录已排除，不影响整体分析。接下来检查一下数据口径问题...`
+    const msg = rowMissing.length > 0
+      ? `好的，这 ${rowMissing.length} 条缺失记录已排除，不影响整体分析。接下来检查一下数据口径问题...`
       : '好的，数据完整度没问题。接下来检查一下数据口径问题...';
     addMsg({ role: 'bot', text: msg });
     setTimeout(() => advanceStep(1), 800);
@@ -298,7 +263,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     addMsg({ role: 'bot', text: '好的，你补完数据后重新上传就行，我在这儿等你' });
   };
 
-  // Handle revert
   const handleRevert = (idx: number) => {
     setReverted(prev => {
       const next = [...prev];
@@ -307,56 +271,29 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     });
   };
 
-  // Handle progress bar click (go back to view a completed step)
   const handleStepClick = (step: number) => {
-    if (step <= substep) {
-      setViewingStep(step);
-    }
+    if (step <= substep) setViewingStep(step);
   };
 
-  // Render current step content
   const renderStepContent = () => {
     switch (viewingStep) {
       case 1:
         return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
       case 2:
         return (
-          <StepCleansing
-            taxChoice={taxChoice}
-            onTaxChoice={handleTaxChoice}
-            reverted={reverted}
-            onRevert={handleRevert}
-            parseResult={parseResult}
-            onNext={() => advanceStep(2)}
-          />
+          <StepCleansing taxChoice={taxChoice} onTaxChoice={handleTaxChoice} reverted={reverted} onRevert={handleRevert} parseResult={parseResult} onNext={() => advanceStep(2)} />
         );
       case 3:
         return (
-          <StepGradeMatch
-            l7Choice={l7Choice}
-            onL7Choice={handleL7Choice}
-            parseResult={parseResult}
-            onNext={() => advanceStep(3)}
-          />
+          <StepGradeMatch l7Choice={l7Choice} onL7Choice={handleL7Choice} parseResult={parseResult} onNext={() => advanceStep(3)} />
         );
       case 4:
         return (
-          <StepFuncMatch
-            funcChoice={funcChoice}
-            onFuncChoice={handleFuncChoice}
-            parseResult={parseResult}
-            onNext={() => advanceStep(4)}
-          />
+          <StepFuncMatch funcChoice={funcChoice} onFuncChoice={handleFuncChoice} parseResult={parseResult} onNext={() => advanceStep(4)} />
         );
       case 5:
         return (
-          <StepReady
-            onStart={onComplete}
-            onStepClick={(s) => setViewingStep(s)}
-            onReupload={handleReupload}
-            parseResult={parseResult}
-            interviewNotes={interviewNotes}
-          />
+          <StepReady onStart={onComplete} onStepClick={s => setViewingStep(s)} onReupload={handleReupload} parseResult={parseResult} interviewNotes={interviewNotes} />
         );
       default:
         return null;
@@ -365,12 +302,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
   return (
     <div className="fade-enter">
-      <WizardProgress
-        currentStep={viewingStep}
-        completedSteps={completedSteps}
-        maxReachedStep={substep}
-        onStepClick={handleStepClick}
-      />
+      <WizardProgress currentStep={viewingStep} completedSteps={completedSteps} maxReachedStep={substep} onStepClick={handleStepClick} />
       {renderStepContent()}
     </div>
   );

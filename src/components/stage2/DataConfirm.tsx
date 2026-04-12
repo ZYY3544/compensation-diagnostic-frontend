@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import WizardProgress from './WizardProgress';
-import DataOverview from './DataOverview';
 import StepCompleteness from './StepCompleteness';
 import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
-import { getParseSummary, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
+import { getCompletenessSummary, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -21,16 +20,15 @@ interface DataConfirmProps {
 }
 
 export default function DataConfirm({ onComplete, addMsg, setMessages, textInputRef, parseResult, setParseResult, sessionId, interviewNotes }: DataConfirmProps) {
-  const [substep, setSubstep] = useState(0);  // 0 = 概览, 1-5 = wizard
+  const [substep, setSubstep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
-  const [viewingStep, setViewingStep] = useState(0);
-  const [overviewReady, setOverviewReady] = useState(false);
-  const overviewMsgsSent = useRef(false);
+  const [viewingStep, setViewingStep] = useState(1);
+  const [step1Ready, setStep1Ready] = useState(false);
+  const animationStarted = useRef(false);
   const [taxChoice, setTaxChoice] = useState<string | null>(null);
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
   const [reverted, setReverted] = useState([false, false, false]);
-  const [step1MsgsSent, setStep1MsgsSent] = useState(false);
   const [step2MsgsSent, setStep2MsgsSent] = useState(false);
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
@@ -111,19 +109,20 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   });
 
   // =====================================================================
-  // Step 0: 概览阶段 — Sparky 多阶段动画 → 展示概览面板
+  // Step 1: 解析播报 + 完整度分析 → AI 总结 → 展示完整度看板
   // =====================================================================
   useEffect(() => {
-    if (substep !== 0 || overviewMsgsSent.current) return;
-    overviewMsgsSent.current = true;
+    if (substep !== 1 || animationStarted.current) return;
+    animationStarted.current = true;
 
     const emp = parseResult?.employee_count || 0;
     const gradeCount = parseResult?.grade_count || 0;
     const deptCount = parseResult?.department_count || 0;
-    const sheetCount = parseResult?.sheet_count || 1;
     const gradeRange = parseResult?.grades?.length
       ? `${parseResult.grades[0]}-${parseResult.grades[parseResult.grades.length - 1]}`
       : '';
+    const rowMissing = parseResult?.completeness_issues?.row_missing || [];
+    const colMissing = parseResult?.completeness_issues?.column_missing || [];
 
     (async () => {
       // 解析阶段
@@ -135,74 +134,46 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       await sendBotMsg('接下来做一下数据完整度分析...', 2500);
       await sendBotMsg('正在检查各字段填充情况...', 2500);
 
-      // 调 AI 生成总结（和动画并行，结果回来再展示）
-      const filledCount = (parseResult?.all_columns_status || []).filter(c => c.has_data).length;
-      const totalCount = (parseResult?.all_columns_status || []).length;
-      const summaryText = [
-        `员工记录 ${emp} 条，职级 ${gradeCount} 个（${gradeRange}），部门 ${deptCount} 个`,
-        `Sheet 数量：${sheetCount}`,
-        `字段填充：${filledCount}/${totalCount} 列有数据`,
-        sheetCount >= 2 ? '包含公司经营数据表' : '无公司经营数据表',
-      ].join('；');
+      // 汇总完整度数据给 AI
+      const uniqueRows = new Set(rowMissing.map((r: any) => r.row));
+      const fieldGroups: Record<string, number[]> = {};
+      for (const r of rowMissing) {
+        if (!fieldGroups[r.field]) fieldGroups[r.field] = [];
+        fieldGroups[r.field].push(r.row);
+      }
+      const summaryParts = [
+        `员工记录 ${emp} 条`,
+        `关键字段缺失：${uniqueRows.size > 0 ? `${uniqueRows.size} 条记录、涉及字段：${Object.keys(fieldGroups).join('、')}` : '无'}`,
+        `可选字段未填写：${colMissing.length > 0 ? colMissing.map((c: any) => c.field).join('、') : '无'}`,
+      ];
 
       let aiMsg = '';
       if (sessionId) {
         try {
-          const res = await getParseSummary(sessionId, summaryText);
+          const res = await getCompletenessSummary(sessionId, summaryParts.join('；'));
           aiMsg = res.data.message || '';
         } catch { /* fallback below */ }
       }
 
-      const finalMsg = aiMsg
-        || (sheetCount >= 2
-          ? `数据读完了，${sheetCount} 张表都识别到了。你看看右边的字段和数量对不对，没问题的话我们往下走。`
-          : '数据读完了。你看看右边的字段和数量对不对，没问题的话我们往下走。');
-      await sendBotMsg(finalMsg, 1000);
-
-      setOverviewReady(true);
-    })();
-  }, [substep, parseResult, sendBotMsg]);
-
-  // 概览确认 → 进入 wizard step 1
-  const handleOverviewConfirm = useCallback(() => {
-    setSubstep(1);
-    setViewingStep(1);
-  }, []);
-
-  // =====================================================================
-  // Step 1: 完整性检查（纯展示，数据已在 upload 时算好）
-  // =====================================================================
-  useEffect(() => {
-    if (substep === 1 && !step1MsgsSent) {
-      setStep1MsgsSent(true);
-      const rowMissing = parseResult?.completeness_issues?.row_missing || [];
-      const colMissing = parseResult?.completeness_issues?.column_missing || [];
-
-      let missingMsg: string;
-      if (rowMissing.length > 0) {
-        const desc = rowMissing.slice(0, 3).map((r: any) => `第 ${r.row} 行${r.field}`).join('、');
-        missingMsg = `有 ${rowMissing.length} 条记录关键字段缺失（${desc}）。建议你在 Excel 里补完后重新上传，或者直接跳过，我会排除这些记录继续分析。`;
-      } else {
-        missingMsg = '所有记录的关键字段都有值，数据完整度很好！';
-      }
-
-      let colMsg = '';
-      if (colMissing.length > 0) {
-        const colNames = colMissing.map((c: any) => c.field).join('、');
-        colMsg = `另外有几个可选字段整列没填——${colNames}。这些不影响核心诊断，但相关的深度分析会受限。`;
-      }
-
-      sendBotMsg('先看看数据完整度...', 300).then(() => {
-        return sendBotMsg(missingMsg, 1000);
-      }).then(() => {
-        if (colMsg) return sendBotMsg(colMsg, 1200);
-      }).then(() => {
-        if (rowMissing.length === 0 && colMissing.length === 0) {
-          setTimeout(() => advanceStep(1), 1500);
+      if (!aiMsg) {
+        if (uniqueRows.size > 0) {
+          aiMsg = `有 ${uniqueRows.size} 条记录关键字段缺失，主要集中在${Object.keys(fieldGroups).slice(0, 2).join('和')}字段。`;
+          if (colMissing.length > 0) aiMsg += `另外有 ${colMissing.length} 个可选字段整列没填，不影响核心诊断。`;
+          aiMsg += '右边可以看详情，你决定是补完数据重新上传，还是先跳过继续。';
+        } else {
+          aiMsg = '所有必填字段都完整，数据质量很好！直接往下走吧。';
         }
-      });
-    }
-  }, [substep, step1MsgsSent, sendBotMsg, parseResult, advanceStep]);
+      }
+
+      await sendBotMsg(aiMsg, 1500);
+      setStep1Ready(true);
+
+      // 没有任何问题时自动推进
+      if (uniqueRows.size === 0 && colMissing.length === 0) {
+        setTimeout(() => advanceStep(1), 2000);
+      }
+    })();
+  }, [substep, parseResult, sendBotMsg, sessionId, advanceStep]);
 
   // =====================================================================
   // Step 2: 数据清洗（进入时后台调 AI cleansing LLM）
@@ -339,12 +310,10 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
   const renderStepContent = () => {
     switch (viewingStep) {
-      case 0:
-        return overviewReady && parseResult
-          ? <DataOverview parseResult={parseResult} onConfirm={handleOverviewConfirm} />
-          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 1:
-        return <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />;
+        return step1Ready || viewingStep !== substep
+          ? <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />
+          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 2:
         return (
           <StepCleansing taxChoice={taxChoice} onTaxChoice={handleTaxChoice} reverted={reverted} onRevert={handleRevert} parseResult={parseResult} onNext={() => advanceStep(2)} />
@@ -368,9 +337,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
   return (
     <div className="fade-enter">
-      {viewingStep >= 1 && (
-        <WizardProgress currentStep={viewingStep} completedSteps={completedSteps} maxReachedStep={substep} onStepClick={handleStepClick} />
-      )}
+      <WizardProgress currentStep={viewingStep} completedSteps={completedSteps} maxReachedStep={substep} onStepClick={handleStepClick} />
       {renderStepContent()}
     </div>
   );

@@ -578,55 +578,156 @@ body {
   animation: fadeIn 0.3s ease;
 }
 
-/* Data Overview cards */
-.overview-cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+/* Completeness check */
+.completeness-section {
+  background: #FEFCF8;
+  border-left: 3px solid #D4A853;
+  border-radius: 0 8px 8px 0;
+  padding: 20px 24px;
   margin-bottom: 20px;
 }
-.overview-card {
+.completeness-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.completeness-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.completeness-badge {
+  font-size: 12px;
+  color: #92400E;
+  background: #FEF3C7;
+  padding: 3px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.completeness-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.completeness-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #F0E6D2;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+}
+.completeness-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.completeness-item-right {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.completeness-warn-icon {
+  color: #D4A853;
+  font-size: 16px;
+}
+.completeness-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+
+/* Optional fields section */
+.optional-section {
+  background: #FAFAFA;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.optional-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.optional-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.optional-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.optional-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.optional-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
-  text-align: center;
+  padding: 12px 18px;
+  margin-bottom: 8px;
 }
-.overview-card-num {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--blue);
-}
-.overview-card-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-.overview-card-sub {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Field detection grid */
-.overview-field-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 20px;
-}
-.overview-field-item {
+.optional-item-left {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  padding: 3px 0;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
 }
-.overview-field-item.filled { color: var(--text-secondary); }
-.overview-field-item.empty { color: var(--text-muted); }
-.overview-field-check { color: var(--green); font-weight: 600; }
-.overview-field-circle { color: var(--text-muted); }
+.optional-item-right {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.optional-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+
+/* Completeness action buttons */
+.completeness-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+.completeness-btn-outline {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.completeness-btn-outline:hover { border-color: var(--text-muted); }
+.completeness-btn-primary {
+  flex: 2;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.completeness-btn-primary:hover { opacity: 0.9; }
 
 /* Clean item with reverted state */
 .clean-item.reverted span:first-child { text-decoration: line-through; opacity: 0.5; }

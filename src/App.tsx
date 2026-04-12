@@ -113,9 +113,9 @@ function App() {
       setStage(3);
     } catch (err) {
       console.warn('Upload API failed', err);
-      streamMsg('让我先看看你的数据结构...');
+      streamMsg('上传失败了，后端服务可能还在启动中（Render 冷启动约 30 秒）。请稍后重新上传。');
       setLoading(false);
-      setStage(3);
+      // 不跳转，留在上传页面让用户重试
     }
   };
 

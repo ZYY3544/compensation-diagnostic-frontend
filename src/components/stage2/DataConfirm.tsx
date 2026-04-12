@@ -143,10 +143,10 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   useEffect(() => {
     if (substep === 1 && !step1MsgsSent) {
       setStep1MsgsSent(true);
-      const empCount = parseResult?.employee_count ?? 126;
-      const gradeCount = parseResult?.grade_count ?? 6;
-      const deptCount = parseResult?.department_count ?? 5;
-      const grades = parseResult?.grades?.join('-') || 'L3-L8';
+      const empCount = parseResult?.employee_count ?? 0;
+      const gradeCount = parseResult?.grade_count ?? 0;
+      const deptCount = parseResult?.department_count ?? 0;
+      const grades = parseResult?.grades?.join('-') || '—';
       sendBotMsg('让我先看看你的数据结构...', 300).then(() => {
         setTimeout(() => {
           setParsing(false);

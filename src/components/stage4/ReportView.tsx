@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getReportPdfUrl } from '../../api/client';
 import type { ReportData } from '../../types';
 import DiagnosisSummary from './DiagnosisSummary';
 import DiagnosisAdvice from './DiagnosisAdvice';
@@ -19,9 +20,10 @@ const MODULE_KEYS = [
 interface ReportViewProps {
   reportData?: ReportData | null;
   adviceData?: { advice: any[]; closing: string } | null;
+  sessionId?: string | null;
 }
 
-export default function ReportView({ reportData, adviceData }: ReportViewProps) {
+export default function ReportView({ reportData, adviceData, sessionId }: ReportViewProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
   if (!reportData) {
@@ -99,6 +101,24 @@ export default function ReportView({ reportData, adviceData }: ReportViewProps) 
       {/* 诊断建议 */}
       {adviceData && adviceData.advice?.length > 0 && (
         <DiagnosisAdvice advice={adviceData.advice} closing={adviceData.closing} />
+      )}
+
+      {/* 导出 */}
+      {sessionId && (
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <a
+            href={getReportPdfUrl(sessionId)}
+            download
+            style={{
+              display: 'inline-block', padding: '12px 32px',
+              borderRadius: 8, background: 'var(--blue)', color: '#fff',
+              fontSize: 14, fontWeight: 600, textDecoration: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            导出诊断报告 PDF
+          </a>
+        </div>
       )}
     </div>
   );

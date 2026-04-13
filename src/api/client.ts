@@ -55,4 +55,9 @@ export const getModuleInsight = (sessionId: string, module: string) =>
 export const getDiagnosisAdvice = (sessionId: string) =>
   api.post(`/report/${sessionId}/diagnosis-advice`);
 
+export const getReportPdfUrl = (sessionId: string) => {
+  const base = import.meta.env.VITE_API_URL || '/api';
+  return `${base}/report/${sessionId}/export-pdf`;
+};
+
 export default api;

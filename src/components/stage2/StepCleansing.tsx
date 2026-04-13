@@ -133,14 +133,11 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
           </button>
         </div>
         {isOpen && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '8px 16px 12px 38px' }}>
+          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             {group.items.map(c => (
-              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 0', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ textDecoration: c.reverted ? 'line-through' : 'none' }}>{c.description}</span>
-                {c.old_value != null && c.new_value != null && (
-                  <span style={{ fontFamily: 'monospace', marginLeft: 12, flexShrink: 0 }}>{c.old_value} → {c.new_value}</span>
-                )}
-              </div>
+              <span key={c.id} style={{ textDecoration: c.reverted ? 'line-through' : 'none' }}>
+                {c.description}{' '}
+              </span>
             ))}
           </div>
         )}
@@ -184,13 +181,11 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
           </div>
         </div>
         {isOpen && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '8px 16px 12px 38px' }}>
+          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             {group.items.map(c => (
-              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 0' }}>
-                <span style={{ textDecoration: c.reverted ? 'line-through' : 'none', opacity: c.reverted ? 0.5 : 1 }}>
-                  {c.description}
-                </span>
-              </div>
+              <span key={c.id} style={{ textDecoration: c.reverted ? 'line-through' : 'none', opacity: c.reverted ? 0.5 : 1 }}>
+                {c.description}{' '}
+              </span>
             ))}
           </div>
         )}

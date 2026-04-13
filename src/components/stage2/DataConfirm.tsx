@@ -25,11 +25,12 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [viewingStep, setViewingStep] = useState(1);
   const [step1Ready, setStep1Ready] = useState(false);
   const animationStarted = useRef(false);
-  const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
   const [step2MsgsSent, setStep2MsgsSent] = useState(false);
   const [step2Ready, setStep2Ready] = useState(false);
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
+  const [step3Ready, setStep3Ready] = useState(false);
+  const [gradeData, setGradeData] = useState<any>(null);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
 
@@ -66,13 +67,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   }, []);
 
   // --- Choices ---
-  const handleL7Choice = useCallback((choice: string) => {
-    setL7Choice(choice);
-    const label = choice === 'director' ? '总监级' : '高级经理级';
-    setTimeout(() => addMsg({ role: 'bot', text: `明白了，L7 按${label}处理 ✓` }), 300);
-    setTimeout(() => advanceStep(3), 1200);
-  }, [addMsg, advanceStep]);
-
   const handleFuncChoice = useCallback((choice: string) => {
     setFuncChoice(choice);
     const label = choice === 'digital' ? '数字营销' : '用户增长';
@@ -84,10 +78,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   useEffect(() => {
     textInputRef.current = (text: string) => {
       const lower = text.toLowerCase();
-      if (viewingStep === 3 && l7Choice === null) {
-        if (lower.includes('总监')) { handleL7Choice('director'); return true; }
-        if (lower.includes('高级经理') || lower.includes('经理')) { handleL7Choice('senior_mgr'); return true; }
-      }
       if (viewingStep === 4 && funcChoice === null) {
         if (lower.includes('营销') || lower.includes('数字')) { handleFuncChoice('digital'); return true; }
         if (lower.includes('增长') || lower.includes('运营') || lower.includes('用户')) { handleFuncChoice('growth'); return true; }
@@ -214,18 +204,18 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       if (sessionId) {
         runGradeMatch(sessionId).then(res => {
           const data = res.data;
+          setGradeData(data);
+          // 向后兼容
           if (data.grade_matching) {
             setParseResult(prev => prev ? { ...prev, grade_matching: data.grade_matching } : prev);
           }
-          const confirmed = (data.grade_matching || []).filter((g: any) => g.confirmed).length;
-          const unconfirmed = (data.grade_matching || []).filter((g: any) => !g.confirmed);
-          const msg = unconfirmed.length > 0
-            ? `大部分职级都对上了（${confirmed} 个高置信度），但 ${unconfirmed.slice(0, 3).map((g: any) => g.client_grade).join('、')} 我拿不准，需要你确认一下。`
-            : `所有 ${data.grade_matching?.length || 0} 个职级都高置信度匹配上了！`;
-          sendBotMsg(msg, 500);
+          const sparkyMsg = data.sparky_message || '职级匹配完成，请确认右边的映射关系。';
+          sendBotMsg(sparkyMsg, 500);
+          setStep3Ready(true);
         }).catch(err => {
           console.warn('[DataConfirm] grade matching failed:', err);
           sendBotMsg('职级匹配服务暂时不可用，请手动确认各职级对应关系。', 500);
+          setStep3Ready(true);
         });
       }
     }
@@ -307,9 +297,9 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           ? <StepCleansing parseResult={parseResult} setParseResult={setParseResult} sessionId={sessionId} onNext={() => advanceStep(2)} />
           : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 3:
-        return (
-          <StepGradeMatch l7Choice={l7Choice} onL7Choice={handleL7Choice} parseResult={parseResult} onNext={() => advanceStep(3)} />
-        );
+        return step3Ready
+          ? <StepGradeMatch gradeData={gradeData} onNext={() => advanceStep(3)} />
+          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在匹配职级...</div></div>;
       case 4:
         return (
           <StepFuncMatch funcChoice={funcChoice} onFuncChoice={handleFuncChoice} parseResult={parseResult} onNext={() => advanceStep(4)} />

@@ -10,15 +10,21 @@ interface StepCleansingProps {
 }
 
 const TYPE_LABELS: Record<string, string> = {
+  // 高置信度
   annualize_bonus: '年终奖年化',
   reclassify_13th: '13薪重分类',
-  '13th_month_reclassify': '13薪重分类',
   standardize_performance: '绩效标准化',
-  performance_mapping: '绩效标准化',
   merge_department: '部门归并',
-  department_merge: '部门归并',
+  merge_city: '城市归并',
+  // 低置信度
+  extreme_value_salary: '月薪异常',
+  extreme_value_bonus: '年终奖异常',
   extreme_value: '异常值',
   salary_inversion: '薪酬倒挂',
+  date_anomaly: '日期异常',
+  duplicate_13th_check: '13薪交叉校验',
+  extreme_dispersion: '极端离散',
+  extreme_value_allowance: '津贴异常',
 };
 
 export default function StepCleansing({ parseResult, setParseResult, sessionId, onNext }: StepCleansingProps) {

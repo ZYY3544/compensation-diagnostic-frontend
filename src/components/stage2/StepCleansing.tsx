@@ -10,13 +10,11 @@ interface StepCleansingProps {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  // 高置信度
   annualize_bonus: '年终奖年化',
   reclassify_13th: '13薪重分类',
   standardize_performance: '绩效标准化',
   merge_department: '部门归并',
   merge_city: '城市归并',
-  // 低置信度
   extreme_value_salary: '月薪异常',
   extreme_value_bonus: '年终奖异常',
   extreme_value: '异常值',
@@ -27,8 +25,21 @@ const TYPE_LABELS: Record<string, string> = {
   extreme_value_allowance: '津贴异常',
 };
 
+/** 按 type 分组 */
+function groupByType(items: any[]): { type: string; label: string; items: any[] }[] {
+  const map: Record<string, any[]> = {};
+  const order: string[] = [];
+  for (const c of items) {
+    const t = c.type || 'unknown';
+    if (!map[t]) { map[t] = []; order.push(t); }
+    map[t].push(c);
+  }
+  return order.map(t => ({ type: t, label: TYPE_LABELS[t] || t, items: map[t] }));
+}
+
 export default function StepCleansing({ parseResult, setParseResult, sessionId, onNext }: StepCleansingProps) {
   const allCorrections = parseResult?.cleansing_corrections ?? [];
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   // 排除完整性检查中已处理的缺失记录行
@@ -40,121 +51,156 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
     return !row || !missingRows.has(row);
   });
 
-  // 按 confidence 分组
   const autoFixed = corrections.filter(c => (c as any).confidence !== 'low');
   const needsConfirm = corrections.filter(c => (c as any).confidence === 'low');
 
-  const handleRevert = useCallback(async (mutationId: number) => {
+  const autoGroups = groupByType(autoFixed);
+  const confirmGroups = groupByType(needsConfirm);
+
+  const handleAction = useCallback(async (mutationId: number) => {
     if (!sessionId) return;
     try {
       const res = await revertCleansing(sessionId, mutationId);
-      const newReverted = res.data.reverted;
       setParseResult(prev => {
         if (!prev) return prev;
         return {
           ...prev,
           cleansing_corrections: prev.cleansing_corrections.map(c =>
-            c.id === mutationId ? { ...c, reverted: newReverted } : c
+            c.id === mutationId ? { ...c, reverted: res.data.reverted } : c
           ),
         };
       });
     } catch (err) {
-      console.warn('Revert failed:', err);
+      console.warn('Action failed:', err);
     }
   }, [sessionId, setParseResult]);
 
-  const toggleExpand = (id: number) => {
-    setExpandedIds(prev => {
+  // 批量操作同 type 的所有 mutation
+  const handleGroupAction = useCallback(async (items: any[], action: 'confirm' | 'ignore') => {
+    if (!sessionId) return;
+    for (const c of items) {
+      const shouldRevert = action === 'ignore' && !c.reverted;
+      const shouldReapply = action === 'confirm' && c.reverted;
+      if (shouldRevert || shouldReapply) {
+        try {
+          const res = await revertCleansing(sessionId, c.id);
+          setParseResult(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              cleansing_corrections: prev.cleansing_corrections.map(cc =>
+                cc.id === c.id ? { ...cc, reverted: res.data.reverted } : cc
+              ),
+            };
+          });
+        } catch {}
+      }
+    }
+  }, [sessionId, setParseResult]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
 
-  const renderItem = (c: any) => {
-    const isReverted = c.reverted;
-    const isLow = c.confidence === 'low';
-    const isExpanded = expandedIds.has(c.id);
-    const typeLabel = TYPE_LABELS[c.type] || c.type;
-    const hasDetail = c.old_value != null || c.new_value != null;
+  const toggleItem = (id: number) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const renderAutoGroup = (group: { type: string; label: string; items: any[] }) => {
+    const isOpen = expandedGroups.has('auto_' + group.type);
+    const allReverted = group.items.every(c => c.reverted);
 
     return (
-      <div
-        key={c.id}
-        style={{
-          marginBottom: 8,
-          background: isReverted ? '#f9fafb' : '#fff',
-          border: `1px solid ${isReverted ? '#e5e7eb' : isLow ? '#fde68a' : '#d1fae5'}`,
-          borderRadius: 8,
-          opacity: isReverted ? 0.6 : 1,
-          overflow: 'hidden',
-        }}
-      >
+      <div key={group.type} style={{
+        marginBottom: 8, background: '#fff', border: '1px solid #d1fae5',
+        borderRadius: 8, overflow: 'hidden', opacity: allReverted ? 0.6 : 1,
+      }}>
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '12px 16px',
-            cursor: hasDetail ? 'pointer' : 'default',
-          }}
-          onClick={() => hasDetail && toggleExpand(c.id)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', cursor: 'pointer' }}
+          onClick={() => toggleGroup('auto_' + group.type)}
         >
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {hasDetail && (
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                ▶
-              </span>
-            )}
-            <span style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 10,
-              background: isLow ? '#FEF3C7' : '#D1FAE5',
-              color: isLow ? '#92400E' : '#065F46',
-              flexShrink: 0,
-            }}>
-              {typeLabel}
-            </span>
-            <span style={{
-              fontSize: 13,
-              color: isReverted ? 'var(--text-muted)' : 'var(--text-primary)',
-              textDecoration: isReverted ? 'line-through' : 'none',
-            }}>
-              {c.description}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
+            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#D1FAE5', color: '#065F46', flexShrink: 0 }}>{group.label}</span>
+            <span style={{ fontSize: 13, color: allReverted ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: allReverted ? 'line-through' : 'none' }}>
+              {group.items.length === 1 ? group.items[0].description : `${group.items.length} 条修正`}
             </span>
           </div>
           <button
-            onClick={(e) => { e.stopPropagation(); handleRevert(c.id); }}
-            style={{
-              fontSize: 12, padding: '4px 12px', borderRadius: 6,
-              border: '1px solid var(--border)', background: '#fff',
-              color: 'var(--text-secondary)', cursor: 'pointer',
-              whiteSpace: 'nowrap', marginLeft: 12, flexShrink: 0,
-            }}
+            onClick={(e) => { e.stopPropagation(); handleAction(group.items[0].id); }}
+            style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 12 }}
           >
-            {isReverted ? '恢复' : '撤回'}
+            {allReverted ? '恢复' : '撤回'}
           </button>
         </div>
-
-        {/* 展开详情 */}
-        {isExpanded && hasDetail && (
-          <div style={{
-            padding: '0 16px 12px 38px',
-            fontSize: 12, color: 'var(--text-muted)',
-            borderTop: '1px solid var(--border)',
-            paddingTop: 10,
-          }}>
-            {c.old_value != null && (
-              <div>原始值：<span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{String(c.old_value)}</span></div>
-            )}
-            {c.new_value != null && (
-              <div>修正为：<span style={{ color: 'var(--blue)', fontWeight: 600, fontFamily: 'monospace' }}>{String(c.new_value)}</span></div>
-            )}
-            {c.old_value != null && c.new_value != null && (
-              <div style={{ marginTop: 4, color: '#6b7280' }}>
-                {c.old_value} → {c.new_value}
+        {isOpen && (
+          <div style={{ borderTop: '1px solid var(--border)', padding: '8px 16px 12px 38px' }}>
+            {group.items.map(c => (
+              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 0', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ textDecoration: c.reverted ? 'line-through' : 'none' }}>{c.description}</span>
+                {c.old_value != null && c.new_value != null && (
+                  <span style={{ fontFamily: 'monospace', marginLeft: 12, flexShrink: 0 }}>{c.old_value} → {c.new_value}</span>
+                )}
               </div>
-            )}
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderConfirmGroup = (group: { type: string; label: string; items: any[] }) => {
+    const isOpen = expandedGroups.has('confirm_' + group.type);
+    const is13thCheck = group.type === 'duplicate_13th_check';
+
+    return (
+      <div key={group.type} style={{
+        marginBottom: 8, background: '#fff', border: '1px solid #fde68a',
+        borderRadius: 8, overflow: 'hidden',
+      }}>
+        <div
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', cursor: 'pointer' }}
+          onClick={() => toggleGroup('confirm_' + group.type)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
+            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>{group.label}</span>
+            <span style={{ fontSize: 13 }}>
+              {group.items.length === 1 ? group.items[0].description : `${group.items.length} 条待确认`}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 12, flexShrink: 0 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleGroupAction(group.items, 'confirm'); }}
+              style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid #d1fae5', background: '#ECFDF5', color: '#065F46', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {is13thCheck ? '是，已包含' : '确认'}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleGroupAction(group.items, 'ignore'); }}
+              style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {is13thCheck ? '否，未包含' : '忽略'}
+            </button>
+          </div>
+        </div>
+        {isOpen && (
+          <div style={{ borderTop: '1px solid var(--border)', padding: '8px 16px 12px 38px' }}>
+            {group.items.map(c => (
+              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 0' }}>
+                <span style={{ textDecoration: c.reverted ? 'line-through' : 'none', opacity: c.reverted ? 0.5 : 1 }}>
+                  {c.description}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -177,8 +223,7 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
         </div>
       )}
 
-      {/* 已自动修正 */}
-      {autoFixed.length > 0 && (
+      {autoGroups.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 15, fontWeight: 600 }}>已自动修正</span>
@@ -186,12 +231,11 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
               {autoFixed.length} 项
             </span>
           </div>
-          {autoFixed.map(renderItem)}
+          {autoGroups.map(renderAutoGroup)}
         </div>
       )}
 
-      {/* 需要确认 */}
-      {needsConfirm.length > 0 && (
+      {confirmGroups.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 15, fontWeight: 600 }}>需要确认</span>
@@ -202,22 +246,18 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
             以下问题无法自动判断，请人工确认后决定是否保留
           </div>
-          {needsConfirm.map(renderItem)}
+          {confirmGroups.map(renderConfirmGroup)}
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
         {hasExport && sessionId && (
-          <a
-            href={getExportUrl(sessionId)}
-            download
-            style={{
-              flex: 'none', padding: '10px 20px', borderRadius: 8,
-              border: '1px solid var(--border)', background: '#fff',
-              color: 'var(--text-secondary)', fontSize: 13,
-              textDecoration: 'none', cursor: 'pointer',
-            }}
-          >
+          <a href={getExportUrl(sessionId)} download style={{
+            flex: 'none', padding: '10px 20px', borderRadius: 8,
+            border: '1px solid var(--border)', background: '#fff',
+            color: 'var(--text-secondary)', fontSize: 13,
+            textDecoration: 'none', cursor: 'pointer',
+          }}>
             下载标注 Excel
           </a>
         )}

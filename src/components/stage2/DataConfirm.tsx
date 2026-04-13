@@ -25,13 +25,14 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [viewingStep, setViewingStep] = useState(1);
   const [step1Ready, setStep1Ready] = useState(false);
   const animationStarted = useRef(false);
-  const [funcChoice, setFuncChoice] = useState<string | null>(null);
   const [step2MsgsSent, setStep2MsgsSent] = useState(false);
   const [step2Ready, setStep2Ready] = useState(false);
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
   const [step3Ready, setStep3Ready] = useState(false);
   const [gradeData, setGradeData] = useState<any>(null);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
+  const [step4Ready, setStep4Ready] = useState(false);
+  const [funcData, setFuncData] = useState<any>(null);
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
 
   // Helper: send Sparky message with streaming output
@@ -66,24 +67,9 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     setViewingStep(nextStep);
   }, []);
 
-  // --- Choices ---
-  const handleFuncChoice = useCallback((choice: string) => {
-    setFuncChoice(choice);
-    const label = choice === 'digital' ? '数字营销' : '用户增长';
-    setTimeout(() => addMsg({ role: 'bot', text: `收到，增长黑客归入${label}类别 ✓` }), 300);
-    setTimeout(() => advanceStep(4), 1200);
-  }, [addMsg, advanceStep]);
-
   // --- Text input handler ---
   useEffect(() => {
-    textInputRef.current = (text: string) => {
-      const lower = text.toLowerCase();
-      if (viewingStep === 4 && funcChoice === null) {
-        if (lower.includes('营销') || lower.includes('数字')) { handleFuncChoice('digital'); return true; }
-        if (lower.includes('增长') || lower.includes('运营') || lower.includes('用户')) { handleFuncChoice('growth'); return true; }
-      }
-      return false;
-    };
+    textInputRef.current = () => false;
   });
 
   // =====================================================================
@@ -233,18 +219,14 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       if (sessionId) {
         runFuncMatch(sessionId).then(res => {
           const data = res.data;
-          if (data.function_matching) {
-            setParseResult(prev => prev ? { ...prev, function_matching: data.function_matching } : prev);
-          }
-          const confirmed = (data.function_matching || []).filter((f: any) => f.confirmed).length;
-          const unconfirmed = (data.function_matching || []).filter((f: any) => !f.confirmed);
-          const msg = unconfirmed.length > 0
-            ? `大部分岗位都匹配上了（${confirmed} 个高置信度），但 ${unconfirmed.slice(0, 3).map((f: any) => f.title).join('、')} 我不太确定，需要你看一下。`
-            : `所有 ${data.function_matching?.length || 0} 个岗位都匹配上了！`;
-          sendBotMsg(msg, 500);
+          setFuncData(data);
+          const sparkyMsg = data.sparky_message || '职能匹配完成，请确认右边的映射关系。';
+          sendBotMsg(sparkyMsg, 500);
+          setStep4Ready(true);
         }).catch(err => {
           console.warn('[DataConfirm] func matching failed:', err);
           sendBotMsg('职能匹配服务暂时不可用，请手动确认各岗位对应职能。', 500);
+          setStep4Ready(true);
         });
       }
     }
@@ -301,9 +283,9 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           ? <StepGradeMatch gradeData={gradeData} onNext={() => advanceStep(3)} />
           : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在匹配职级...</div></div>;
       case 4:
-        return (
-          <StepFuncMatch funcChoice={funcChoice} onFuncChoice={handleFuncChoice} parseResult={parseResult} onNext={() => advanceStep(4)} />
-        );
+        return step4Ready
+          ? <StepFuncMatch funcData={funcData} onNext={() => advanceStep(4)} />
+          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在匹配职能...</div></div>;
       case 5:
         return (
           <StepReady onStart={onComplete} onStepClick={s => setViewingStep(s)} onReupload={handleReupload} parseResult={parseResult} interviewNotes={interviewNotes} />

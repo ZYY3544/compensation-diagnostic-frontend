@@ -133,11 +133,11 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
           </button>
         </div>
         {isOpen && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px' }}>
             {group.items.map(c => (
-              <span key={c.id} style={{ textDecoration: c.reverted ? 'line-through' : 'none' }}>
-                {c.description}{' '}
-              </span>
+              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '3px 0', textDecoration: c.reverted ? 'line-through' : 'none' }}>
+                Row {c.row_number}: {c.context || c.description}
+              </div>
             ))}
           </div>
         )}
@@ -181,11 +181,11 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
           </div>
         </div>
         {isOpen && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px 12px 38px' }}>
             {group.items.map(c => (
-              <span key={c.id} style={{ textDecoration: c.reverted ? 'line-through' : 'none', opacity: c.reverted ? 0.5 : 1 }}>
-                {c.description}{' '}
-              </span>
+              <div key={c.id} style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '3px 0', textDecoration: c.reverted ? 'line-through' : 'none', opacity: c.reverted ? 0.5 : 1 }}>
+                Row {c.row_number}: {c.context || c.description}
+              </div>
             ))}
           </div>
         )}

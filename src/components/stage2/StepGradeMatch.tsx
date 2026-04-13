@@ -31,6 +31,8 @@ interface StepGradeMatchProps {
     employees_by_grade: Record<string, GradeGroup>;
     standard_grades: string[];
     standard_grade_definitions: Record<string, string>;
+    standard_sub_levels?: string[];
+    hay_grade_map?: Record<string, number>;
   } | null;
   onGradeChange?: (companyGrade: string, newStandardGrade: string) => void;
   onNext: () => void;
@@ -52,7 +54,7 @@ export default function StepGradeMatch({ gradeData, onGradeChange, onNext }: Ste
     );
   }
 
-  const { grade_table, employees_by_grade, standard_grades, standard_grade_definitions } = gradeData;
+  const { grade_table, employees_by_grade, standard_grades, standard_grade_definitions, standard_sub_levels, hay_grade_map } = gradeData;
   const THRESHOLD = 15;
 
   const getStandardGrade = (companyGrade: string, original: string) => {
@@ -92,6 +94,7 @@ export default function StepGradeMatch({ gradeData, onGradeChange, onNext }: Ste
               <th style={{ textAlign: 'left', padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>公司职级</th>
               <th style={{ textAlign: 'center', padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>人数</th>
               <th style={{ textAlign: 'left', padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>标准职级</th>
+              <th style={{ textAlign: 'center', padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Hay</th>
               <th style={{ textAlign: 'right', padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>状态</th>
             </tr>
           </thead>
@@ -116,6 +119,15 @@ export default function StepGradeMatch({ gradeData, onGradeChange, onNext }: Ste
                         <option key={sg} value={sg}>{sg}</option>
                       ))}
                     </select>
+                  </td>
+                  <td style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                    {(() => {
+                      const lv = current;
+                      const num = lv.replace('Level ', '');
+                      const h1 = hay_grade_map?.[`Level ${num}-1`];
+                      const h2 = hay_grade_map?.[`Level ${num}-2`];
+                      return h1 && h2 ? `${h1}-${h2}` : h1 || '';
+                    })()}
                   </td>
                   <td style={{ textAlign: 'right', fontSize: 12 }}>
                     {isAdjusted
@@ -210,6 +222,7 @@ export default function StepGradeMatch({ gradeData, onGradeChange, onNext }: Ste
                         <th style={{ textAlign: 'left', padding: '8px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>岗位</th>
                         <th style={{ textAlign: 'center', padding: '8px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>绩效</th>
                         <th style={{ textAlign: 'left', padding: '8px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>对标级别</th>
+                        <th style={{ textAlign: 'center', padding: '8px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>Hay</th>
                         <th style={{ textAlign: 'right', padding: '8px 16px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>调整原因</th>
                       </tr>
                     </thead>
@@ -242,17 +255,20 @@ export default function StepGradeMatch({ gradeData, onGradeChange, onNext }: Ste
                                 >
                                   {emp.suggested_grade && emp.suggested_grade !== emp.mapped_grade && (
                                     <option value={emp.suggested_grade}>
-                                      {emp.suggested_grade.includes('高') || (standard_grades.indexOf(emp.suggested_grade) > standard_grades.indexOf(emp.mapped_grade)) ? '↑' : '↓'} {emp.suggested_grade}
+                                      {(standard_sub_levels || []).indexOf(emp.suggested_grade) > (standard_sub_levels || []).indexOf(emp.mapped_grade) ? '↑' : '↓'} {emp.suggested_grade}
                                     </option>
                                   )}
                                   <option value={emp.mapped_grade}>{emp.mapped_grade}</option>
-                                  {standard_grades.filter(sg => sg !== emp.mapped_grade && sg !== emp.suggested_grade).map(sg => (
+                                  {(standard_sub_levels || standard_grades).filter(sg => sg !== emp.mapped_grade && sg !== emp.suggested_grade).map(sg => (
                                     <option key={sg} value={sg}>{sg}</option>
                                   ))}
                                 </select>
                               ) : (
                                 <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{emp.mapped_grade}</span>
                               )}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: 'var(--text-muted)' }}>
+                              {hay_grade_map?.[displayGrade] || ''}
                             </td>
                             <td style={{ textAlign: 'right', padding: '10px 16px' }}>
                               {emp.signals.length > 0 && (

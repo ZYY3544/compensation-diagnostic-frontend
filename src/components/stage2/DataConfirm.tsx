@@ -27,7 +27,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const animationStarted = useRef(false);
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
-  const [reverted, setReverted] = useState([false, false, false]);
   const [step2MsgsSent, setStep2MsgsSent] = useState(false);
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
@@ -290,14 +289,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     addMsg({ role: 'bot', text: '好的，你补完数据后重新上传就行，我在这儿等你' });
   };
 
-  const handleRevert = (idx: number) => {
-    setReverted(prev => {
-      const next = [...prev];
-      next[idx] = !next[idx];
-      return next;
-    });
-  };
-
   const handleStepClick = (step: number) => {
     if (step <= substep) setViewingStep(step);
   };
@@ -310,7 +301,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 2:
         return (
-          <StepCleansing reverted={reverted} onRevert={handleRevert} parseResult={parseResult} onNext={() => advanceStep(2)} />
+          <StepCleansing parseResult={parseResult} setParseResult={setParseResult} sessionId={sessionId} onNext={() => advanceStep(2)} />
         );
       case 3:
         return (

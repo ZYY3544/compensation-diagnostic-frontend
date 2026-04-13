@@ -32,6 +32,14 @@ export const runGradeMatch = (sessionId: string) =>
 export const runFuncMatch = (sessionId: string) =>
   api.post(`/pipeline/${sessionId}/func-match`);
 
+export const revertCleansing = (sessionId: string, mutationId: number) =>
+  api.post(`/pipeline/${sessionId}/cleansing/revert`, { mutation_id: mutationId });
+
+export const getExportUrl = (sessionId: string) => {
+  const base = import.meta.env.VITE_API_URL || '/api';
+  return `${base}/pipeline/${sessionId}/cleansing/export`;
+};
+
 export const runAnalysis = (sessionId: string) =>
   api.post(`/report/${sessionId}/analyze`);
 

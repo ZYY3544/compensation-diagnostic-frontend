@@ -46,4 +46,13 @@ export const runAnalysis = (sessionId: string) =>
 export const getReport = (sessionId: string) =>
   api.get(`/report/${sessionId}`);
 
+export const getDiagnosisSummary = (sessionId: string) =>
+  api.post(`/report/${sessionId}/diagnosis-summary`);
+
+export const getModuleInsight = (sessionId: string, module: string) =>
+  api.post(`/report/${sessionId}/module-insight`, { module });
+
+export const getDiagnosisAdvice = (sessionId: string) =>
+  api.post(`/report/${sessionId}/diagnosis-advice`);
+
 export default api;

@@ -40,7 +40,6 @@ function groupByType(items: any[]): { type: string; label: string; items: any[] 
 export default function StepCleansing({ parseResult, setParseResult, sessionId, onNext }: StepCleansingProps) {
   const allCorrections = parseResult?.cleansing_corrections ?? [];
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   // 排除完整性检查中已处理的缺失记录行
   const missingRows = new Set(
@@ -102,14 +101,6 @@ export default function StepCleansing({ parseResult, setParseResult, sessionId, 
     setExpandedGroups(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
-
-  const toggleItem = (id: number) => {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };

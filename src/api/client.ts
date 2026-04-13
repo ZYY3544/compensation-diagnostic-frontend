@@ -20,6 +20,9 @@ export const getParseSummary = (sessionId: string, summary: string) =>
 export const getCompletenessSummary = (sessionId: string, summary: string) =>
   api.post(`/pipeline/${sessionId}/completeness-summary`, { summary });
 
+export const createSnapshot = (sessionId: string) =>
+  api.post(`/pipeline/${sessionId}/snapshot`);
+
 export const runCleansing = (sessionId: string) =>
   api.post(`/pipeline/${sessionId}/cleansing`);
 

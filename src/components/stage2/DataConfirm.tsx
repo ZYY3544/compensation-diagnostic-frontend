@@ -5,7 +5,7 @@ import StepCleansing from './StepCleansing';
 import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
-import { getCompletenessSummary, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
+import { getCompletenessSummary, createSnapshot, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -176,35 +176,43 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   }, [substep, parseResult, sendBotMsg, sessionId, advanceStep]);
 
   // =====================================================================
-  // Step 2: 数据清洗（进入时后台调 AI cleansing LLM）
+  // Step 2: 快照 → 数据清洗（进入时先复制数据，再调 AI cleansing）
   // =====================================================================
   useEffect(() => {
     if (substep === 2 && !step2MsgsSent) {
       setStep2MsgsSent(true);
-      const corrections = parseResult?.cleansing_corrections || [];
 
-      // 先用代码层结果展示
-      const corrMsg = corrections.length > 0
-        ? `发现几个需要处理的地方，我已经帮你自动修正了 ${corrections.length} 项。右边可以看到详情，有不对的可以撤回。`
-        : '数据口径看起来没有明显问题，不需要额外修正。';
+      (async () => {
+        // 1. 先复制数据
+        await sendBotMsg('我先复制一份你的原始数据，后续的清洗和修正都在副本上操作，改错了随时可以回退。', 1500);
+        if (sessionId) {
+          try { await createSnapshot(sessionId); } catch {}
+        }
 
-      sendBotMsg('让我检查一下数据质量...', 300).then(() => {
-        return sendBotMsg(corrMsg, 1000);
-      }).then(() => {
-        return sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 800);
-      });
+        // 2. 开始清洗
+        await sendBotMsg('让我检查一下数据质量...', 2000);
 
-      // 后台并行调 AI cleansing，结果回来后更新 parseResult
-      if (sessionId) {
-        runCleansing(sessionId).then(res => {
-          const data = res.data;
-          if (data.cleansing_corrections) {
-            setParseResult(prev => prev ? { ...prev, cleansing_corrections: data.cleansing_corrections } : prev);
+        // 3. 后台调 AI cleansing，等结果回来再展示
+        if (sessionId) {
+          try {
+            const res = await runCleansing(sessionId);
+            if (res.data.cleansing_corrections) {
+              setParseResult(prev => prev ? { ...prev, cleansing_corrections: res.data.cleansing_corrections } : prev);
+            }
+            const count = res.data.cleansing_corrections?.length || 0;
+            const corrMsg = count > 0
+              ? `发现 ${count} 个需要处理的地方，我已经帮你自动修正了。右边可以看详情，有不对的可以撤回。`
+              : '数据口径没有明显问题，不需要额外修正。';
+            await sendBotMsg(corrMsg, 500);
+          } catch {
+            await sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500);
           }
-        }).catch(err => console.warn('[DataConfirm] AI cleansing failed:', err));
-      }
+        }
+
+        await sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 1500);
+      })();
     }
-  }, [substep, step2MsgsSent, sendBotMsg, parseResult, sessionId, setParseResult]);
+  }, [substep, step2MsgsSent, sendBotMsg, sessionId, setParseResult]);
 
   // =====================================================================
   // Step 3: 职级匹配（进入时调 LLM）

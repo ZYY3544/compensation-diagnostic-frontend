@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ReportData } from '../../types';
 import DiagnosisSummary from './DiagnosisSummary';
+import DiagnosisAdvice from './DiagnosisAdvice';
 import ModuleExternalComp from './ModuleExternalComp';
 import ModuleInternalEquity from './ModuleInternalEquity';
 import ModulePayPerformance from './ModulePayPerformance';
@@ -17,9 +18,10 @@ const MODULE_KEYS = [
 
 interface ReportViewProps {
   reportData?: ReportData | null;
+  adviceData?: { advice: any[]; closing: string } | null;
 }
 
-export default function ReportView({ reportData }: ReportViewProps) {
+export default function ReportView({ reportData, adviceData }: ReportViewProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
   if (!reportData) {
@@ -93,6 +95,11 @@ export default function ReportView({ reportData }: ReportViewProps) {
       <div style={{ minHeight: 300 }}>
         {renderModule()}
       </div>
+
+      {/* 诊断建议 */}
+      {adviceData && adviceData.advice?.length > 0 && (
+        <DiagnosisAdvice advice={adviceData.advice} closing={adviceData.closing} />
+      )}
     </div>
   );
 }

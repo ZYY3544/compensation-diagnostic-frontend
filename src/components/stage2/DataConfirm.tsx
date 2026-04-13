@@ -25,7 +25,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [viewingStep, setViewingStep] = useState(1);
   const [step1Ready, setStep1Ready] = useState(false);
   const animationStarted = useRef(false);
-  const [taxChoice, setTaxChoice] = useState<string | null>(null);
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
   const [reverted, setReverted] = useState([false, false, false]);
@@ -67,13 +66,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   }, []);
 
   // --- Choices ---
-  const handleTaxChoice = useCallback((choice: string) => {
-    setTaxChoice(choice);
-    const label = choice === 'pre' ? '税前' : '税后';
-    setTimeout(() => addMsg({ role: 'bot', text: `好的，按${label}数据处理 ✓` }), 300);
-    setTimeout(() => advanceStep(2), 1200);
-  }, [addMsg, advanceStep]);
-
   const handleL7Choice = useCallback((choice: string) => {
     setL7Choice(choice);
     const label = choice === 'director' ? '总监级' : '高级经理级';
@@ -92,10 +84,6 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   useEffect(() => {
     textInputRef.current = (text: string) => {
       const lower = text.toLowerCase();
-      if (viewingStep === 2 && taxChoice === null) {
-        if (lower.includes('税前')) { handleTaxChoice('pre'); return true; }
-        if (lower.includes('税后')) { handleTaxChoice('post'); return true; }
-      }
       if (viewingStep === 3 && l7Choice === null) {
         if (lower.includes('总监')) { handleL7Choice('director'); return true; }
         if (lower.includes('高级经理') || lower.includes('经理')) { handleL7Choice('senior_mgr'); return true; }
@@ -192,24 +180,22 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         // 2. 开始清洗
         await sendBotMsg('让我检查一下数据质量...', 2000);
 
-        // 3. 后台调 AI cleansing，等结果回来再展示
+        // 3. 调 AI cleansing，等结果回来展示 AI 生成的总结
         if (sessionId) {
           try {
             const res = await runCleansing(sessionId);
             if (res.data.cleansing_corrections) {
               setParseResult(prev => prev ? { ...prev, cleansing_corrections: res.data.cleansing_corrections } : prev);
             }
-            const count = res.data.cleansing_corrections?.length || 0;
-            const corrMsg = count > 0
-              ? `发现 ${count} 个需要处理的地方，我已经帮你自动修正了。右边可以看详情，有不对的可以撤回。`
-              : '数据口径没有明显问题，不需要额外修正。';
-            await sendBotMsg(corrMsg, 500);
+            const aiMsg = res.data.sparky_message
+              || (res.data.cleansing_corrections?.length
+                ? '右边可以看到清洗详情，有不对的可以撤回。'
+                : '数据质量没问题，不需要额外修正。');
+            await sendBotMsg(aiMsg, 500);
           } catch {
             await sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500);
           }
         }
-
-        await sendBotMsg('对了，有一个需要你确认——你的薪酬数据是税前还是税后的？', 1500);
       })();
     }
   }, [substep, step2MsgsSent, sendBotMsg, sessionId, setParseResult]);
@@ -324,7 +310,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 2:
         return (
-          <StepCleansing taxChoice={taxChoice} onTaxChoice={handleTaxChoice} reverted={reverted} onRevert={handleRevert} parseResult={parseResult} onNext={() => advanceStep(2)} />
+          <StepCleansing reverted={reverted} onRevert={handleRevert} parseResult={parseResult} onNext={() => advanceStep(2)} />
         );
       case 3:
         return (

@@ -28,6 +28,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [l7Choice, setL7Choice] = useState<string | null>(null);
   const [funcChoice, setFuncChoice] = useState<string | null>(null);
   const [step2MsgsSent, setStep2MsgsSent] = useState(false);
+  const [step2Ready, setStep2Ready] = useState(false);
   const [step3MsgsSent, setStep3MsgsSent] = useState(false);
   const [step4MsgsSent, setStep4MsgsSent] = useState(false);
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
@@ -191,8 +192,10 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
                 ? '右边可以看到清洗详情，有不对的可以撤回。'
                 : '数据质量没问题，不需要额外修正。');
             await sendBotMsg(aiMsg, 500);
+            setStep2Ready(true);
           } catch {
             await sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500);
+            setStep2Ready(true);
           }
         }
       })();
@@ -300,9 +303,9 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           ? <StepCompleteness onAccept={handleAcceptCompleteness} onReupload={handleReupload} parseResult={parseResult} />
           : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 2:
-        return (
-          <StepCleansing parseResult={parseResult} setParseResult={setParseResult} sessionId={sessionId} onNext={() => advanceStep(2)} />
-        );
+        return step2Ready || viewingStep !== substep
+          ? <StepCleansing parseResult={parseResult} setParseResult={setParseResult} sessionId={sessionId} onNext={() => advanceStep(2)} />
+          : <div className="wizard-content"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 0' }}>Sparky 正在分析数据...</div></div>;
       case 3:
         return (
           <StepGradeMatch l7Choice={l7Choice} onL7Choice={handleL7Choice} parseResult={parseResult} onNext={() => advanceStep(3)} />

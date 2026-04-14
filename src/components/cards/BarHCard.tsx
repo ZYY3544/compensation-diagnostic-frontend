@@ -92,6 +92,23 @@ export default function BarHCard({ config, data }: Props) {
         </div>
       )}
 
+      {/* P{marker} 标签行——画在所有条形上方，避免被柱子遮 */}
+      {marker != null && activeRows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 2, height: 16 }}>
+          <div style={{ width: 50 }} />
+          <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+            <div style={{
+              position: 'absolute', left: `${(marker / maxVal) * 100}%`,
+              transform: 'translateX(-50%)', bottom: 0,
+              fontSize: 10, fontWeight: 600, color: '#6b6b7e',
+              whiteSpace: 'nowrap',
+            }}>
+              市场 P{marker}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 条形图 */}
       <div>
         {activeRows.length === 0 ? (

@@ -22,13 +22,19 @@ export default function ModuleExternalComp({ data, insight }: { data: any; insig
       {crByFunc.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>各职能 Compa-Ratio</div>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={crByFunc} layout="vertical">
+          {/* 顶部 margin 留 24px 给 P50 标签，避免被柱子遮 */}
+          <ResponsiveContainer width="100%" height={270}>
+            <BarChart data={crByFunc} layout="vertical" margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" domain={[0, 'auto']} />
               <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
               <Tooltip formatter={(v: any) => [Number(v).toFixed(2), 'CR']} />
-              <ReferenceLine x={1} stroke="#666" strokeDasharray="3 3" label="P50" />
+              <ReferenceLine
+                x={1}
+                stroke="#666"
+                strokeDasharray="3 3"
+                label={{ value: '市场 P50', position: 'top', fill: '#666', fontSize: 11, fontWeight: 600 }}
+              />
               <Bar dataKey="cr" radius={[0, 4, 4, 0]}>
                 {crByFunc.map((entry: any, i: number) => (
                   <Cell key={i} fill={entry.cr < 0.9 ? '#EF4444' : entry.cr < 1.0 ? '#F59E0B' : '#22C55E'} />

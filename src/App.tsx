@@ -302,7 +302,16 @@ function App() {
       });
       setWorkspaceMode('narrow');
       if (data.narrative) streamMsg(data.narrative);
-    } catch (err) {
+    } catch (err: any) {
+      // 400 前置条件未满足 → 后端带 sparky_message，直接展示给用户
+      // 绝不打开右侧面板，不调引擎，不生成分析结论
+      const status = err?.response?.status;
+      const body = err?.response?.data;
+      if (status === 400 && body?.unmet) {
+        console.warn('[Skill] preconditions unmet', body.unmet, 'for', skillKey);
+        streamMsg(body.sparky_message || body.error || '前置条件未满足。');
+        return;
+      }
       console.warn('[Skill] invoke failed', err);
       streamMsg('调用这个能力时遇到了问题，请稍后再试。');
     }

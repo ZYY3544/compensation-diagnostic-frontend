@@ -7,7 +7,7 @@ import InterviewView from './components/stage3/InterviewView';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
-import { createSession, uploadFile, runAnalysis, getReport } from './api/client';
+import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry } from './api/client';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
 
@@ -35,6 +35,7 @@ function App() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [skillChips, setSkillChips] = useState<any[]>([]);
   const welcomeSent = useRef(false);
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
@@ -50,12 +51,21 @@ function App() {
     }
   }, [stage, messages.length]);
 
-  // Create session on app load
+  // Create session + 拉取 skill 列表
   useEffect(() => {
     if (welcomeSent.current) return;
     welcomeSent.current = true;
     createSession().then(res => {
       setSessionId(res.data.id);
+    }).catch(() => {});
+    // 拉 chip
+    getSkillRegistry().then(res => {
+      const skills = res.data.skills || [];
+      setSkillChips(skills.map((s: any) => ({
+        icon: s.chip_icon || '🔹',
+        label: s.chip_label || s.display_name,
+        skillKey: s.key,
+      })));
     }).catch(() => {});
   }, []);
 
@@ -238,12 +248,11 @@ function App() {
         {/* 对话内容 */}
         {isWelcome ? (
           <WelcomeView
-            chips={[
-              { icon: '📊', label: '做一次完整的薪酬诊断', onClick: () => handleChipClick('full_diagnosis') },
-              { icon: '🔍', label: '查一下市场薪酬水平', onClick: () => handleChipClick('external_benchmark') },
-              { icon: '💰', label: '候选人定薪建议', onClick: () => handleChipClick('offer_check') },
-              { icon: '📈', label: '调薪预算怎么分配', onClick: () => handleChipClick('salary_simulation') },
-            ]}
+            chips={skillChips.map((c: any) => ({
+              icon: c.icon,
+              label: c.label,
+              onClick: () => handleChipClick(c.skillKey),
+            }))}
           />
         ) : (
           <SparkyPanel

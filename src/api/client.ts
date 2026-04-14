@@ -60,4 +60,14 @@ export const getReportPdfUrl = (sessionId: string) => {
   return `${base}/report/${sessionId}/export-pdf`;
 };
 
+// ===== Skill API =====
+export const getSkillRegistry = (mode?: string) =>
+  api.get('/skill/registry', { params: mode ? { mode } : undefined });
+
+export const classifyIntent = (message: string, context?: any) =>
+  api.post('/skill/classify-intent', { message, context });
+
+export const invokeSkill = (skillKey: string, sessionId: string, params: any) =>
+  api.post('/skill/invoke', { skill_key: skillKey, session_id: sessionId, params });
+
 export default api;

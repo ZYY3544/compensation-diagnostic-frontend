@@ -97,23 +97,14 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
   ): Promise<void> => {
     const { loadingText, loadingMs = 1000 + Math.random() * 500, chips } = options || {};
 
+    // 本次消息的唯一 id——按 id 更新避免并发流互踩
+    const msgId = nextMsgId();
     if (loadingText) {
-      // 追加 loading 消息
-      setMessages(prev => [...prev, { role: 'bot', text: loadingText }]);
-      // 强制等待 loading 时长
+      setMessages(prev => [...prev, { id: msgId, role: 'bot', text: loadingText }]);
       await new Promise(r => setTimeout(r, loadingMs));
-      // 把 loading 消息替换成空文本，准备流式填充
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '' };
-        }
-        return updated;
-      });
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: '' } : m));
     } else {
-      // 没有 loading，直接追加空 bot 消息
-      setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+      setMessages(prev => [...prev, { id: msgId, role: 'bot', text: '' }]);
     }
 
     // 流式展示回复文本
@@ -124,18 +115,11 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
         const currentText = replyText.slice(0, displayed);
         const isDone = displayed >= replyText.length;
 
-        setMessages(prev => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-            updated[lastIdx] = {
-              role: 'bot',
-              text: currentText,
-              chips: isDone ? chips : undefined,
-            };
-          }
-          return updated;
-        });
+        setMessages(prev => prev.map(m => m.id === msgId ? {
+          ...m,
+          text: currentText,
+          chips: isDone ? chips : undefined,
+        } : m));
 
         if (isDone) {
           clearInterval(timer);

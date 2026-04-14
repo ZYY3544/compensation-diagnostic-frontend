@@ -1,6 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-export default function ModuleLaborCost({ data }: { data: any }) {
+export default function ModuleLaborCost({ data, insight }: { data: any; insight?: string }) {
   const kpi = data?.kpi || {};
   const trend = data?.trend || [];
   const headcount = data?.current_headcount || 0;
@@ -11,6 +11,11 @@ export default function ModuleLaborCost({ data }: { data: any }) {
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
         {data?.has_trend_data ? '人工成本多年变化趋势' : '仅当年数据（缺少公司经营数据表）'}
       </div>
+      {insight && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {insight}
+        </div>
+      )}
 
       {/* KPI 卡片 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>

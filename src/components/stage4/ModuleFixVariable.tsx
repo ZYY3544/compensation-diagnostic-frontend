@@ -1,6 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-export default function ModuleFixVariable({ data }: { data: any }) {
+export default function ModuleFixVariable({ data, insight }: { data: any; insight?: string }) {
   const byGrade = data?.pay_mix_by_grade || [];
   const byDept = data?.pay_mix_by_dept || [];
   const overallFix = data?.overall_fix_pct;
@@ -12,6 +12,11 @@ export default function ModuleFixVariable({ data }: { data: any }) {
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
         固定 vs 浮动薪酬比例 · 整体固浮比 {overallFix ?? '—'}:{overallVar ?? '—'}
       </div>
+      {insight && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {insight}
+        </div>
+      )}
 
       {/* 按职级的堆叠柱状图 */}
       {byGrade.length > 0 && (

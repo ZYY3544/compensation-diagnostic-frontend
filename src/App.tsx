@@ -9,6 +9,7 @@ import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
 import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
+import { nextMsgId } from './lib/msgId';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
 
@@ -34,6 +35,7 @@ function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [adviceData, setAdviceData] = useState<{ advice: any[]; closing: string } | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [skillChips, setSkillChips] = useState<any[]>([]);
@@ -83,18 +85,12 @@ function App() {
   }, []);
 
   const streamMsg = useCallback((text: string) => {
-    setMessages(prev => [...prev, { role: 'bot', text: '' }]);
+    const id = nextMsgId();
+    setMessages(prev => [...prev, { id, role: 'bot', text: '' }]);
     let displayed = 0;
     const timer = setInterval(() => {
       displayed = Math.min(displayed + 1, text.length);
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: text.slice(0, displayed) };
-        }
-        return updated;
-      });
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, text: text.slice(0, displayed) } : m));
       if (displayed >= text.length) clearInterval(timer);
     }, 30);
   }, []);
@@ -120,14 +116,7 @@ function App() {
       setStage(3);
     } catch (err) {
       console.warn('Upload API failed', err);
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-          updated[lastIdx] = { role: 'bot', text: '上传失败了，后端服务可能还在启动中。请稍后重新上传。' };
-        }
-        return updated;
-      });
+      streamMsg('上传失败了，后端服务可能还在启动中。请稍后重新上传。');
       setLoading(false);
     }
   };
@@ -297,7 +286,15 @@ function App() {
         />
       );
     }
-    if (stage === 4) return <ReportView reportData={reportData} sessionId={sessionId} />;
+    if (stage === 4) return (
+      <ReportView
+        reportData={reportData}
+        adviceData={adviceData}
+        setAdviceData={setAdviceData}
+        sessionId={sessionId}
+        streamMsg={streamMsg}
+      />
+    );
     return null;
   };
 

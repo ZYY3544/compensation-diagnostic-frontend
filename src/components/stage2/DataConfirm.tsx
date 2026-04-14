@@ -6,6 +6,7 @@ import StepGradeMatch from './StepGradeMatch';
 import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
 import { getCompletenessSummary, createSnapshot, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
+import { nextMsgId } from '../../lib/msgId';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -36,21 +37,16 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
 
   // Helper: send Sparky message with streaming output
+  // 每条消息分配唯一 id，按 id 更新——避免与 App.streamMsg 并发写同一个 "length-1" 位置
   const sendBotMsg = useCallback((text: string, delay: number) => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        addMsg({ role: 'bot', text: '' });
+        const id = nextMsgId();
+        setMessages(prev => [...prev, { id, role: 'bot', text: '' }]);
         let displayed = 0;
         const timer = setInterval(() => {
           displayed = Math.min(displayed + 1, text.length);
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (lastIdx >= 0 && updated[lastIdx].role === 'bot') {
-              updated[lastIdx] = { role: 'bot', text: text.slice(0, displayed) };
-            }
-            return updated;
-          });
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, text: text.slice(0, displayed) } : m));
           if (displayed >= text.length) {
             clearInterval(timer);
             resolve();
@@ -58,7 +54,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         }, 30);
       }, delay);
     });
-  }, [addMsg, setMessages]);
+  }, [setMessages]);
 
   const advanceStep = useCallback((fromStep: number) => {
     const nextStep = fromStep + 1;
@@ -89,16 +85,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     const colMissing = parseResult?.completeness_issues?.column_missing || [];
 
     (async () => {
-      // 解析阶段
-      await sendBotMsg('正在读取 Excel 结构...', 1500);
-      await sendBotMsg('正在识别字段和数据类型...', 2500);
-      await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 3000);
-
-      // 完整度分析阶段
-      await sendBotMsg('接下来做一下数据完整度分析...', 2500);
-      await sendBotMsg('正在检查各字段填充情况...', 2500);
-
-      // 汇总完整度数据给 AI
+      // 预计算完整度摘要 + AI 调用所需的输入
       const uniqueRows = new Set(rowMissing.map((r: any) => r.row));
       const fieldGroups: Record<string, number[]> = {};
       for (const r of rowMissing) {
@@ -111,6 +98,18 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         `可选字段未填写：${colMissing.length > 0 ? colMissing.map((c: any) => c.field).join('、') : '无'}`,
       ];
 
+      // 聊天区的引导消息「队列」跑在后台——不阻塞右侧看板出现
+      // （Chrome 后台标签会把 setInterval(30ms) 节流成 ~1s/char，
+      //   UI 状态不能再绑在这个流式播报的完成之后）
+      const introStream = (async () => {
+        await sendBotMsg('正在读取 Excel 结构...', 1500);
+        await sendBotMsg('正在识别字段和数据类型...', 2500);
+        await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 3000);
+        await sendBotMsg('接下来做一下数据完整度分析...', 2500);
+        await sendBotMsg('正在检查各字段填充情况...', 2500);
+      })();
+
+      // 同时异步调 AI 总结；不等 intro stream
       let aiMsg = '';
       if (sessionId) {
         try {
@@ -129,13 +128,14 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         }
       }
 
-      await sendBotMsg(aiMsg, 1500);
+      // AI 响应回来（或 fallback 决定好）立即解锁看板——不再等 intro stream 逐字播完
       setStep1Ready(true);
-
-      // 没有任何问题时自动推进
       if (uniqueRows.size === 0 && colMissing.length === 0) {
         setTimeout(() => advanceStep(1), 2000);
       }
+
+      // aiMsg 作为 Sparky 的收尾台词拼到 intro stream 末尾（后台跑）
+      introStream.then(() => sendBotMsg(aiMsg, 1500));
     })();
   }, [substep, parseResult, sendBotMsg, sessionId, advanceStep]);
 
@@ -147,17 +147,15 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       setStep2MsgsSent(true);
 
       (async () => {
-        // 1. 先复制数据
-        await sendBotMsg('我先复制一份你的原始数据，后续的清洗和修正都在副本上操作，改错了随时可以回退。', 1500);
+        // 引导消息后台流式跑（不阻塞看板）
+        const introStream = (async () => {
+          await sendBotMsg('我先复制一份你的原始数据，后续的清洗和修正都在副本上操作，改错了随时可以回退。', 1500);
+          await sendBotMsg('让我检查一下数据质量...', 2000);
+        })();
+
+        // 1. 快照 + 2. 清洗 API 并行跑，不等 stream
         if (sessionId) {
           try { await createSnapshot(sessionId); } catch {}
-        }
-
-        // 2. 开始清洗
-        await sendBotMsg('让我检查一下数据质量...', 2000);
-
-        // 3. 调 AI cleansing，等结果回来展示 AI 生成的总结
-        if (sessionId) {
           try {
             const res = await runCleansing(sessionId);
             if (res.data.cleansing_corrections) {
@@ -167,12 +165,16 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
               || (res.data.cleansing_corrections?.length
                 ? '右边可以看到清洗详情，有不对的可以撤回。'
                 : '数据质量没问题，不需要额外修正。');
-            await sendBotMsg(aiMsg, 500);
+            // AI 结果一回来立即解锁看板
             setStep2Ready(true);
+            // aiMsg 等 intro 播完再接着流（后台）
+            introStream.then(() => sendBotMsg(aiMsg, 500));
           } catch {
-            await sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500);
             setStep2Ready(true);
+            introStream.then(() => sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500));
           }
+        } else {
+          setStep2Ready(true);
         }
       })();
     }

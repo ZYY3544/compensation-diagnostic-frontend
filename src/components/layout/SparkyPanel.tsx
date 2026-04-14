@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PixelCat from '../shared/PixelCat';
+import { nextMsgId } from '../../lib/msgId';
 import type { Message } from '../../types';
 
 // SSE 流式解析函数（简化版，只处理 text 类型）
@@ -109,8 +110,9 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
     if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsLoading(true);
 
-    // Add "thinking" message
-    setMessages(prev => [...prev, { role: 'bot', text: 'Sparky 正在思考...' }]);
+    // Add "thinking" message —— 分配 id，后续更新都按 id 定位避免竞态
+    const replyId = nextMsgId();
+    setMessages(prev => [...prev, { id: replyId, role: 'bot', text: 'Sparky 正在思考...' }]);
 
     if (!sessionId) {
       // No session yet (backend cold starting), try creating one on the fly
@@ -134,19 +136,11 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
               const ct = chatRes.headers.get('content-type') || '';
               if (ct.includes('text/event-stream')) {
                 await parseSseStream(chatRes, (fullText) => {
-                  setMessages(prev => {
-                    const updated = [...prev];
-                    updated[updated.length - 1] = { role: 'bot', text: fullText };
-                    return updated;
-                  });
+                  setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: fullText } : m));
                 });
               } else {
                 const chatData = await chatRes.json();
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = { role: 'bot', text: chatData.response || '你好，有什么薪酬问题可以问我。' };
-                  return updated;
-                });
+                setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: chatData.response || '你好，有什么薪酬问题可以问我。' } : m));
               }
               abortRef.current = null;
               setIsLoading(false);
@@ -158,11 +152,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
       } catch {}
       // All attempts failed, show friendly message
       setTimeout(() => {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'bot', text: '后端服务正在启动中，请稍后再试（约 30 秒）。' };
-          return updated;
-        });
+        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: '后端服务正在启动中，请稍后再试（约 30 秒）。' } : m));
         setIsLoading(false);
       }, 500);
       return;
@@ -185,21 +175,13 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('text/event-stream')) {
         await parseSseStream(res, (fullText) => {
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[updated.length - 1] = { role: 'bot', text: fullText };
-            return updated;
-          });
+          setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: fullText } : m));
         });
       } else {
         // Non-streaming fallback (JSON response)
         const data = await res.json();
         const reply = data.response || data.content || '抱歉，暂时无法回答。';
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'bot', text: reply };
-          return updated;
-        });
+        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: reply } : m));
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -212,17 +194,9 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
           body: JSON.stringify({ message: text }),
         });
         const data = await res.json();
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'bot', text: data.response || '抱歉，获取回复失败。' };
-          return updated;
-        });
+        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: data.response || '抱歉，获取回复失败。' } : m));
       } catch {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'bot', text: '网络异常，请稍后重试。' };
-          return updated;
-        });
+        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: '网络异常，请稍后重试。' } : m));
       }
     } finally {
       abortRef.current = null;

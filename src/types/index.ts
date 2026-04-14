@@ -1,4 +1,5 @@
 export interface Message {
+  id?: string;      // 唯一 id，用来解决并发 streamMsg 的"谁写最后一条"竞态
   role: 'user' | 'bot';
   text: string;
   chips?: string[];

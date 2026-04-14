@@ -8,6 +8,7 @@ interface Finding {
 interface Props {
   healthScore: number;
   findings: Finding[];
+  opening?: string;
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
@@ -16,7 +17,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   P3: { bg: '#DBEAFE', color: '#1E40AF' },
 };
 
-export default function DiagnosisSummary({ healthScore, findings }: Props) {
+export default function DiagnosisSummary({ healthScore, findings, opening }: Props) {
   // 健康分颜色
   const scoreColor = healthScore >= 70 ? 'var(--green)' : healthScore >= 50 ? '#D97706' : '#DC2626';
 
@@ -39,6 +40,23 @@ export default function DiagnosisSummary({ healthScore, findings }: Props) {
           </div>
         </div>
       </div>
+
+      {/* AI 开场：诊断摘要（prompt 要求纯文本，含"建议诊断重点关注："段） */}
+      {opening && (
+        <div style={{
+          marginBottom: 16,
+          padding: '14px 18px',
+          background: '#F8FAFC',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          fontSize: 13,
+          lineHeight: 1.7,
+          color: 'var(--text-primary)',
+          whiteSpace: 'pre-wrap',
+        }}>
+          {opening}
+        </div>
+      )}
 
       {/* 核心发现卡片 */}
       {findings.length > 0 && (

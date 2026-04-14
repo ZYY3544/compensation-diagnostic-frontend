@@ -1,6 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 
-export default function ModuleExternalComp({ data }: { data: any }) {
+export default function ModuleExternalComp({ data, insight }: { data: any; insight?: string }) {
   const crByFunc = data?.cr_by_function || [];
   const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
   const overallCR = data?.overall_cr;
@@ -12,6 +12,11 @@ export default function ModuleExternalComp({ data }: { data: any }) {
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
         员工薪酬与市场水平对比 · 整体 CR {overallCR ?? '—'} · {belowP25} 人低于 P25
       </div>
+      {insight && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {insight}
+        </div>
+      )}
 
       {/* CR by Function 柱状图 */}
       {crByFunc.length > 0 && (
@@ -53,13 +58,16 @@ export default function ModuleExternalComp({ data }: { data: any }) {
                   <tr key={dept}>
                     <td style={{ padding: '8px', fontWeight: 500 }}>{dept}</td>
                     {(heatmap.values[di] || []).map((cr: number | null, gi: number) => {
-                      const bg = cr == null ? '#F9FAFB'
-                        : cr < 0.85 ? '#FEE2E2'
-                        : cr < 0.95 ? '#FEF3C7'
-                        : cr < 1.05 ? '#D1FAE5'
-                        : '#DBEAFE';
+                      // CR 着色：< 0.85 红 / 0.85-1.15 绿 / 1.15-2.0 橙 / > 2.0 深红
+                      let bg = '#F9FAFB', color = 'inherit', fontWeight: number | string = 500;
+                      if (cr != null) {
+                        if (cr < 0.85) { bg = '#FEE2E2'; color = '#991B1B'; }
+                        else if (cr <= 1.15) { bg = '#D1FAE5'; color = '#065F46'; }
+                        else if (cr <= 2.0) { bg = '#FEF3C7'; color = '#92400E'; }
+                        else { bg = '#FCA5A5'; color = '#7F1D1D'; fontWeight = 700; }
+                      }
                       return (
-                        <td key={gi} style={{ padding: '8px', textAlign: 'center', background: bg, fontWeight: 500 }}>
+                        <td key={gi} style={{ padding: '8px', textAlign: 'center', background: bg, color, fontWeight }}>
                           {cr != null ? cr.toFixed(2) : '—'}
                         </td>
                       );

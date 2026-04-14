@@ -4,7 +4,7 @@ const PERF_COLORS: Record<string, string> = {
   'A': '#22C55E', 'B+': '#3B82F6', 'B': '#64748B', 'B-': '#F59E0B', 'C': '#EF4444',
 };
 
-export default function ModulePayPerformance({ data }: { data: any }) {
+export default function ModulePayPerformance({ data, insight }: { data: any; insight?: string }) {
   const perfStats = data?.perf_stats || [];
   const tccByPerf = data?.tcc_by_perf || [];
   const aVsCRatio = data?.a_vs_c_ratio;
@@ -29,6 +29,12 @@ export default function ModulePayPerformance({ data }: { data: any }) {
         不同绩效等级间的薪酬差异 · A/B 差距 {aVsBGap != null ? `${aVsBGap}%` : '—'}
         {spreadAdequate === false && ' · ⚠ 激励区分度不足'}
       </div>
+
+      {insight && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {insight}
+        </div>
+      )}
 
       {/* KPI 卡片 */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>

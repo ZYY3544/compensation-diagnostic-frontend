@@ -8,10 +8,25 @@
  *   data_field: 'plan_b.details',  // 指向 data 里的数组字段
  *   column_fields: ['grade', 'current', 'target_a', 'target_b', 'headcount', 'budget'], // 每列对应 field（可选；不给则用 columns 作为 field 名）
  *   highlight_rule: '核心骨干层高亮' | {{column: 'status', equals: 'high'}},
+ *   cell_color_rules: {{
+ *     cr: 'cr_range',   // 预设 cr 规则: <0.85 红 / 0.85-1.15 绿 / 1.15-2.0 橙 / >2.0 深红
+ *   }},
  *   footer: '可选说明'
  * }
  */
 import { getValueByPath, formatValue } from './utils';
+
+// 内置规则：CR 值分档着色
+const COLOR_RULES: Record<string, (v: any) => { bg: string; color: string; fontWeight?: number | string } | null> = {
+  cr_range: (v: any) => {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    if (!isFinite(n)) return null;
+    if (n < 0.85) return { bg: '#FEE2E2', color: '#991B1B' };
+    if (n <= 1.15) return { bg: '#D1FAE5', color: '#065F46' };
+    if (n <= 2.0) return { bg: '#FEF3C7', color: '#92400E' };
+    return { bg: '#FCA5A5', color: '#7F1D1D', fontWeight: 700 };
+  },
+};
 
 interface Props {
   config: {
@@ -22,6 +37,7 @@ interface Props {
     data_field: string;
     column_formats?: string[];
     highlight_rule?: any;
+    cell_color_rules?: Record<string, string>;
     footer?: string;
   };
   data: any;
@@ -80,12 +96,17 @@ export default function ComparisonTable({ config, data }: Props) {
                     {fields.map((f, ci) => {
                       const raw = row[f];
                       const display = formatValue(raw, formats[ci]);
+                      const ruleName = config.cell_color_rules?.[f];
+                      const rule = ruleName ? COLOR_RULES[ruleName] : undefined;
+                      const colorStyle = rule ? rule(raw) : null;
                       return (
                         <td
                           key={ci}
                           style={{
                             padding: '10px', borderBottom: '1px solid #f0f0f4',
-                            fontWeight: ci === 0 ? 500 : 400,
+                            fontWeight: colorStyle?.fontWeight ?? (ci === 0 ? 500 : 400),
+                            background: colorStyle?.bg,
+                            color: colorStyle?.color,
                           }}
                         >
                           {display ?? (raw != null ? String(raw) : '—')}

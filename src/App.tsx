@@ -52,16 +52,14 @@ function App() {
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
 
-  // 工作台显示状态：stage 控制（后续 Phase 3 会由意图识别控制）
-  useEffect(() => {
-    if (stage === 1 && messages.length === 0) {
-      setWorkspaceMode('hidden'); // 欢迎态
-    } else if (stage === 4) {
-      setWorkspaceMode('wide'); // 报告阶段 60%
-    } else {
-      setWorkspaceMode('narrow'); // 访谈/上传/数据确认 窄
-    }
-  }, [stage, messages.length]);
+  // 工作台只在"有实际内容要展示"时才出现，由具体的 handler 负责显式打开：
+  //   - dispatchSkill('full_diagnosis')  → 'narrow'（访谈面板）
+  //   - handleInterviewComplete / handleSkipInterview → 'narrow'（上传面板）
+  //   - handleUpload success → 'narrow'（数据确认）
+  //   - handleStart → 'wide'（报告）
+  //   - 轻模式 skill 返回 render_components → 'narrow'
+  //   - general_question / 无法识别的闲聊 → 保持 'hidden'
+  // 不在这里根据 stage/messages 强制统一设置——否则用户发任何消息都会被当成进入了某个流程。
 
   // Create session + 拉取 skill 列表
   useEffect(() => {
@@ -115,6 +113,7 @@ function App() {
       streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
       setLoading(false);
       setStage(3);
+      setWorkspaceMode('narrow');
     } catch (err) {
       console.warn('Upload API failed', err);
       streamMsg('上传失败了，后端服务可能还在启动中。请稍后重新上传。');
@@ -126,11 +125,13 @@ function App() {
     setInterviewNotes(notes);
     streamMsg('好的，我已经了解了你们的情况。现在上传薪酬数据 Excel，我来帮你做一次全面体检。');
     setStage(2);
+    setWorkspaceMode('narrow');
   };
 
   const handleSkipInterview = () => {
     streamMsg('没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。');
     setStage(2);
+    setWorkspaceMode('narrow');
   };
 
   const handleStart = async () => {
@@ -148,6 +149,7 @@ function App() {
     setTimeout(() => {
       setLoading(false);
       setStage(4);
+      setWorkspaceMode('wide');
       const score = reportData?.health_score;
       streamMsg(score
         ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
@@ -176,9 +178,24 @@ function App() {
         const skillKey: string = intent.data?.skill || 'unclear';
         const confidence: number = Number(intent.data?.confidence ?? 0);
         const params: Record<string, any> = intent.data?.params || {};
+        const method: string = intent.data?.method || '';
+        // 打印完整意图识别结果方便排查误分类
+        console.log('[Intent]', text, '→', {
+          skill: skillKey,
+          confidence,
+          params,
+          method,
+          reason: intent.data?.reason,
+        });
 
-        // 低置信度或无法识别 → Sparky 追问
-        if (skillKey === 'unclear' || confidence < 0.6) {
+        // Sparky 追问只发生在：
+        //   (a) AI 明确返回 skill='unclear'
+        //   (b) AI 成功判断但置信度 < 0.6
+        // 后端 AI 调用失败时 fallback 成 general_question + confidence=0，
+        // 这种情况不是"意图不清楚"而是"AI 连接挂了"，应该继续把问题交给
+        // general_question engine 回答（engine 里会再做一次 AI 调用+重试）。
+        const aiUncertain = (method === 'ai' && confidence < 0.6);
+        if (skillKey === 'unclear' || aiUncertain) {
           streamMsg(
             '我不太确定你想做哪件事。你可以告诉我更具体一点吗？' +
             '比如：「研发部门 L5 跟市场比怎么样」「HRBP 经理候选人要价 35k 给不给」' +

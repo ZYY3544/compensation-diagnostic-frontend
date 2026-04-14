@@ -36,6 +36,11 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
   const [funcData, setFuncData] = useState<any>(null);
   const [step5MsgsSent, setStep5MsgsSent] = useState(false);
 
+  // Promise 超时兜底——前景标签里 intro stream 几秒就跑完；后台标签被 Chrome
+  // throttle setInterval 时可能几十秒，给个上限防止死等
+  const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | undefined> =>
+    Promise.race([p, new Promise<undefined>(r => setTimeout(() => r(undefined), ms))]);
+
   // Helper: send Sparky message with streaming output
   // 每条消息分配唯一 id，按 id 更新——避免与 App.streamMsg 并发写同一个 "length-1" 位置
   const sendBotMsg = useCallback((text: string, delay: number) => {
@@ -147,34 +152,40 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       setStep2MsgsSent(true);
 
       (async () => {
-        // 引导消息后台流式跑（不阻塞看板）
+        // 左右联动原则：Sparky 先讲 intro（左），API 并行跑，
+        // 两者都完成才 flip 右侧看板。这样观感上左边讲完一段
+        // 然后右边"唰地"出结果，而不是数据先到、Sparky 拖后腿。
         const introStream = (async () => {
           await sendBotMsg('我先复制一份你的原始数据，后续的清洗和修正都在副本上操作，改错了随时可以回退。', 1500);
           await sendBotMsg('让我检查一下数据质量...', 2000);
         })();
 
-        // 1. 快照 + 2. 清洗 API 并行跑，不等 stream
-        if (sessionId) {
-          try { await createSnapshot(sessionId); } catch {}
-          try {
-            const res = await runCleansing(sessionId);
-            if (res.data.cleansing_corrections) {
-              setParseResult(prev => prev ? { ...prev, cleansing_corrections: res.data.cleansing_corrections } : prev);
-            }
-            const aiMsg = res.data.sparky_message
-              || (res.data.cleansing_corrections?.length
-                ? '右边可以看到清洗详情，有不对的可以撤回。'
-                : '数据质量没问题，不需要额外修正。');
-            // AI 结果一回来立即解锁看板
-            setStep2Ready(true);
-            // aiMsg 等 intro 播完再接着流（后台）
-            introStream.then(() => sendBotMsg(aiMsg, 500));
-          } catch {
-            setStep2Ready(true);
-            introStream.then(() => sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 500));
+        if (!sessionId) { setStep2Ready(true); return; }
+
+        // 1. 快照 + 2. 清洗 API（并行 intro）
+        try { await createSnapshot(sessionId); } catch {}
+        const apiPromise = runCleansing(sessionId).then(res => ({ ok: true as const, res })).catch(err => ({ ok: false as const, err }));
+
+        // 等 intro（上限 8s 防 Chrome 后台 throttle 卡死）+ api（上限 30s）
+        const [, apiResult] = await Promise.all([
+          withTimeout(introStream, 8000),
+          withTimeout(apiPromise, 30000),
+        ]);
+
+        if (apiResult?.ok) {
+          const res = apiResult.res;
+          if (res.data.cleansing_corrections) {
+            setParseResult(prev => prev ? { ...prev, cleansing_corrections: res.data.cleansing_corrections } : prev);
           }
+          const aiMsg = res.data.sparky_message
+            || (res.data.cleansing_corrections?.length
+              ? '右边可以看到清洗详情，有不对的可以撤回。'
+              : '数据质量没问题，不需要额外修正。');
+          setStep2Ready(true);        // ← intro 讲完了，API 也回来了，一起揭晓
+          sendBotMsg(aiMsg, 300);
         } else {
           setStep2Ready(true);
+          sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 300);
         }
       })();
     }
@@ -187,25 +198,33 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     if (substep === 3 && !step3MsgsSent) {
       setStep3MsgsSent(true);
 
-      sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300);
+      (async () => {
+        const introStream = sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300);
+        if (!sessionId) { setStep3Ready(true); return; }
 
-      if (sessionId) {
-        runGradeMatch(sessionId).then(res => {
-          const data = res.data;
+        const apiPromise = runGradeMatch(sessionId)
+          .then(res => ({ ok: true as const, res }))
+          .catch(err => ({ ok: false as const, err }));
+
+        const [, apiResult] = await Promise.all([
+          withTimeout(introStream, 8000),
+          withTimeout(apiPromise, 30000),
+        ]);
+
+        if (apiResult?.ok) {
+          const data = apiResult.res.data;
           setGradeData(data);
-          // 向后兼容
           if (data.grade_matching) {
             setParseResult(prev => prev ? { ...prev, grade_matching: data.grade_matching } : prev);
           }
-          const sparkyMsg = data.sparky_message || '职级匹配完成，请确认右边的映射关系。';
-          sendBotMsg(sparkyMsg, 500);
           setStep3Ready(true);
-        }).catch(err => {
-          console.warn('[DataConfirm] grade matching failed:', err);
-          sendBotMsg('职级匹配服务暂时不可用，请手动确认各职级对应关系。', 500);
+          sendBotMsg(data.sparky_message || '职级匹配完成，请确认右边的映射关系。', 300);
+        } else {
+          console.warn('[DataConfirm] grade matching failed:', apiResult?.ok === false ? apiResult.err : 'timeout');
           setStep3Ready(true);
-        });
-      }
+          sendBotMsg('职级匹配服务暂时不可用，请手动确认各职级对应关系。', 300);
+        }
+      })();
     }
   }, [substep, step3MsgsSent, sendBotMsg, sessionId, setParseResult]);
 
@@ -216,21 +235,30 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
     if (substep === 4 && !step4MsgsSent) {
       setStep4MsgsSent(true);
 
-      sendBotMsg('最后匹配一下岗位的职能类别...', 300);
+      (async () => {
+        const introStream = sendBotMsg('最后匹配一下岗位的职能类别...', 300);
+        if (!sessionId) { setStep4Ready(true); return; }
 
-      if (sessionId) {
-        runFuncMatch(sessionId).then(res => {
-          const data = res.data;
+        const apiPromise = runFuncMatch(sessionId)
+          .then(res => ({ ok: true as const, res }))
+          .catch(err => ({ ok: false as const, err }));
+
+        const [, apiResult] = await Promise.all([
+          withTimeout(introStream, 8000),
+          withTimeout(apiPromise, 30000),
+        ]);
+
+        if (apiResult?.ok) {
+          const data = apiResult.res.data;
           setFuncData(data);
-          const sparkyMsg = data.sparky_message || '职能匹配完成，请确认右边的映射关系。';
-          sendBotMsg(sparkyMsg, 500);
           setStep4Ready(true);
-        }).catch(err => {
-          console.warn('[DataConfirm] func matching failed:', err);
-          sendBotMsg('职能匹配服务暂时不可用，请手动确认各岗位对应职能。', 500);
+          sendBotMsg(data.sparky_message || '职能匹配完成，请确认右边的映射关系。', 300);
+        } else {
+          console.warn('[DataConfirm] func matching failed:', apiResult?.ok === false ? apiResult.err : 'timeout');
           setStep4Ready(true);
-        });
-      }
+          sendBotMsg('职能匹配服务暂时不可用，请手动确认各岗位对应职能。', 300);
+        }
+      })();
     }
   }, [substep, step4MsgsSent, sendBotMsg, sessionId, setParseResult]);
 

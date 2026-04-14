@@ -94,6 +94,9 @@ function App() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [mappingState, setMappingState] = useState<MappingState | null>(null);
   const [mappingSubmitting, setMappingSubmitting] = useState(false);
+  // 每次"新对话 / 薪酬诊断"递增——作为 InterviewView 的 key 强制重挂载，
+  // 避免上一次访谈的 interviewStep / answers 等本地 state 残留
+  const [conversationKey, setConversationKey] = useState(0);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [adviceData, setAdviceData] = useState<{ advice: any[]; closing: string } | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
@@ -318,9 +321,17 @@ function App() {
   // params 来自意图识别里 AI 提取的部门/职级/城市/金额
   const dispatchSkill = async (skillKey: string, _originalMessage: string, params: Record<string, any> = {}) => {
     if (skillKey === 'full_diagnosis') {
-      streamMsg('好的，我们做一次完整的薪酬诊断。先通过几个问题了解一下你们的业务背景，然后上传薪酬数据。');
+      // 开场白要带上 Q1，否则用户不知道要回答什么——Interview 是被动的，
+      // 要等用户先发一条答复，processAnswer 才会触发下一步
+      streamMsg(
+        '好的，我们做一次完整的薪酬诊断。我会先通过几个问题了解你们的业务背景，' +
+        '访谈完直接上传薪酬数据，然后给你做诊断。\n\n' +
+        '**先从公司基本情况聊起：你们主要做什么业务？目前的规模和发展阶段大概是什么样？**'
+      );
       setStage(1);
       setWorkspaceMode('narrow');
+      // 强制重挂载 InterviewView（清上次 step/answers 残留）
+      setConversationKey(k => k + 1);
       return;
     }
     if (skillKey === 'general_question') {
@@ -401,6 +412,7 @@ function App() {
     if (stage === 1) {
       return (
         <InterviewView
+          key={conversationKey}
           onComplete={handleInterviewComplete}
           onSkip={handleSkipInterview}
           setMessages={setMessages}
@@ -463,8 +475,18 @@ function App() {
             setStage(1);
             setWorkspaceMode('hidden');
             setSkillResult(null);
+            setParseResult(null);
+            setReportData(null);
+            setMappingState(null);
+            setConversationKey(k => k + 1);
           }}
           onStartDiagnosis={() => {
+            // 先清掉上一次会话留下的 state，再触发完整诊断，避免访谈走到一半被"复用"
+            setMessages([]);
+            setParseResult(null);
+            setReportData(null);
+            setSkillResult(null);
+            setMappingState(null);
             addMsg({ role: 'user', text: '📊 做一次完整的薪酬诊断' });
             dispatchSkill('full_diagnosis', '📊 做一次完整的薪酬诊断');
           }}

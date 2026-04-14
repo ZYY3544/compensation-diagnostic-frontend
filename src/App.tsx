@@ -333,9 +333,19 @@ function App() {
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
       {/* 左侧边栏 */}
       <Sidebar
-        conversations={[
-          { id: '1', title: '新对话', type: 'follow_up', updated_at: '', active: true },
-        ]}
+        conversations={[]}
+        onNewChat={() => {
+          // 新对话：清空消息回欢迎态
+          setMessages([]);
+          setStage(1);
+          setWorkspaceMode('hidden');
+          setSkillResult(null);
+        }}
+        onStartDiagnosis={() => {
+          // 直接走完整薪酬诊断流程
+          addMsg({ role: 'user', text: '📊 做一次完整的薪酬诊断' });
+          dispatchSkill('full_diagnosis', '📊 做一次完整的薪酬诊断');
+        }}
         userName="用户"
         userRole="HR"
       />

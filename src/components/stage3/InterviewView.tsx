@@ -65,7 +65,6 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
   const [showFindings, setShowFindings] = useState(false);
   const [findingsText, setFindingsText] = useState<string>('');
   const [findingsLoading, setFindingsLoading] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   // 审阅阶段状态机：
   // 'none'              = 尚未进入审阅（访谈进行中）
@@ -520,7 +519,6 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
 
   // 单行渲染：只显示内容，不再挂独立的编辑按钮。编辑入口改到卡片右上角的整块笔。
   const renderContentLine = (_blockKey: keyof BlockContents, line: string, idx: number) => {
-    void editing; // suppress unused; 逐行编辑保留兼容但新流程不走这个分支
     return (
       <div key={idx} className="interview-content-line">
         <div style={{ flex: 1 }}>{renderCardText(line)}</div>

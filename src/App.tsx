@@ -115,7 +115,14 @@ function AppInner() {
   const [adviceData, setAdviceData] = useState<{ advice: any[]; closing: string } | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [skillChips, setSkillChips] = useState<any[]>([]);
+  // 欢迎页 chip 的默认列表——首屏立即渲染，不用等后端 /skill/registry 的网络往返
+  // 后端响应回来后由 useEffect 覆盖（字段一致时用户看不出切换）
+  const [skillChips, setSkillChips] = useState<any[]>([
+    { icon: '🔍', label: '🔍 查一下市场薪酬水平',     skillKey: 'external_benchmark' },
+    { icon: '📊', label: '📊 做一次完整的薪酬诊断',   skillKey: 'full_diagnosis' },
+    { icon: '🤝', label: '🤝 候选人定薪建议',         skillKey: 'offer_check' },
+    { icon: '💰', label: '💰 调薪预算怎么分配',       skillKey: 'salary_simulation' },
+  ]);
   // Skill 调用结果（供 CardRenderer 渲染）
   const [skillResult, setSkillResult] = useState<{
     components: any[];

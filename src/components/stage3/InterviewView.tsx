@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
+import { nextMsgId } from '../../lib/msgId';
 import type { Message } from '../../types';
 
 interface InterviewViewProps {

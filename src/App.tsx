@@ -7,7 +7,7 @@ import InterviewView from './components/stage3/InterviewView';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
-import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill } from './api/client';
+import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
@@ -166,6 +166,7 @@ function App() {
   };
 
   const handleNonChatSend = useCallback((text: string): boolean => {
+    // 访谈、数据确认阶段优先走原有 handler
     if (stage === 1 && stage3TextHandlerRef.current) {
       setMessages(prev => [...prev, { role: 'user', text }]);
       stage3TextHandlerRef.current(text);
@@ -176,33 +177,58 @@ function App() {
       stage2InputHandlerRef.current(text);
       return true;
     }
-    return false;
-  }, [stage]);
 
-  // 首屏 chip 触发能力
-  const handleChipClick = async (capability: string) => {
-    if (capability === 'full_diagnosis') {
+    // 欢迎态 + 报告阶段：走意图识别
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    (async () => {
+      try {
+        const intent = await classifyIntent(text);
+        const skillKey = intent.data?.skill;
+        if (!skillKey) {
+          streamMsg('我还没完全理解你的问题，可以说得更具体一些吗？');
+          return;
+        }
+        // 路由到对应 skill
+        await dispatchSkill(skillKey, text);
+      } catch (err) {
+        console.warn('[Intent] classification failed', err);
+        streamMsg('意图识别服务暂时不可用，请稍后再试。');
+      }
+    })();
+    return true;
+  }, [stage, sessionId]);
+
+  // Skill 分发：根据 skill 类型决定走 wizard 还是直接调 invoke
+  const dispatchSkill = async (skillKey: string, _originalMessage: string) => {
+    if (skillKey === 'full_diagnosis') {
       streamMsg('好的，我们做一次完整的薪酬诊断。先通过几个问题了解一下你们的业务背景，然后上传薪酬数据。');
       setStage(1);
       setWorkspaceMode('narrow');
       return;
     }
-
-    // 轻模式 skill：直接调用
-    if (!sessionId) {
-      streamMsg('正在初始化会话，请稍候再试...');
+    if (skillKey === 'general_question') {
+      // 知识问答：纯 AI 回答，不调 engine
+      try {
+        const res = await invokeSkill(skillKey, sessionId || '', {});
+        streamMsg(res.data.narrative || '我来帮你解答...');
+      } catch {
+        streamMsg('让我想想...');
+      }
       return;
     }
-    addMsg({ role: 'user', text: skillChips.find(c => c.skillKey === capability)?.label || capability });
+    // 其他轻模式 skill
+    if (!sessionId) {
+      streamMsg('会话还没就绪，请稍候再试。');
+      return;
+    }
     streamMsg('让我查一下...');
     try {
-      const res = await invokeSkill(capability, sessionId, {});
+      const res = await invokeSkill(skillKey, sessionId, {});
       const data = res.data;
       if (data.error) {
-        streamMsg(`这个能力需要先上传薪酬数据。你可以直接点"完整诊断"开始。`);
+        streamMsg(data.error);
         return;
       }
-      // 展示到工作台
       setSkillResult({
         components: data.skill?.render_components || [],
         data: data.result,
@@ -211,13 +237,18 @@ function App() {
         subtitle: `调用于 ${new Date().toLocaleTimeString('zh-CN')}`,
       });
       setWorkspaceMode('narrow');
-      if (data.narrative) {
-        streamMsg(data.narrative);
-      }
+      if (data.narrative) streamMsg(data.narrative);
     } catch (err) {
       console.warn('[Skill] invoke failed', err);
       streamMsg('调用这个能力时遇到了问题，请稍后再试。');
     }
+  };
+
+  // 首屏 chip 触发能力（复用 dispatchSkill）
+  const handleChipClick = (capability: string) => {
+    const label = skillChips.find(c => c.skillKey === capability)?.label || capability;
+    addMsg({ role: 'user', text: label });
+    dispatchSkill(capability, label);
   };
 
   // 欢迎态：无消息、stage=1、工作台 hidden

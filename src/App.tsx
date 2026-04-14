@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from './components/layout/Sidebar';
+import TopNav from './components/layout/TopNav';
 import Workspace, { type WorkspaceMode } from './components/layout/Workspace';
 import WelcomeView from './components/layout/WelcomeView';
 import SparkyPanel from './components/layout/SparkyPanel';
@@ -552,7 +553,11 @@ function AppInner() {
     : '业务访谈';
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+      {/* 顶部菜单栏 —— 给浏览器 chrome 让出缓冲，放品牌 + 用户菜单（预留登录入口）*/}
+      <TopNav userName="用户" userRole="HR" />
+      {/* 三栏主内容 */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* 左侧边栏（可收起） */}
       {sidebarOpen && (
         <Sidebar
@@ -626,6 +631,7 @@ function AppInner() {
       >
         {renderWorkspaceContent()}
       </Workspace>
+      </div> {/* 三栏主内容 wrapper 关闭 */}
     </div>
   );
 }

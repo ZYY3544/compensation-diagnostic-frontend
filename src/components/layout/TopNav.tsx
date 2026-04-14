@@ -1,26 +1,45 @@
-import type { Stage } from '../../types';
+import PixelCat from '../shared/PixelCat';
 
 interface TopNavProps {
-  stage: Stage;
+  userName?: string;
+  userRole?: string;
 }
 
-const stageLabels: Record<Stage, string> = {
-  1: '业务访谈',
-  2: '数据上传',
-  3: '数据确认',
-  4: '诊断报告',
-};
-
-export default function TopNav({ stage }: TopNavProps) {
+/**
+ * 顶部菜单栏：左边品牌，右边用户菜单位（后续接登录状态）。
+ * 高度 48px，固定在三栏上方——给浏览器 chrome 和主内容让出视觉缓冲区。
+ */
+export default function TopNav({ userName = '用户', userRole = 'HR' }: TopNavProps) {
   return (
-    <div className="top-nav">
-      <div className="brand">
-        <div className="brand-icon">铭</div>
-        <span className="brand-text">铭曦</span>
+    <div style={{
+      height: 48, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '0 20px',
+      background: 'var(--panel-bg)',
+      borderBottom: '1px solid var(--border)',
+      zIndex: 100,
+    }}>
+      {/* 左：品牌 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <PixelCat size={22} />
+        <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>铭曦</span>
       </div>
-      <div className="nav-stage">{stageLabels[stage]}</div>
-      <div className="nav-right">
-        {stage === 4 && <button className="export-btn">导出报告</button>}
+
+      {/* 右：用户菜单位 —— 后续做登录下拉 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{userRole}</span>
+        <div
+          title={userName}
+          style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'var(--hover)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)',
+            cursor: 'pointer', userSelect: 'none',
+          }}
+        >
+          {userName[0]}
+        </div>
       </div>
     </div>
   );

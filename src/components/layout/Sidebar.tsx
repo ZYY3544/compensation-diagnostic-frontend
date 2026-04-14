@@ -50,7 +50,7 @@ function SidebarButton({
         display: 'flex', alignItems: 'center', gap: 12,
         width: '100%', padding: '10px 12px',
         border: 'none', background: 'transparent',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',           /* 对齐 Sparky 标题色 #1E293B */
         fontSize: 14, fontFamily: 'inherit', cursor: 'pointer',
         borderRadius: 10,
         transition: 'background 0.15s, color 0.15s',
@@ -61,7 +61,7 @@ function SidebarButton({
       }}
       onMouseLeave={e => {
         e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.color = 'var(--text-secondary)';
+        e.currentTarget.style.color = 'var(--text-primary)';
       }}
     >
       <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>

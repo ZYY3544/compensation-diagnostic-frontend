@@ -427,11 +427,13 @@ function AppInner() {
     }
   };
 
-  // 首屏 chip 触发能力（复用 dispatchSkill）
+  // 首屏 chip 触发能力（复用 dispatchSkill）。chip_label 在后端是带 emoji 前缀的
+  // （比如 "📊 做一次完整的薪酬诊断"），用作用户气泡时剥掉 emoji 保持对话区无图标
   const handleChipClick = (capability: string) => {
-    const label = skillChips.find(c => c.skillKey === capability)?.label || capability;
-    addMsg({ role: 'user', text: label });
-    dispatchSkill(capability, label);
+    const raw = skillChips.find(c => c.skillKey === capability)?.label || capability;
+    const cleanLabel = raw.replace(/^[^A-Za-z0-9\u4e00-\u9fa5]+\s*/, '').trim();
+    addMsg({ role: 'user', text: cleanLabel });
+    dispatchSkill(capability, cleanLabel);
   };
 
   // 欢迎态：无消息、stage=1、工作台 hidden

@@ -66,6 +66,7 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
   const [findingsText, setFindingsText] = useState<string>('');
   const [findingsLoading, setFindingsLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingBlock, setEditingBlock] = useState<string | null>(null);
   // 审阅阶段状态机：
   // 'none'              = 尚未进入审阅（访谈进行中）
   // 'reviewing'         = Sparky 正在审阅纪要
@@ -517,42 +518,64 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
     });
   };
 
-  const renderContentLine = (blockKey: keyof BlockContents, line: string, idx: number) => {
-    const editKey = `${blockKey}-${idx}`;
-    if (editing === editKey) {
-      return (
-        <div key={idx} className="interview-content-line">
-          <textarea
-            autoFocus
-            defaultValue={line}
-            onBlur={(e) => {
-              setBlockContents(prev => ({
-                ...prev,
-                [blockKey]: (prev[blockKey] || []).map((v, i) => i === idx ? e.target.value : v),
-              }));
-              setEditing(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) (e.target as HTMLTextAreaElement).blur();
-            }}
-            style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 13, outline: 'none', minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }}
-          />
-        </div>
-      );
-    }
+  // 单行渲染：只显示内容，不再挂独立的编辑按钮。编辑入口改到卡片右上角的整块笔。
+  const renderContentLine = (_blockKey: keyof BlockContents, line: string, idx: number) => {
+    void editing; // suppress unused; 逐行编辑保留兼容但新流程不走这个分支
     return (
       <div key={idx} className="interview-content-line">
         <div style={{ flex: 1 }}>{renderCardText(line)}</div>
-        <span
-          className="edit-btn"
-          style={{ cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}
-          onClick={() => setEditing(editKey)}
-        >
-          <PenIcon />
-        </span>
       </div>
     );
   };
+
+  // 整块编辑：把块内多行合并成一段 textarea，保存时按换行拆回来
+  const renderEditBlock = (blockKey: string, lines: string[]) => (
+    <textarea
+      autoFocus
+      defaultValue={lines.join('\n')}
+      onBlur={(e) => {
+        const next = e.target.value
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l);
+        setBlockContents(prev => ({ ...prev, [blockKey]: next } as BlockContents));
+        setEditingBlock(null);
+      }}
+      onKeyDown={(e) => {
+        // Cmd/Ctrl+Enter 保存；单 Enter 允许换行（块内多行）
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') (e.target as HTMLTextAreaElement).blur();
+      }}
+      style={{
+        width: '100%', minHeight: 120, padding: '8px 10px',
+        border: '1px solid var(--brand)', borderRadius: 6,
+        fontSize: 13, outline: 'none', resize: 'vertical',
+        fontFamily: 'inherit', lineHeight: 1.7,
+      }}
+    />
+  );
+
+  // 卡片 title 行 + 右上角铅笔
+  const renderBlockHeader = (blockKey: string, title: string, hasContent: boolean) => (
+    <div
+      className="interview-block-title"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+    >
+      <span>{title}</span>
+      {hasContent && (
+        <span
+          onClick={() => setEditingBlock(editingBlock === blockKey ? null : blockKey)}
+          style={{
+            cursor: 'pointer',
+            color: editingBlock === blockKey ? 'var(--brand)' : 'var(--text-muted)',
+            display: 'inline-flex', padding: 4, borderRadius: 4,
+          }}
+          title="编辑"
+        >
+          <PenIcon />
+        </span>
+      )}
+    </div>
+  );
 
   const blocks = [
     { key: 'block1' as const, title: '🏢 公司基本情况', showAt: 1 },
@@ -775,14 +798,17 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
 
       {blocks.map(({ key, title, showAt }) => {
         if (interviewStep < showAt) return null;
+        const lines = blockContents[key];
         return (
           <div key={key} className={`interview-block ${interviewStep === showAt ? 'fade-in-up' : ''}`}>
-            <div className="interview-block-title">{title}</div>
-            {!blockContents[key] ? (
+            {renderBlockHeader(key, title, !!lines && lines.length > 0)}
+            {!lines ? (
               <div className="interview-placeholder">等待访谈...</div>
+            ) : editingBlock === key ? (
+              renderEditBlock(key, lines)
             ) : (
               <div>
-                {blockContents[key]!.map((line, i) => renderContentLine(key, line, i))}
+                {lines.map((line, i) => renderContentLine(key, line, i))}
               </div>
             )}
           </div>
@@ -792,9 +818,11 @@ export default function InterviewView({ onComplete, onSkip, setMessages, textHan
         const contents = (blockContents as unknown as Record<string, string[] | null>)[key];
         return (
           <div key={key} className="interview-block fade-in-up">
-            <div className="interview-block-title">{title}</div>
+            {renderBlockHeader(key, title, !!contents && contents.length > 0)}
             {!contents ? (
               <div className="interview-placeholder">等待补充...</div>
+            ) : editingBlock === key ? (
+              renderEditBlock(key, contents)
             ) : (
               <div>
                 {contents.map((line: string, i: number) => renderContentLine(key as keyof BlockContents, line, i))}

@@ -76,9 +76,11 @@ export default function Sidebar({
 }: Props) {
   return (
     <div style={{
-      width: 240, minWidth: 240, background: 'var(--sidebar-bg)',
+      width: 240, minWidth: 240, height: '100%',
+      background: 'var(--sidebar-bg)',
       borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', color: 'var(--text-primary)',
+      overflow: 'hidden',      // 内部对话列表用 flex:1 + overflowY:auto 独立滚，外框不跟着动
     }}>
       {/* 主要操作区：新对话 + 薪酬诊断 */}
       <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>

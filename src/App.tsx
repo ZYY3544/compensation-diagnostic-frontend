@@ -590,7 +590,14 @@ function AppInner() {
       )}
 
       {/* 中间对话区 */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)', borderRight: '1px solid var(--border)' }}>
+      <div style={{
+        flex: 1, minWidth: 0,
+        display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)',
+        borderRight: '1px solid var(--border)',
+        overflow: 'hidden',     // 关键：防止内部消息累积撑破列宽，让 .sparky-messages 内部滚动
+        height: '100%',         // 显式占满 flex-row 父高度
+      }}>
         {/* Header —— 侧栏开关 + 小版 PixelCat + 品牌名 */}
         <div style={{ height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--panel-bg)' }}>
           <SidebarToggle open={sidebarOpen} onClick={() => setSidebarOpen(v => !v)} />

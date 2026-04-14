@@ -70,7 +70,8 @@ export default function Workspace({ mode, title, subtitle, children, onModeChang
       style={{
         width: isFullscreen ? '100%' : width,
         minWidth: isFullscreen ? 0 : MIN_WIDTH,
-        overflowY: 'auto',
+        height: '100%',           // 撑满 flex-row 父高度，独立滚动
+        overflowY: 'auto',        // 自己的滚动容器，不跟左侧对话区联动
         padding: '24px 28px',
         background: '#f9fafb',
         borderLeft: '1px solid var(--border)',

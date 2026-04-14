@@ -12,6 +12,8 @@ import CardRenderer from './components/cards/CardRenderer';
 import PixelCat from './components/shared/PixelCat';
 import FieldMappingPanel, { type MappingSuggestion, type StandardField } from './components/stage1/FieldMappingPanel';
 import { nextMsgId } from './lib/msgId';
+import { FlowProvider, useFlow } from './lib/flow';
+import { FULL_DIAGNOSIS_FLOW } from './skills/flows';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
 
@@ -85,8 +87,19 @@ function SidebarToggle({ open, onClick }: { open: boolean; onClick: () => void }
   );
 }
 
-function App() {
-  const [stage, setStage] = useState<Stage>(1);
+function AppInner() {
+  const flow = useFlow();
+  // stage 原来是 App 自己管的状态机。现在改成"从 flow.currentStep 派生"，
+  // 给还在引用 stage 的地方（handleNonChatSend 的输入路由、wsTitle）做兼容。
+  // 没有 active flow 时 stage=1（欢迎/访谈位）。
+  const stage: Stage = (() => {
+    const id = flow.currentStep?.id;
+    if (id === 'interview') return 1;
+    if (id === 'upload') return 2;
+    if (id === 'confirm') return 3;
+    if (id === 'analyze' || id === 'report') return 4;
+    return 1;
+  })();
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('hidden');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -168,7 +181,7 @@ function App() {
       }
       const uploadRes = await uploadFile(sid!, file);
       const result = uploadRes.data as any;
-      // Path B：后端说需要字段映射确认 → 进 FieldMappingPanel
+      // Path B：后端说需要字段映射确认 → 进 confirm 步，用 mappingState 触发 FieldMappingPanel
       if (result.mapping_needed) {
         setMappingState({
           columns: result.columns || [],
@@ -177,7 +190,7 @@ function App() {
           standardFields: result.standard_fields || [],
         });
         setLoading(false);
-        setStage(3);                // 借 stage 3 这个位置展示映射面板
+        flow.advance();   // upload → confirm（在 confirm 步里，mappingState 非空就先渲染映射面板）
         setWorkspaceMode('narrow');
         streamMsg(
           `我看了一下你的数据，识别到 ${result.suggestion?.mappings?.length || 0} 个字段，` +
@@ -194,7 +207,7 @@ function App() {
       const dept = parseResult.department_count || 0;
       streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
       setLoading(false);
-      setStage(3);
+      flow.advance({ parseResult });   // upload → confirm
       setWorkspaceMode('narrow');
     } catch (err) {
       console.warn('Upload API failed', err);
@@ -229,38 +242,73 @@ function App() {
   const handleInterviewComplete = (notes: any) => {
     setInterviewNotes(notes);
     streamMsg('好的，我已经了解了你们的情况。现在上传薪酬数据 Excel，我来帮你做一次全面体检。');
-    setStage(2);
+    flow.advance({ interviewNotes: notes });  // interview → upload
     setWorkspaceMode('narrow');
   };
 
   const handleSkipInterview = () => {
     streamMsg('没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。');
-    setStage(2);
+    flow.advance();  // interview → upload（标 skipped 语义留给后续需要时）
     setWorkspaceMode('narrow');
   };
 
-  const handleStart = async () => {
-    setLoading(true);
-    if (sessionId) {
-      try {
-        await runAnalysis(sessionId);
-        await new Promise(r => setTimeout(r, 2000));
-        const reportRes = await getReport(sessionId);
-        setReportData(reportRes.data as ReportData);
-      } catch (err) {
-        console.warn('Analysis API failed', err);
-      }
-    }
-    setTimeout(() => {
-      setLoading(false);
-      setStage(4);
-      setWorkspaceMode('wide');
-      const score = reportData?.health_score;
-      streamMsg(score
-        ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
-        : '诊断报告已生成，点击各模块查看详情，有问题随时问我。');
-    }, 1000);
+  // DataConfirm 的 onComplete 回调——进 analyze 步（auto-step，由下方 useEffect 触发分析）
+  const handleStart = () => {
+    flow.advance();  // confirm → analyze
   };
+
+  // analyze 是 auto-step：进入即跑 runAnalysis + getReport；30s 超时 markError
+  // useEffect 依赖 currentStep 的 id+status，用户点"重试"时 retry() 把 status
+  // 从 error 切回 in_progress，effect 会重跑
+  useEffect(() => {
+    const step = flow.currentStep;
+    if (!step) return;
+    if (step.id !== 'analyze' || step.status !== 'in_progress') return;
+    if (!sessionId) {
+      flow.markError('会话丢失，无法开始分析。请重新上传数据。');
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setWorkspaceMode('narrow');
+
+    const analysisPromise = (async () => {
+      await runAnalysis(sessionId);
+      await new Promise(r => setTimeout(r, 500));
+      const reportRes = await getReport(sessionId);
+      return reportRes.data as ReportData;
+    })();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT')), 30000),
+    );
+
+    Promise.race([analysisPromise, timeoutPromise])
+      .then(report => {
+        if (cancelled) return;
+        setReportData(report);
+        setLoading(false);
+        setWorkspaceMode('wide');
+        const score = (report as ReportData)?.health_score;
+        streamMsg(score
+          ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
+          : '诊断报告已生成，点击各模块查看详情，有问题随时问我。');
+        flow.advance({ reportData: report });  // analyze → report
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setLoading(false);
+        const isTimeout = err instanceof Error && err.message === 'TIMEOUT';
+        const msg = isTimeout
+          ? '分析超过 30 秒还没返回，先停在这里。网络或后端可能忙，点"重试"可以再跑一次。'
+          : '分析过程中出问题了。可以点"重试"再跑一次，或者回到数据确认检查数据。';
+        console.warn('[analyze] failed', err);
+        streamMsg(msg);
+        flow.markError(isTimeout ? 'TIMEOUT' : 'ANALYZE_FAILED');
+      });
+
+    return () => { cancelled = true; };
+  }, [flow.currentStep?.id, flow.currentStep?.status, sessionId]);
 
   const handleNonChatSend = useCallback((text: string): boolean => {
     // 访谈、数据确认阶段优先走原有 handler
@@ -321,17 +369,15 @@ function App() {
   // params 来自意图识别里 AI 提取的部门/职级/城市/金额
   const dispatchSkill = async (skillKey: string, _originalMessage: string, params: Record<string, any> = {}) => {
     if (skillKey === 'full_diagnosis') {
-      // 开场白要带上 Q1，否则用户不知道要回答什么——Interview 是被动的，
-      // 要等用户先发一条答复，processAnswer 才会触发下一步
+      // 初始化 flow；currentStep = interview，组件从 flow 读当前步
+      flow.start('full_diagnosis', FULL_DIAGNOSIS_FLOW);
+      setWorkspaceMode('narrow');
+      setConversationKey(k => k + 1);    // 防御性 fallback 保留
       streamMsg(
         '好的，我们做一次完整的薪酬诊断。我会先通过几个问题了解你们的业务背景，' +
         '访谈完直接上传薪酬数据，然后给你做诊断。\n\n' +
         '**先从公司基本情况聊起：你们主要做什么业务？目前的规模和发展阶段大概是什么样？**'
       );
-      setStage(1);
-      setWorkspaceMode('narrow');
-      // 强制重挂载 InterviewView（清上次 step/answers 残留）
-      setConversationKey(k => k + 1);
       return;
     }
     if (skillKey === 'general_question') {
@@ -405,11 +451,46 @@ function App() {
       );
     }
 
-    if (loading && stage === 2) {
-      return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>正在解析...</div>;
+    // 无 active flow → 工作台空（欢迎态 / 普通聊天 / 轻 skill 已渲染过）
+    const step = flow.currentStep;
+    if (!step) return null;
+
+    // analyze 步：error 时展示重试卡；in_progress 时展示 LoadingView
+    if (step.id === 'analyze') {
+      if (step.status === 'error') {
+        return (
+          <div style={{ padding: '60px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 12, color: 'var(--text-primary)' }}>
+              分析中断了
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.7 }}>
+              {step.error === 'TIMEOUT'
+                ? '等了 30 秒还没返回，后端可能在热身或网络有点卡。'
+                : '分析过程中出了问题。'}
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button
+                onClick={() => flow.retry()}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none',
+                  background: 'var(--brand)', color: '#fff', fontSize: 13, cursor: 'pointer' }}
+              >
+                重试分析
+              </button>
+              <button
+                onClick={() => flow.goTo('confirm')}
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)',
+                  background: '#fff', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
+              >
+                回到数据确认
+              </button>
+            </div>
+          </div>
+        );
+      }
+      return <LoadingView />;
     }
-    if (loading && (stage === 3 || stage === 4)) return <LoadingView />;
-    if (stage === 1) {
+
+    if (step.id === 'interview') {
       return (
         <InterviewView
           key={conversationKey}
@@ -420,20 +501,24 @@ function App() {
         />
       );
     }
-    if (stage === 2) return <UploadView onUpload={handleUpload} />;
-    if (stage === 3 && mappingState) {
-      return (
-        <FieldMappingPanel
-          columns={mappingState.columns}
-          sampleRows={mappingState.sampleRows}
-          suggestion={mappingState.suggestion}
-          standardFields={mappingState.standardFields}
-          onConfirm={handleConfirmMapping}
-          submitting={mappingSubmitting}
-        />
-      );
+    if (step.id === 'upload') {
+      if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>正在解析...</div>;
+      return <UploadView onUpload={handleUpload} />;
     }
-    if (stage === 3) {
+    if (step.id === 'confirm') {
+      // confirm 步内部分叉：mappingState 非空 → 先展示字段映射面板；否则走 DataConfirm
+      if (mappingState) {
+        return (
+          <FieldMappingPanel
+            columns={mappingState.columns}
+            sampleRows={mappingState.sampleRows}
+            suggestion={mappingState.suggestion}
+            standardFields={mappingState.standardFields}
+            onConfirm={handleConfirmMapping}
+            submitting={mappingSubmitting}
+          />
+        );
+      }
       return (
         <DataConfirm
           onComplete={handleStart}
@@ -447,7 +532,7 @@ function App() {
         />
       );
     }
-    if (stage === 4) return (
+    if (step.id === 'report') return (
       <ReportView
         reportData={reportData}
         adviceData={adviceData}
@@ -471,8 +556,9 @@ function App() {
         <Sidebar
           conversations={[]}
           onNewChat={() => {
+            // flow.reset() 把 flow 状态炸掉，组件按 flow.currentStep=null 自动回欢迎态
+            flow.reset();
             setMessages([]);
-            setStage(1);
             setWorkspaceMode('hidden');
             setSkillResult(null);
             setParseResult(null);
@@ -481,7 +567,8 @@ function App() {
             setConversationKey(k => k + 1);
           }}
           onStartDiagnosis={() => {
-            // 先清掉上一次会话留下的 state，再触发完整诊断，避免访谈走到一半被"复用"
+            // 重置 flow + 清数据，dispatchSkill 内部会 flow.start(FULL_DIAGNOSIS_FLOW)
+            flow.reset();
             setMessages([]);
             setParseResult(null);
             setReportData(null);
@@ -541,4 +628,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <FlowProvider>
+      <AppInner />
+    </FlowProvider>
+  );
+}

@@ -70,11 +70,12 @@ interface SparkyPanelProps {
   visible: boolean;
   onClose: () => void;
   onNonChatSend?: (text: string) => boolean;
+  embedded?: boolean;  // 嵌入三栏布局时隐藏自己的 header
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend }: SparkyPanelProps) {
+export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend, embedded }: SparkyPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedChips, setSelectedChips] = useState<Record<number, string[]>>({});
@@ -238,18 +239,20 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
   }, [sendMessage]);
 
   return (
-    <div className={`right-panel ${visible ? '' : 'hidden'}`}>
-      <div className="sparky-header">
-        <div className="sparky-icon"><PixelCat size={24} /></div>
-        <div style={{ flex: 1 }}>
-          <div className="sparky-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            Sparky
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+    <div className={`right-panel ${visible ? '' : 'hidden'} ${embedded ? 'embedded' : ''}`} style={embedded ? { flex: 1, width: '100%', maxWidth: 'none', border: 'none', position: 'relative' } : undefined}>
+      {!embedded && (
+        <div className="sparky-header">
+          <div className="sparky-icon"><PixelCat size={24} /></div>
+          <div style={{ flex: 1 }}>
+            <div className="sparky-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Sparky
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+            </div>
+            <div className="sparky-subtitle">AI 诊断助手</div>
           </div>
-          <div className="sparky-subtitle">AI 诊断助手</div>
+          <button className="panel-close-btn" onClick={onClose}>✕</button>
         </div>
-        <button className="panel-close-btn" onClick={onClose}>✕</button>
-      </div>
+      )}
       <div className="sparky-messages">
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: 13 }}>

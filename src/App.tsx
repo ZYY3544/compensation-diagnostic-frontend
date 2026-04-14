@@ -167,18 +167,25 @@ function App() {
       return true;
     }
 
-    // 欢迎态 + 报告阶段：走意图识别
+    // 欢迎态 + 报告阶段：走意图识别（AI 一次调用同时分类 + 提取参数）
     setMessages(prev => [...prev, { role: 'user', text }]);
     (async () => {
       try {
         const intent = await classifyIntent(text);
-        const skillKey = intent.data?.skill;
-        if (!skillKey) {
-          streamMsg('我还没完全理解你的问题，可以说得更具体一些吗？');
+        const skillKey: string = intent.data?.skill || 'unclear';
+        const confidence: number = Number(intent.data?.confidence ?? 0);
+        const params: Record<string, any> = intent.data?.params || {};
+
+        // 低置信度或无法识别 → Sparky 追问
+        if (skillKey === 'unclear' || confidence < 0.6) {
+          streamMsg(
+            '我不太确定你想做哪件事。你可以告诉我更具体一点吗？' +
+            '比如：「研发部门 L5 跟市场比怎么样」「HRBP 经理候选人要价 35k 给不给」' +
+            '或者直接点下面的 chip。'
+          );
           return;
         }
-        // 路由到对应 skill
-        await dispatchSkill(skillKey, text);
+        await dispatchSkill(skillKey, text, params);
       } catch (err) {
         console.warn('[Intent] classification failed', err);
         streamMsg('意图识别服务暂时不可用，请稍后再试。');
@@ -188,7 +195,8 @@ function App() {
   }, [stage, sessionId]);
 
   // Skill 分发：根据 skill 类型决定走 wizard 还是直接调 invoke
-  const dispatchSkill = async (skillKey: string, _originalMessage: string) => {
+  // params 来自意图识别里 AI 提取的部门/职级/城市/金额
+  const dispatchSkill = async (skillKey: string, _originalMessage: string, params: Record<string, any> = {}) => {
     if (skillKey === 'full_diagnosis') {
       streamMsg('好的，我们做一次完整的薪酬诊断。先通过几个问题了解一下你们的业务背景，然后上传薪酬数据。');
       setStage(1);
@@ -198,7 +206,7 @@ function App() {
     if (skillKey === 'general_question') {
       // 知识问答：纯 AI 回答，不调 engine
       try {
-        const res = await invokeSkill(skillKey, sessionId || '', {});
+        const res = await invokeSkill(skillKey, sessionId || '', { question: _originalMessage });
         streamMsg(res.data.narrative || '我来帮你解答...');
       } catch {
         streamMsg('让我想想...');
@@ -212,7 +220,7 @@ function App() {
     }
     streamMsg('让我查一下...');
     try {
-      const res = await invokeSkill(skillKey, sessionId, {});
+      const res = await invokeSkill(skillKey, sessionId, params);
       const data = res.data;
       if (data.error) {
         streamMsg(data.error);

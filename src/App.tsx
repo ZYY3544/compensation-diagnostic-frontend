@@ -487,8 +487,8 @@ function App() {
             setReportData(null);
             setSkillResult(null);
             setMappingState(null);
-            addMsg({ role: 'user', text: '📊 做一次完整的薪酬诊断' });
-            dispatchSkill('full_diagnosis', '📊 做一次完整的薪酬诊断');
+            addMsg({ role: 'user', text: '做一次完整的薪酬诊断' });
+            dispatchSkill('full_diagnosis', '做一次完整的薪酬诊断');
           }}
           userName="用户"
           userRole="HR"

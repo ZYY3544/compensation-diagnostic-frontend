@@ -214,7 +214,18 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
   }, [sendMessage]);
 
   return (
-    <div className={`right-panel ${visible ? '' : 'hidden'} ${embedded ? 'embedded' : ''}`} style={embedded ? { flex: 1, width: '100%', maxWidth: 'none', border: 'none', position: 'relative' } : undefined}>
+    <div
+      className={`right-panel ${visible ? '' : 'hidden'} ${embedded ? 'embedded' : ''}`}
+      style={embedded ? {
+        flex: 1,
+        width: '100%',
+        minWidth: 0,        // 覆盖 .right-panel 的 min-width:450，让嵌入时能随窗口缩小
+        maxWidth: 'none',
+        minHeight: 0,       // flex child 必须能 shrink，否则内容多时撑破父容器
+        border: 'none',
+        position: 'relative',
+      } : undefined}
+    >
       {!embedded && (
         <div className="sparky-header">
           <div className="sparky-icon"><PixelCat size={24} /></div>

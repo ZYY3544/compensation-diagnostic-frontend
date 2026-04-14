@@ -287,8 +287,9 @@ function AppInner() {
       const reportRes = await getReport(sessionId);
       return reportRes.data as ReportData;
     })();
+    // 部署到 Render 免费档时后端冷启动可能 30-60s，超时给够 90s 覆盖冷启动
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('TIMEOUT')), 30000),
+      setTimeout(() => reject(new Error('TIMEOUT')), 90000),
     );
 
     Promise.race([analysisPromise, timeoutPromise])
@@ -303,16 +304,32 @@ function AppInner() {
           : '诊断报告已生成，点击各模块查看详情，有问题随时问我。');
         flow.advance({ reportData: report });  // analyze → report
       })
-      .catch(err => {
+      .catch((err: any) => {
         if (cancelled) return;
         setLoading(false);
         const isTimeout = err instanceof Error && err.message === 'TIMEOUT';
-        const msg = isTimeout
-          ? '分析超过 30 秒还没返回，先停在这里。网络或后端可能忙，点"重试"可以再跑一次。'
-          : '分析过程中出问题了。可以点"重试"再跑一次，或者回到数据确认检查数据。';
-        console.warn('[analyze] failed', err);
+        const httpStatus = err?.response?.status;
+        const serverErr = err?.response?.data?.error;
+        console.warn('[analyze] failed', { isTimeout, httpStatus, serverErr, err });
+
+        let msg: string;
+        let errCode: string;
+        if (isTimeout) {
+          msg = '分析超过 90 秒还没返回，后端可能正在处理或网络抖动。点"重试"可以再跑一次。';
+          errCode = 'TIMEOUT';
+        } else if (httpStatus === 404) {
+          // 最常见：后端进程重启（比如 Render 自动部署）session 丢了
+          msg = '后端会话已过期（多半是服务端重启过）。请点侧栏"新对话"重新开始流程。';
+          errCode = 'SESSION_LOST';
+        } else if (httpStatus === 400) {
+          msg = `分析请求被拒：${serverErr || '数据不完整'}。请回到数据确认检查。`;
+          errCode = 'BAD_REQUEST';
+        } else {
+          msg = `分析过程中出问题了（${httpStatus || '网络'}）。可以点"重试"再跑一次。`;
+          errCode = 'ANALYZE_FAILED';
+        }
         streamMsg(msg);
-        flow.markError(isTimeout ? 'TIMEOUT' : 'ANALYZE_FAILED');
+        flow.markError(errCode);
       });
 
     return () => { cancelled = true; };
@@ -468,31 +485,59 @@ function AppInner() {
     // analyze 步：error 时展示重试卡；in_progress 时展示 LoadingView
     if (step.id === 'analyze') {
       if (step.status === 'error') {
+        const code = step.error || 'ANALYZE_FAILED';
+        const title = code === 'SESSION_LOST' ? '会话已过期'
+          : code === 'BAD_REQUEST' ? '数据有问题'
+          : code === 'TIMEOUT' ? '分析超时'
+          : '分析中断了';
+        const hint = code === 'SESSION_LOST'
+          ? '后端服务刚重启过一次（比如部署更新），内存里的会话数据丢了。点下面"重新开始"走一次流程就好。'
+          : code === 'BAD_REQUEST'
+          ? '分析请求被后端拒绝，大概率是数据字段不完整或格式有问题。回到数据确认检查一下。'
+          : code === 'TIMEOUT'
+          ? '等了 90 秒还没返回，后端可能处理量大或者在热身。可以重试一次。'
+          : '分析过程出了一个错误。可以重试，或回到数据确认检查。';
         return (
           <div style={{ padding: '60px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 12, color: 'var(--text-primary)' }}>
-              分析中断了
+              {title}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.7 }}>
-              {step.error === 'TIMEOUT'
-                ? '等了 30 秒还没返回，后端可能在热身或网络有点卡。'
-                : '分析过程中出了问题。'}
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.7, maxWidth: 380, margin: '0 auto 24px' }}>
+              {hint}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button
-                onClick={() => flow.retry()}
-                style={{ padding: '8px 20px', borderRadius: 8, border: 'none',
-                  background: 'var(--brand)', color: '#fff', fontSize: 13, cursor: 'pointer' }}
-              >
-                重试分析
-              </button>
-              <button
-                onClick={() => flow.goTo('confirm')}
-                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)',
-                  background: '#fff', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
-              >
-                回到数据确认
-              </button>
+              {code === 'SESSION_LOST' ? (
+                <button
+                  onClick={() => {
+                    flow.reset();
+                    setMessages([]);
+                    setWorkspaceMode('hidden');
+                    setParseResult(null); setReportData(null); setMappingState(null);
+                    setConversationKey(k => k + 1);
+                  }}
+                  style={{ padding: '8px 20px', borderRadius: 8, border: 'none',
+                    background: 'var(--brand)', color: '#fff', fontSize: 13, cursor: 'pointer' }}
+                >
+                  重新开始
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => flow.retry()}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: 'none',
+                      background: 'var(--brand)', color: '#fff', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    重试分析
+                  </button>
+                  <button
+                    onClick={() => flow.goTo('confirm')}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)',
+                      background: '#fff', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    回到数据确认
+                  </button>
+                </>
+              )}
             </div>
           </div>
         );

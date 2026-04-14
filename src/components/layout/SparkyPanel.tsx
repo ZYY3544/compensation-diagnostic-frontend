@@ -72,11 +72,12 @@ interface SparkyPanelProps {
   onClose: () => void;
   onNonChatSend?: (text: string) => boolean;
   embedded?: boolean;  // 嵌入三栏布局时隐藏自己的 header
+  welcomeHero?: React.ReactNode;  // 欢迎态（messages 为空）时在消息区顶部显示的 hero 内容
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend, embedded }: SparkyPanelProps) {
+export default function SparkyPanel({ messages, setMessages, sessionId, visible, onClose, onNonChatSend, embedded, welcomeHero }: SparkyPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedChips, setSelectedChips] = useState<Record<number, string[]>>({});
@@ -229,9 +230,13 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
       )}
       <div className="sparky-messages">
         {messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: 13 }}>
-            有任何问题随时问我
-          </div>
+          welcomeHero
+            ? welcomeHero
+            : (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: 13 }}>
+                有任何问题随时问我
+              </div>
+            )
         )}
         {messages.map((m, i) => {
           // Render text with **bold** markdown support
@@ -342,7 +347,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
           <textarea
             ref={inputRef}
             className="sparky-input"
-            placeholder="输入消息..."
+            placeholder="跟 Sparky 聊点什么..."
             value={inputValue}
             onChange={e => {
               setInputValue(e.target.value);

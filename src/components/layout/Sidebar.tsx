@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PixelCat from '../shared/PixelCat';
 
 export interface ConversationItem {
   id: string;
@@ -22,77 +23,130 @@ export default function Sidebar({ conversations = [], onNewChat, onSelect, userN
   if (collapsed) {
     return (
       <div style={{
-        width: 48, background: '#1a1a2e', color: '#fff',
+        width: 48, background: 'var(--panel-bg)', borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: 12,
       }}>
         <button
           onClick={() => setCollapsed(false)}
-          style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#ccc', width: 28, height: 28, borderRadius: 6, cursor: 'pointer' }}
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--text-muted)',
+            width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontSize: 12,
+          }}
           title="展开"
         >▶</button>
-        <div style={{ width: 32, height: 32, background: '#2563eb', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>铭</div>
+        <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PixelCat size={24} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ width: 260, minWidth: 260, background: '#1a1a2e', color: '#fff', display: 'flex', flexDirection: 'column' }}>
+    <div style={{
+      width: 260, minWidth: 260, background: 'var(--panel-bg)',
+      borderRight: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', color: 'var(--text-primary)',
+    }}>
       {/* Header */}
-      <div style={{ padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{
+        padding: '14px 16px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', borderBottom: '1px solid var(--border)',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, background: '#2563eb', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>铭</div>
-          <span style={{ fontSize: 16, fontWeight: 500 }}>铭曦</span>
+          <PixelCat size={24} />
+          <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>铭曦</span>
         </div>
         <button
           onClick={() => setCollapsed(true)}
-          style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#999', cursor: 'pointer' }}
+          style={{
+            width: 24, height: 24, borderRadius: 4, border: 'none',
+            background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12,
+          }}
           title="收起"
         >◀</button>
       </div>
 
-      {/* 新对话按钮 */}
+      {/* 新对话按钮 —— 简化：纯文字链接式 */}
       <button
         onClick={onNewChat}
         style={{
-          margin: '16px 16px 8px', padding: 10, borderRadius: 8,
-          border: '1px solid rgba(255,255,255,0.15)', background: 'transparent',
-          color: '#ccc', fontSize: 13, cursor: 'pointer', textAlign: 'left',
-          display: 'flex', alignItems: 'center', gap: 8,
+          margin: '12px 12px 4px',
+          padding: '10px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          fontSize: 13,
+          cursor: 'pointer',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          transition: 'border-color 0.15s, color 0.15s, background 0.15s',
+          fontFamily: 'inherit',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.borderColor = 'var(--brand)';
+          e.currentTarget.style.color = 'var(--brand)';
+          e.currentTarget.style.background = 'var(--brand-tint)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.borderColor = 'var(--border)';
+          e.currentTarget.style.color = 'var(--text-secondary)';
+          e.currentTarget.style.background = 'transparent';
         }}
       >
-        <span>+</span>
+        <span style={{ fontSize: 14 }}>＋</span>
         <span>新对话</span>
       </button>
 
-      {/* 最近列表 */}
-      <div style={{ padding: '12px 20px 6px', fontSize: 11, color: '#666', textTransform: 'uppercase', letterSpacing: 0.5 }}>最近</div>
+      {/* 最近 */}
+      <div style={{
+        padding: '16px 16px 6px', fontSize: 11, color: 'var(--text-muted)',
+        fontWeight: 500, letterSpacing: 0.2,
+      }}>
+        最近
+      </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
         {conversations.length === 0 ? (
-          <div style={{ padding: 12, fontSize: 12, color: '#555' }}>暂无历史对话</div>
+          <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+            暂无历史对话
+          </div>
         ) : conversations.map(c => (
           <div
             key={c.id}
             onClick={() => onSelect?.(c.id)}
             style={{
-              padding: '10px 12px', borderRadius: 8, fontSize: 13,
-              color: c.active ? '#fff' : '#aaa',
-              background: c.active ? 'rgba(37,99,235,0.2)' : 'transparent',
-              cursor: 'pointer', marginBottom: 2,
-              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 10px', borderRadius: 6, fontSize: 13,
+              color: c.active ? 'var(--text-primary)' : 'var(--text-secondary)',
+              background: c.active ? 'var(--hover)' : 'transparent',
+              cursor: 'pointer', marginBottom: 1,
+              display: 'flex', alignItems: 'center', gap: 8,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              transition: 'background 0.15s',
             }}
+            onMouseEnter={e => { if (!c.active) e.currentTarget.style.background = 'var(--hover)'; }}
+            onMouseLeave={e => { if (!c.active) e.currentTarget.style.background = 'transparent'; }}
           >
-            <span style={{ fontSize: 14, opacity: 0.6 }}>{c.type === 'diagnosis' ? '📊' : '💬'}</span>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+            {c.title}
           </div>
         ))}
       </div>
 
       {/* Footer */}
-      <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#2d2d4e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#888' }}>
+      <div style={{
+        padding: '12px 16px',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', background: 'var(--hover)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500,
+        }}>
           {userName[0]}
         </div>
-        <div style={{ fontSize: 13, color: '#aaa' }}>{userName} · {userRole}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{userName} · {userRole}</div>
       </div>
     </div>
   );

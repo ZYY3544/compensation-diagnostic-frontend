@@ -9,6 +9,7 @@ import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
 import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
+import PixelCat from './components/shared/PixelCat';
 import { nextMsgId } from './lib/msgId';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
@@ -312,7 +313,7 @@ function App() {
     : '业务访谈';
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#f5f6f8' }}>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
       {/* 左侧边栏 */}
       <Sidebar
         conversations={[
@@ -323,36 +324,36 @@ function App() {
       />
 
       {/* 中间对话区 */}
-      <div style={{ flex: 1, minWidth: 420, display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid #e8e8ec' }}>
-        {/* Header */}
-        <div style={{ height: 56, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #f0f0f4' }}>
-          <div style={{ width: 40, height: 40, background: '#fff3e6', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🐻</div>
+      <div style={{ flex: 1, minWidth: 420, display: 'flex', flexDirection: 'column', background: 'var(--bg)', borderRight: '1px solid var(--border)' }}>
+        {/* Header —— 小版 PixelCat，欢迎态极简只显示品牌 */}
+        <div style={{ height: 56, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)', background: 'var(--panel-bg)' }}>
+          <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <PixelCat size={24} />
+          </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 500 }}>Sparky</div>
-            <div style={{ fontSize: 11, color: '#22c55e' }}>● 在线</div>
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>Sparky</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>AI 薪酬顾问</div>
           </div>
         </div>
 
-        {/* 对话内容 */}
-        {isWelcome ? (
-          <WelcomeView
-            chips={skillChips.map((c: any) => ({
-              icon: c.icon,
-              label: c.label,
-              onClick: () => handleChipClick(c.skillKey),
-            }))}
-          />
-        ) : (
-          <SparkyPanel
-            messages={messages}
-            setMessages={setMessages}
-            sessionId={sessionId}
-            visible={true}
-            onClose={() => {}}
-            onNonChatSend={handleNonChatSend}
-            embedded={true}
-          />
-        )}
+        {/* 对话内容 —— 永远渲染 SparkyPanel，输入框常驻底部；欢迎态时把 hero 放到消息区 */}
+        <SparkyPanel
+          messages={messages}
+          setMessages={setMessages}
+          sessionId={sessionId}
+          visible={true}
+          onClose={() => {}}
+          onNonChatSend={handleNonChatSend}
+          embedded={true}
+          welcomeHero={isWelcome ? (
+            <WelcomeView
+              chips={skillChips.map((c: any) => ({
+                label: c.label,
+                onClick: () => handleChipClick(c.skillKey),
+              }))}
+            />
+          ) : undefined}
+        />
       </div>
 
       {/* 右侧工作台 */}

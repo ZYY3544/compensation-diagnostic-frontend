@@ -7,15 +7,20 @@
  */
 import MetricGrid from './MetricGrid';
 import BarHCard from './BarHCard';
+import ComparisonTable from './ComparisonTable';
+import LineChartCard from './LineChartCard';
+import StackedBarCard from './StackedBarCard';
+import BoxPlotCard from './BoxPlotCard';
+import RangeCard from './RangeCard';
 
 const CARD_COMPONENTS: Record<string, any> = {
   MetricGrid,
   BarHCard,
-  // BoxPlotCard (todo)
-  // StackedBarCard (todo)
-  // LineChartCard (todo)
-  // ComparisonTable (todo)
-  // RangeCard (todo)
+  ComparisonTable,
+  LineChartCard,
+  StackedBarCard,
+  BoxPlotCard,
+  RangeCard,
 };
 
 interface Props {

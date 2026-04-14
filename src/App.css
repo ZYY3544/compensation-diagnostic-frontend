@@ -1,25 +1,27 @@
 :root {
-  /* 暖色 Claude 风格配色。所有蓝色系替换成品牌橙棕。 */
-  --bg: #FAFAF8;             /* 极浅暖白背景 */
-  --panel-bg: #FFFFFF;
-  --right-panel-bg: #FFFFFF;
+  /* 对标「求职小帮手」视觉：暖奶油底 + 暖茶色用户气泡 + 极淡粉色 Sparky 气泡 */
+  --bg: #FAF7F2;             /* 主背景：奶油白 */
+  --panel-bg: #FAF7F2;       /* 主对话区也用奶油底（不要纯白切割视觉） */
+  --sidebar-bg: #F5F0E8;     /* 侧栏稍深一档 */
+  --right-panel-bg: #FFFFFF; /* 右侧工作台仍用白（报告/卡片需要干净底） */
   --card-bg: #FFFFFF;
-  --border: #EBE7E0;         /* 暖灰描边 */
-  --hover: #F5F2ED;          /* 暖灰 hover */
-  --brand: #D35400;          /* 品牌橙棕主色 */
-  --brand-hover: #B84700;    /* 深一档用于 hover/active */
-  --brand-tint: #FBEFE3;     /* 浅色背景 tint */
-  /* 兼容旧引用：各处 var(--blue) 仍然工作，只是指向品牌橙棕 */
-  --blue: #D35400;
-  --green: #16A34A;
+  --border: #E8E0D4;         /* 暖米色描边，比原来更淡 */
+  --hover: #F0EADF;
+  /* 品牌主色 = PixelCat 小猫的主色（#CA7C5E），用户气泡 / chip 描边 / hover 等统一用它 */
+  --brand: #CA7C5E;
+  --brand-hover: #B06849;    /* 深一档 */
+  --brand-tint: #FBE8D9;     /* Sparky 气泡 / chip hover 背景 */
+  /* 兼容：var(--blue) 仍然工作 */
+  --blue: #CA7C5E;
+  --green: #5F8A65;
   --amber: #D97706;
   --red: #DC2626;
   --brown: #CA7C5E;
-  --text-primary: #2A2420;   /* 暖深色正文 */
-  --text-secondary: #5C544D;
-  --text-muted: #9B918A;
-  --sparky-bubble: #F5F2ED;  /* Sparky 气泡的浅暖灰 */
-  --user-bubble: #D35400;    /* 用户气泡用品牌橙棕 */
+  --text-primary: #2E2622;   /* 暖深棕正文 */
+  --text-secondary: #5C504A;
+  --text-muted: #8A7F75;
+  --sparky-bubble: #FBE8D9;  /* Sparky 气泡：极淡粉奶油 */
+  --user-bubble: #CA7C5E;    /* 用户气泡 = 小猫主色 */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -252,14 +254,14 @@ body {
   border-top: none;
 }
 .sparky-input-wrapper {
-  background: var(--panel-bg);
+  background: #FFFFFF;                  /* 白底衬一下，从奶油背景里跳出来 */
   border: 1px solid var(--border);
   border-radius: 20px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .sparky-input-wrapper:focus-within {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(211, 84, 0, 0.08);
+  box-shadow: 0 0 0 3px rgba(200, 126, 95, 0.12);
 }
 .sparky-input {
   width: 100%;

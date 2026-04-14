@@ -244,7 +244,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             const parts = text.split(/(\*\*[^*]+\*\*)/g);
             return parts.map((part, idx) => {
               if (part.startsWith('**') && part.endsWith('**')) {
-                return <div key={idx} style={{ fontWeight: 600, color: '#CA7C5E', marginTop: 8 }}>{part.slice(2, -2)}</div>;
+                return <div key={idx} style={{ fontWeight: 600, color: 'var(--brand)', marginTop: 8 }}>{part.slice(2, -2)}</div>;
               }
               // Trim leading newline/spaces after a bold block to prevent extra space
               const cleaned = part.replace(/^\n\s*/, '');

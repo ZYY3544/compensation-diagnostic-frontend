@@ -7,12 +7,20 @@ import InterviewView from './components/stage3/InterviewView';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
-import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
+import { createSession, uploadFile, confirmFieldMapping, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
 import PixelCat from './components/shared/PixelCat';
+import FieldMappingPanel, { type MappingSuggestion, type StandardField } from './components/stage1/FieldMappingPanel';
 import { nextMsgId } from './lib/msgId';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
+
+interface MappingState {
+  columns: string[];
+  sampleRows: Array<Record<string, any>>;
+  suggestion: MappingSuggestion;
+  standardFields: StandardField[];
+}
 
 function LoadingView() {
   const [text, setText] = useState('正在计算外部竞争力...');
@@ -84,6 +92,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [mappingState, setMappingState] = useState<MappingState | null>(null);
+  const [mappingSubmitting, setMappingSubmitting] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [adviceData, setAdviceData] = useState<{ advice: any[]; closing: string } | null>(null);
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
@@ -154,11 +164,31 @@ function App() {
         setSessionId(sid);
       }
       const uploadRes = await uploadFile(sid!, file);
-      const result = uploadRes.data as ParseResult;
-      setParseResult(result);
-      const emp = result.employee_count || 0;
-      const grade = result.grade_count || 0;
-      const dept = result.department_count || 0;
+      const result = uploadRes.data as any;
+      // Path B：后端说需要字段映射确认 → 进 FieldMappingPanel
+      if (result.mapping_needed) {
+        setMappingState({
+          columns: result.columns || [],
+          sampleRows: result.sample_rows || [],
+          suggestion: result.suggestion || { mappings: [], unmapped: [], missing_required: [], missing_optional: [] },
+          standardFields: result.standard_fields || [],
+        });
+        setLoading(false);
+        setStage(3);                // 借 stage 3 这个位置展示映射面板
+        setWorkspaceMode('narrow');
+        streamMsg(
+          `我看了一下你的数据，识别到 ${result.suggestion?.mappings?.length || 0} 个字段，` +
+          `${result.suggestion?.missing_required?.length || 0} 个必填字段还没找到。` +
+          `右边是我的理解，你确认一下对不对；识别错的可以改下拉框，不用的列保留"忽略"就行。`
+        );
+        return;
+      }
+      // Path A：模板匹配，直接进数据确认
+      const parseResult = result as ParseResult;
+      setParseResult(parseResult);
+      const emp = parseResult.employee_count || 0;
+      const grade = parseResult.grade_count || 0;
+      const dept = parseResult.department_count || 0;
       streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
       setLoading(false);
       setStage(3);
@@ -167,6 +197,29 @@ function App() {
       console.warn('Upload API failed', err);
       streamMsg('上传失败了，后端服务可能还在启动中。请稍后重新上传。');
       setLoading(false);
+    }
+  };
+
+  // 用户在 FieldMappingPanel 确认字段映射后调这个
+  const handleConfirmMapping = async (
+    mappings: Array<{ user_column: string; system_field: string }>,
+  ) => {
+    if (!sessionId) return;
+    setMappingSubmitting(true);
+    try {
+      const res = await confirmFieldMapping(sessionId, mappings);
+      const data = res.data as ParseResult;
+      setParseResult(data);
+      setMappingState(null);
+      const emp = data.employee_count || 0;
+      const grade = data.grade_count || 0;
+      const dept = data.department_count || 0;
+      streamMsg(`好的，字段映射确认完毕。识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门，进入数据确认。`);
+    } catch (err) {
+      console.warn('[confirm-mapping] failed', err);
+      streamMsg('映射确认后解析失败，请检查数据格式或刷新重试。');
+    } finally {
+      setMappingSubmitting(false);
     }
   };
 
@@ -356,6 +409,18 @@ function App() {
       );
     }
     if (stage === 2) return <UploadView onUpload={handleUpload} />;
+    if (stage === 3 && mappingState) {
+      return (
+        <FieldMappingPanel
+          columns={mappingState.columns}
+          sampleRows={mappingState.sampleRows}
+          suggestion={mappingState.suggestion}
+          standardFields={mappingState.standardFields}
+          onConfirm={handleConfirmMapping}
+          submitting={mappingSubmitting}
+        />
+      );
+    }
     if (stage === 3) {
       return (
         <DataConfirm
@@ -383,7 +448,7 @@ function App() {
   };
 
   const wsTitle = stage === 4 ? '薪酬诊断报告'
-    : stage === 3 ? '数据确认'
+    : stage === 3 ? (mappingState ? '字段映射确认' : '数据确认')
     : stage === 2 ? '数据上传'
     : '业务访谈';
 

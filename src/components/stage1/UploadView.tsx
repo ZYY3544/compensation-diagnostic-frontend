@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react';
+import { templateDownloadUrl } from '../../api/client';
 
 interface UploadViewProps {
   onUpload: (file: File) => void;
@@ -76,8 +77,16 @@ export default function UploadView({ onUpload }: UploadViewProps) {
         <div className="upload-sub-text">支持 .xlsx / .xls / .csv</div>
         <button className="upload-btn" onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>选择文件</button>
       </div>
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <span className="template-link">下载数据模板 ↓</span>
+      <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+        <a
+          href={templateDownloadUrl()}
+          download
+          className="template-link"
+          style={{ color: 'var(--brand)', textDecoration: 'none', marginRight: 12 }}
+        >
+          下载标准模板 ↓
+        </a>
+        <span>也可以直接上传你们现有的花名册，系统会自动识别字段</span>
       </div>
       <div className="features-row">
         <span className="feature-item">5 分钟完成诊断</span>

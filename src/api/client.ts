@@ -14,6 +14,15 @@ export const uploadFile = (sessionId: string, file: File) => {
   return api.post(`/upload/${sessionId}`, formData);
 };
 
+// 用户确认/修正过 AI 字段映射后调这个，真正跑 pipeline
+export const confirmFieldMapping = (
+  sessionId: string,
+  mappings: Array<{ user_column: string; system_field: string }>,
+) => api.post(`/upload/${sessionId}/confirm-mapping`, { mappings });
+
+// 标准模板下载 URL（让浏览器直接跳转下载，不走 axios）
+export const templateDownloadUrl = () => `${API_BASE}/upload/template`;
+
 export const getParseSummary = (sessionId: string, summary: string) =>
   api.post(`/pipeline/${sessionId}/parse-summary`, { summary });
 

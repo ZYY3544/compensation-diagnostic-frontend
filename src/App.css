@@ -1,27 +1,35 @@
 :root {
-  /* 对标「求职小帮手」视觉：暖奶油底 + 暖茶色用户气泡 + 极淡粉色 Sparky 气泡 */
-  --bg: #FAF7F2;             /* 主背景：奶油白 */
-  --panel-bg: #FAF7F2;       /* 主对话区也用奶油底（不要纯白切割视觉） */
-  --sidebar-bg: #F5F0E8;     /* 侧栏稍深一档 */
-  --right-panel-bg: #FFFFFF; /* 右侧工作台仍用白（报告/卡片需要干净底） */
+  /* 对标「求职加速器」配色：灰底 + 品牌色 #CA7C5E 只给用户气泡/描边/Bold
+     具体 Tailwind 颜色来自 ChatWidget.tsx：
+       sparky 气泡 = bg-gray-50 + border-gray-100 + text-gray-700
+       侧栏       = bg-gray-50 + border-gray-200
+       输入框底   = bg-gray-50
+       发送按钮   = bg-gray-500
+       用户气泡   = bg-[#CA7C5E] text-white shadow-md
+       accent    = #CA7C5E（bold / 列表符 / 描边） */
+  --bg: #FFFFFF;             /* 主对话容器白底 */
+  --panel-bg: #FFFFFF;
+  --sidebar-bg: #F9FAFB;     /* gray-50 */
+  --right-panel-bg: #FFFFFF;
   --card-bg: #FFFFFF;
-  --border: #E8E0D4;         /* 暖米色描边，比原来更淡 */
-  --hover: #F0EADF;
-  /* 品牌主色 = PixelCat 小猫的主色（#CA7C5E），用户气泡 / chip 描边 / hover 等统一用它 */
+  --border: #E5E7EB;         /* gray-200 */
+  --hover: #F3F4F6;          /* gray-100 */
+  /* 品牌色 = PixelCat 主色，仅用于气泡/描边/文字强调 */
   --brand: #CA7C5E;
-  --brand-hover: #B06849;    /* 深一档 */
-  --brand-tint: #FBE8D9;     /* Sparky 气泡 / chip hover 背景 */
+  --brand-hover: #B06849;
+  --brand-tint: #FDF5F0;     /* brand 10% 混白：用于 sparky message 头像背景或 chip hover */
   /* 兼容：var(--blue) 仍然工作 */
   --blue: #CA7C5E;
-  --green: #5F8A65;
-  --amber: #D97706;
-  --red: #DC2626;
+  --green: #22C55E;
+  --amber: #F59E0B;
+  --red: #EF4444;
   --brown: #CA7C5E;
-  --text-primary: #2E2622;   /* 暖深棕正文 */
-  --text-secondary: #5C504A;
-  --text-muted: #8A7F75;
-  --sparky-bubble: #FBE8D9;  /* Sparky 气泡：极淡粉奶油 */
-  --user-bubble: #CA7C5E;    /* 用户气泡 = 小猫主色 */
+  --text-primary: #1E293B;   /* slate-800 */
+  --text-secondary: #475569; /* slate-600 */
+  --text-muted: #94A3B8;     /* slate-400 */
+  --sparky-bubble: #F9FAFB;  /* gray-50 */
+  --sparky-bubble-border: #F3F4F6; /* gray-100 —— 参考图里 sparky 气泡还有一层描边 */
+  --user-bubble: #CA7C5E;    /* 不变 */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -78,7 +86,7 @@ body {
   padding: 12px 18px;
   border-radius: 999px;   /* 胶囊 */
   border: 1px solid var(--border);
-  background: var(--panel-bg);
+  background: var(--sparky-bubble);   /* gray-50 —— 白页上能看出来 */
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
@@ -89,7 +97,7 @@ body {
 .welcome-chip:hover {
   border-color: var(--brand);
   color: var(--brand);
-  background: var(--brand-tint);
+  background: var(--brand-tint);   /* #FDF5F0 极浅橙 tint */
 }
 
 /* ==================== App Container ==================== */
@@ -242,11 +250,13 @@ body {
 }
 .msg-row:not(.user) .msg-bubble {
   background: var(--sparky-bubble);
-  color: var(--text-primary);
+  border: 1px solid var(--sparky-bubble-border);
+  color: #374151; /* gray-700，和参考图 text-gray-700 对齐 */
 }
 .msg-row.user .msg-bubble {
   background: var(--user-bubble);
   color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(202, 124, 94, 0.25); /* 对齐参考图 shadow-md */
 }
 .sparky-input-area {
   padding: 12px 24px 20px;
@@ -254,14 +264,13 @@ body {
   border-top: none;
 }
 .sparky-input-wrapper {
-  background: #FFFFFF;                  /* 白底衬一下，从奶油背景里跳出来 */
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  background: var(--sparky-bubble);    /* gray-50，对齐参考 */
+  border: 1px solid transparent;
+  border-radius: 16px;
+  transition: box-shadow 0.15s;
 }
 .sparky-input-wrapper:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(200, 126, 95, 0.12);
+  box-shadow: 0 0 0 2px rgba(202, 124, 94, 0.2);  /* ring-[#CA7C5E]/20 */
 }
 .sparky-input {
   width: 100%;
@@ -284,24 +293,24 @@ body {
   padding: 4px 8px 8px 8px;
 }
 .sparky-send {
-  width: 32px;
-  height: 32px;
-  background: var(--brand);
+  width: 36px;
+  height: 36px;
+  background: #6B7280;   /* gray-500，对齐参考 */
   color: #fff;
   border: none;
-  border-radius: 50%;
+  border-radius: 12px;   /* rounded-xl */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 16px;
   transition: background 0.15s;
 }
 .sparky-send:hover {
-  background: var(--brand-hover);
+  background: #4B5563;   /* gray-600 */
 }
 .sparky-send:disabled {
-  background: #D8D2C8;
+  background: #D1D5DB;   /* gray-300 */
   cursor: not-allowed;
 }
 

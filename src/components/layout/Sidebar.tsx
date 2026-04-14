@@ -23,7 +23,7 @@ export default function Sidebar({ conversations = [], onNewChat, onSelect, userN
   if (collapsed) {
     return (
       <div style={{
-        width: 48, background: 'var(--panel-bg)', borderRight: '1px solid var(--border)',
+        width: 48, background: 'var(--sidebar-bg)', borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: 12,
       }}>
         <button
@@ -43,7 +43,7 @@ export default function Sidebar({ conversations = [], onNewChat, onSelect, userN
 
   return (
     <div style={{
-      width: 260, minWidth: 260, background: 'var(--panel-bg)',
+      width: 260, minWidth: 260, background: 'var(--sidebar-bg)',
       borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', color: 'var(--text-primary)',
     }}>

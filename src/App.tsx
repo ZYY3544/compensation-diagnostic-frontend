@@ -7,7 +7,8 @@ import InterviewView from './components/stage3/InterviewView';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
-import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry } from './api/client';
+import { createSession, uploadFile, runAnalysis, getReport, getSkillRegistry, invokeSkill } from './api/client';
+import CardRenderer from './components/cards/CardRenderer';
 import type { Stage, Message, ParseResult, ReportData } from './types';
 import './App.css';
 
@@ -36,6 +37,14 @@ function App() {
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [skillChips, setSkillChips] = useState<any[]>([]);
+  // Skill 调用结果（供 CardRenderer 渲染）
+  const [skillResult, setSkillResult] = useState<{
+    components: any[];
+    data: any;
+    narrative?: string;
+    title?: string;
+    subtitle?: string;
+  } | null>(null);
   const welcomeSent = useRef(false);
   const stage2InputHandlerRef = useRef<((text: string) => boolean) | null>(null);
   const stage3TextHandlerRef = useRef<((text: string) => boolean) | null>(null);
@@ -171,13 +180,43 @@ function App() {
   }, [stage]);
 
   // 首屏 chip 触发能力
-  const handleChipClick = (capability: string) => {
+  const handleChipClick = async (capability: string) => {
     if (capability === 'full_diagnosis') {
       streamMsg('好的，我们做一次完整的薪酬诊断。先通过几个问题了解一下你们的业务背景，然后上传薪酬数据。');
       setStage(1);
       setWorkspaceMode('narrow');
-    } else {
-      streamMsg('这个能力正在开发中，敬请期待。');
+      return;
+    }
+
+    // 轻模式 skill：直接调用
+    if (!sessionId) {
+      streamMsg('正在初始化会话，请稍候再试...');
+      return;
+    }
+    addMsg({ role: 'user', text: skillChips.find(c => c.skillKey === capability)?.label || capability });
+    streamMsg('让我查一下...');
+    try {
+      const res = await invokeSkill(capability, sessionId, {});
+      const data = res.data;
+      if (data.error) {
+        streamMsg(`这个能力需要先上传薪酬数据。你可以直接点"完整诊断"开始。`);
+        return;
+      }
+      // 展示到工作台
+      setSkillResult({
+        components: data.skill?.render_components || [],
+        data: data.result,
+        narrative: data.narrative,
+        title: data.skill?.display_name,
+        subtitle: `调用于 ${new Date().toLocaleTimeString('zh-CN')}`,
+      });
+      setWorkspaceMode('narrow');
+      if (data.narrative) {
+        streamMsg(data.narrative);
+      }
+    } catch (err) {
+      console.warn('[Skill] invoke failed', err);
+      streamMsg('调用这个能力时遇到了问题，请稍后再试。');
     }
   };
 
@@ -185,6 +224,19 @@ function App() {
   const isWelcome = workspaceMode === 'hidden' && messages.length === 0;
 
   const renderWorkspaceContent = () => {
+    // 轻模式 skill 结果优先展示
+    if (skillResult) {
+      return (
+        <CardRenderer
+          components={skillResult.components}
+          data={skillResult.data}
+          narrative={skillResult.narrative}
+          title={skillResult.title}
+          subtitle={skillResult.subtitle}
+        />
+      );
+    }
+
     if (loading && stage === 2) {
       return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>正在解析...</div>;
     }

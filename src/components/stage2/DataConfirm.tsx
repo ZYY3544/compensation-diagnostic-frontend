@@ -10,6 +10,9 @@ import { nextMsgId } from '../../lib/msgId';
 import { appendProcessingStep, finishProcessing, failProcessing } from '../../lib/processing';
 import type { Message, ParseResult } from '../../types';
 
+// ProcessingBlock 相邻步骤之间的停顿（ms）——太快用户读不完，太慢显得卡
+const STEP_PACE_MS = 900;
+
 interface DataConfirmProps {
   onComplete: () => void;
   addMsg: (msg: Message) => void;
@@ -106,11 +109,11 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
 
       // 进度提示进 ProcessingBlock，不发独立气泡
       appendProcessingStep(setMessages, '正在读取 Excel 结构');
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, STEP_PACE_MS));
       appendProcessingStep(setMessages, '正在识别字段和数据类型');
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, STEP_PACE_MS));
       appendProcessingStep(setMessages, `解析完成，识别到 ${emp} 条员工记录、${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门`);
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, STEP_PACE_MS));
       appendProcessingStep(setMessages, '正在检查数据完整度');
 
       // 调 AI 总结
@@ -152,7 +155,7 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       (async () => {
         // 左右联动：processing 步骤 + API 并行跑，两者都完成才 flip 右侧看板
         appendProcessingStep(setMessages, '正在备份原始数据');
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, STEP_PACE_MS));
         appendProcessingStep(setMessages, '正在检查数据质量');
 
         if (!sessionId) { setStep2Ready(true); return; }

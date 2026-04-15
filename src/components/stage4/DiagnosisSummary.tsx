@@ -8,7 +8,6 @@ interface Finding {
 interface Props {
   healthScore: number;
   findings: Finding[];
-  opening?: string;
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
@@ -17,48 +16,39 @@ const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   P3: { bg: '#DBEAFE', color: '#1E40AF' },
 };
 
-export default function DiagnosisSummary({ healthScore, findings, opening }: Props) {
-  // 健康分颜色
+export default function DiagnosisSummary({ healthScore, findings }: Props) {
   const scoreColor = healthScore >= 70 ? 'var(--green)' : healthScore >= 50 ? '#D97706' : '#DC2626';
+  const scoreLabel = healthScore >= 70 ? '健康' : healthScore >= 50 ? '需关注' : '风险偏高';
 
   return (
     <div style={{ marginBottom: 24 }}>
-      {/* 健康分 + 标题 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 16 }}>
+      {/* 健康分独立卡片：大字居中 */}
+      <div style={{
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        padding: '32px 24px',
+        textAlign: 'center',
+        marginBottom: 16,
+      }}>
         <div style={{
-          width: 64, height: 64, borderRadius: '50%',
-          border: `3px solid ${scoreColor}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 22, fontWeight: 700, color: scoreColor,
+          fontSize: 64,
+          fontWeight: 700,
+          color: scoreColor,
+          lineHeight: 1,
+          marginBottom: 8,
         }}>
           {healthScore}
         </div>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>薪酬诊断报告</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            健康度 {healthScore} 分 · {findings.length} 条核心发现
-          </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+          薪酬健康度评分
+        </div>
+        <div style={{ fontSize: 12, color: scoreColor, fontWeight: 600 }}>
+          {scoreLabel} · {findings.length} 条核心发现
         </div>
       </div>
 
-      {/* AI 开场：诊断摘要（prompt 要求纯文本，含"建议诊断重点关注："段） */}
-      {opening && (
-        <div style={{
-          marginBottom: 16,
-          padding: '14px 18px',
-          background: '#F8FAFC',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          fontSize: 13,
-          lineHeight: 1.7,
-          color: 'var(--text-primary)',
-          whiteSpace: 'pre-wrap',
-        }}>
-          {opening}
-        </div>
-      )}
-
-      {/* 核心发现卡片 */}
+      {/* 关键发现列表 */}
       {findings.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {findings.map((f, i) => {

@@ -35,24 +35,21 @@ interface ReportViewProps {
 
 export default function ReportView({ reportData, adviceData, setAdviceData, sessionId, streamMsg }: ReportViewProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
-  const [opening, setOpening] = useState<string>('');
   const [moduleInsights, setModuleInsights] = useState<Record<string, string>>({});
   const aiTriggered = useRef(false);
 
   // 挂载时拉三段 AI 叙事：开场 → 逐模块解读 → 诊断建议
+  // opening 只走 chat（streamMsg），不在右侧报告里渲染——内容跟 findings 重复
   useEffect(() => {
     if (!sessionId || !reportData || aiTriggered.current) return;
     aiTriggered.current = true;
 
     (async () => {
-      // 1. 诊断摘要 opening
+      // 1. 诊断摘要 opening —— 只发到左侧 Sparky 对话，不展示在右侧
       try {
         const res = await getDiagnosisSummary(sessionId);
         const text = res.data?.opening || '';
-        if (text) {
-          setOpening(text);
-          streamMsg?.(text);
-        }
+        if (text) streamMsg?.(text);
       } catch (e) {
         console.warn('[ReportView] getDiagnosisSummary failed', e);
       }
@@ -119,11 +116,10 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
 
   return (
     <div className="fade-enter">
-      {/* 诊断摘要 */}
+      {/* 诊断摘要：健康分卡片 + findings 列表 */}
       <DiagnosisSummary
         healthScore={reportData.health_score}
         findings={reportData.key_findings}
-        opening={opening}
       />
 
       {/* 模块导航 chip */}

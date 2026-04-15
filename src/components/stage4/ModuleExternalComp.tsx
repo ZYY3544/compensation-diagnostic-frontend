@@ -1,27 +1,31 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
+import ModuleShell, { ChartCard } from './ModuleShell';
 
 export default function ModuleExternalComp({ data, insight }: { data: any; insight?: string }) {
   const crByFunc = data?.cr_by_function || [];
   const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
   const overallCR = data?.overall_cr;
   const belowP25 = data?.total_below_p25 || 0;
+  const aboveP75 = data?.total_above_p75 ?? null;
+
+  const crColor = overallCR == null ? undefined
+    : overallCR < 0.9 ? '#DC2626'
+    : overallCR > 1.15 ? '#D97706'
+    : 'var(--green)';
 
   return (
-    <div>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>外部竞争力分析</h3>
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-        员工薪酬与市场水平对比 · 整体 CR {overallCR ?? '—'} · {belowP25} 人低于 P25
-      </div>
-      {insight && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-          {insight}
-        </div>
-      )}
-
-      {/* CR by Function 柱状图 */}
+    <ModuleShell
+      title="外部竞争力分析"
+      subtitle="员工薪酬与市场水平对比"
+      metrics={[
+        { label: '整体 Compa-Ratio', value: overallCR ?? '—', color: crColor, sub: '市场 P50 = 1.00' },
+        { label: '低于市场 P25', value: belowP25, sub: '人' },
+        ...(aboveP75 != null ? [{ label: '高于市场 P75', value: aboveP75, sub: '人' }] : []),
+      ]}
+      insight={insight}
+    >
       {crByFunc.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20, marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>各职能 Compa-Ratio</div>
+        <ChartCard title="各职能 Compa-Ratio">
           {/* 顶部 margin 留 24px 给 P50 标签，避免被柱子遮 */}
           <ResponsiveContainer width="100%" height={270}>
             <BarChart data={crByFunc} layout="vertical" margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
@@ -42,13 +46,11 @@ export default function ModuleExternalComp({ data, insight }: { data: any; insig
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartCard>
       )}
 
-      {/* CR 热力图 */}
       {heatmap.departments.length > 0 && heatmap.grades.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>部门 × 职级 CR 热力图</div>
+        <ChartCard title="部门 × 职级 CR 热力图">
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -64,7 +66,6 @@ export default function ModuleExternalComp({ data, insight }: { data: any; insig
                   <tr key={dept}>
                     <td style={{ padding: '8px', fontWeight: 500 }}>{dept}</td>
                     {(heatmap.values[di] || []).map((cr: number | null, gi: number) => {
-                      // CR 着色：< 0.85 红 / 0.85-1.15 绿 / 1.15-2.0 橙 / > 2.0 深红
                       let bg = '#F9FAFB', color = 'inherit', fontWeight: number | string = 500;
                       if (cr != null) {
                         if (cr < 0.85) { bg = '#FEE2E2'; color = '#991B1B'; }
@@ -83,8 +84,8 @@ export default function ModuleExternalComp({ data, insight }: { data: any; insig
               </tbody>
             </table>
           </div>
-        </div>
+        </ChartCard>
       )}
-    </div>
+    </ModuleShell>
   );
 }

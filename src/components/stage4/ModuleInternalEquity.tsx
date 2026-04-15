@@ -1,21 +1,32 @@
+import ModuleShell, { ChartCard } from './ModuleShell';
+
 export default function ModuleInternalEquity({ data, insight }: { data: any; insight?: string }) {
   const dispersion = data?.dispersion || [];
   const boxplot = data?.boxplot || [];
   const deviation = data?.deviation_matrix || { departments: [], grades: [], values: [] };
+  const highCount = data?.high_dispersion_count || 0;
+  const totalGrades = dispersion.length;
+  const highRatio = totalGrades > 0 ? Math.round((highCount / totalGrades) * 100) : 0;
 
   return (
-    <div>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>内部公平性分析</h3>
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-        同职级内薪酬分布 · {data?.high_dispersion_count || 0} 个层级离散度偏高
-      </div>
-      {insight && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-          {insight}
-        </div>
-      )}
-
-      {/* 各层级薪酬分布（box plot，IQR 裁剪离群点） */}
+    <ModuleShell
+      title="内部公平性分析"
+      subtitle="同职级内薪酬分布"
+      metrics={[
+        {
+          label: '高离散层级',
+          value: highCount,
+          sub: `共 ${totalGrades} 个层级`,
+          color: highCount > 0 ? '#DC2626' : 'var(--green)',
+        },
+        {
+          label: '占比',
+          value: `${highRatio}%`,
+          color: highRatio > 30 ? '#DC2626' : highRatio > 0 ? '#D97706' : 'var(--green)',
+        },
+      ]}
+      insight={insight}
+    >
       {boxplot.length > 0 && (() => {
         // 按 IQR × 1.5 裁剪，避免一个 300k 的异常值把 Y 轴撑爆
         const clipped: Array<{ grade: string; whiskerLow: number; whiskerHigh: number; q1: number; median: number; q3: number; min: number; max: number; outlierHigh: number | null; outlierLow: number | null; status?: string }> = [];
@@ -47,8 +58,7 @@ export default function ModuleInternalEquity({ data, insight }: { data: any; ins
         const hasOutliers = clipped.some(c => c.outlierHigh != null || c.outlierLow != null);
 
         return (
-          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20, marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>各层级薪酬分布</div>
+          <ChartCard title="各层级薪酬分布">
             <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`}>
               {[0, 0.25, 0.5, 0.75, 1].map(r => {
                 const y = pad.top + innerH * (1 - r);
@@ -101,14 +111,12 @@ export default function ModuleInternalEquity({ data, insight }: { data: any; ins
             {hasOutliers && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>▼ 表示超出主体数据范围的离群值（&gt; P75 + 1.5×IQR）</div>
             )}
-          </div>
+          </ChartCard>
         );
       })()}
 
-      {/* 离散度表格 */}
       {dispersion.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20, marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>各层级离散度</div>
+        <ChartCard title="各层级离散度">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -137,13 +145,11 @@ export default function ModuleInternalEquity({ data, insight }: { data: any; ins
               ))}
             </tbody>
           </table>
-        </div>
+        </ChartCard>
       )}
 
-      {/* 偏离度矩阵 */}
       {deviation.departments.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>部门 × 职级 薪酬偏离度</div>
+        <ChartCard title="部门 × 职级 薪酬偏离度">
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -174,8 +180,8 @@ export default function ModuleInternalEquity({ data, insight }: { data: any; ins
               </tbody>
             </table>
           </div>
-        </div>
+        </ChartCard>
       )}
-    </div>
+    </ModuleShell>
   );
 }

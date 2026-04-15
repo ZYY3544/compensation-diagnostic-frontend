@@ -35,22 +35,27 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
   const [moduleInsights, setModuleInsights] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
   const [adviceLoading, setAdviceLoading] = useState(false);
+  const [findingsText, setFindingsText] = useState<string>('');
+  const [findingsLoading, setFindingsLoading] = useState(true);
   const summaryFired = useRef(false);
   const insightAttempted = useRef<Set<string>>(new Set());
 
-  // 分析跑完只发 1 条 chat 消息——总结最关键发现 + 引导用户看右侧 + 提示可追问
-  // 模块解读和诊断建议都改成 lazy load，避免初始 5-7 次 AI 调用 + 信息淹没用户
+  // 分析跑完：拉 5 维度关键发现（显示在右侧 DiagnosisSummary），同时给左侧 chat 发一条固定引导
+  // 5 维度文本不适合塞进 chat 气泡（太长、结构化），所以 chat 走简单模板，AI 输出留给右侧
   useEffect(() => {
     if (!sessionId || !reportData || summaryFired.current) return;
     summaryFired.current = true;
 
+    streamMsg?.('诊断已完成，五个维度的关键发现已经放在右侧报告里。想深入聊哪个维度，直接告诉我就行。');
+
     (async () => {
       try {
         const res = await getDiagnosisSummary(sessionId);
-        const text = res.data?.opening || '';
-        if (text) streamMsg?.(text);
+        setFindingsText(res.data?.opening || '');
       } catch (e) {
         console.warn('[ReportView] getDiagnosisSummary failed', e);
+      } finally {
+        setFindingsLoading(false);
       }
     })();
   }, [sessionId, reportData, streamMsg]);
@@ -124,11 +129,8 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
 
   return (
     <div className="fade-enter">
-      {/* 诊断摘要：健康分卡片 + findings 列表 */}
-      <DiagnosisSummary
-        healthScore={reportData.health_score}
-        findings={reportData.key_findings}
-      />
+      {/* 诊断关键发现：按 5 维度展示 AI 输出，loading 时占位 */}
+      <DiagnosisSummary findings_text={findingsText} loading={findingsLoading} />
 
       {/* 模块导航 chip */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>

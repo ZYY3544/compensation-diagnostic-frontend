@@ -22,6 +22,30 @@ const MODULE_KEYS = [
   { key: 'labor_cost', label: '人工成本' },
 ];
 
+/**
+ * 三大块之间的视觉分隔：上方一条横线 + 加宽的上下间距 + section 标题
+ * 让"诊断关键发现 / 维度详情 / 行动建议"三段在长报告里清晰可辨
+ */
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div style={{
+      marginTop: 36,
+      marginBottom: 20,
+      paddingTop: 24,
+      borderTop: '1px solid var(--border)',
+    }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+        {title}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+          {subtitle}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ReportViewProps {
   reportData?: ReportData | null;
   adviceData?: { advice: any[]; closing: string } | null;
@@ -129,8 +153,11 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
 
   return (
     <div className="fade-enter">
-      {/* 诊断关键发现：按 5 维度展示 AI 输出，loading 时占位 */}
+      {/* === Section 1: 诊断关键发现 === */}
       <DiagnosisSummary findings_text={findingsText} loading={findingsLoading} />
+
+      {/* === Section 2: 维度详情 === */}
+      <SectionHeader title="维度详情" subtitle="点击下方任一维度查看图表与 AI 解读" />
 
       {/* 模块导航 chip */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -165,12 +192,14 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
         {renderModule()}
       </div>
 
+      {/* === Section 3: 行动建议 === */}
+      <SectionHeader title="行动建议" subtitle="基于以上发现给出具体的执行方向" />
+
       {/* 诊断建议——按需触发。已加载就直接渲染，未加载显示占位 + 按钮 */}
       {adviceData && adviceData.advice?.length > 0 ? (
         <DiagnosisAdvice advice={adviceData.advice} closing={adviceData.closing} />
       ) : (
         <div style={{
-          marginTop: 24,
           padding: '20px 24px',
           background: '#fff',
           border: '1px dashed var(--border)',

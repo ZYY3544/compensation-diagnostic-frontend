@@ -11,7 +11,7 @@ import { appendProcessingStep, finishProcessing, failProcessing } from '../../li
 import type { Message, ParseResult } from '../../types';
 
 // ProcessingBlock 相邻步骤之间的停顿（ms）——太快用户读不完，太慢显得卡
-const STEP_PACE_MS = 900;
+const STEP_PACE_MS = 1600;
 
 interface DataConfirmProps {
   onComplete: () => void;

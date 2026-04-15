@@ -386,6 +386,9 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             >↑</button>
           </div>
         </div>
+        <div className="sparky-input-disclaimer">
+          Sparky is an AI Agent and can make mistakes. Please double-check responses.
+        </div>
       </div>
     </div>
   );

@@ -298,9 +298,16 @@ body {
   box-shadow: 0 4px 6px -1px rgba(202, 124, 94, 0.25); /* 对齐参考图 shadow-md */
 }
 .sparky-input-area {
-  padding: 12px 24px 20px;
+  padding: 12px 24px 16px;
   background: transparent;
   border-top: none;
+}
+.sparky-input-disclaimer {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 .sparky-input-wrapper {
   background: var(--sparky-bubble);    /* gray-50，对齐参考 */

@@ -8,25 +8,53 @@ export default function ModuleExternalComp({ data, insight, insightLoading }: { 
   const belowP25 = data?.total_below_p25 || 0;
   const aboveP75 = data?.total_above_p75 ?? null;
 
-  const crColor = overallCR == null ? undefined
-    : overallCR < 0.9 ? '#DC2626'
-    : overallCR > 1.15 ? '#D97706'
-    : 'var(--green)';
+  // 副标题关键指标概要
+  const subtitleParts: string[] = [];
+  if (overallCR != null) subtitleParts.push(`整体 CR ${overallCR}`);
+  subtitleParts.push(`${belowP25} 人低于 P25`);
+  if (aboveP75 != null) subtitleParts.push(`${aboveP75} 人高于 P75`);
+  const subtitle = subtitleParts.join(' · ');
+
+  // 图表发现：代码生成，从 crByFunc 里挑最高 / 最低
+  let crFinding = '';
+  if (crByFunc.length > 0) {
+    const withCR = crByFunc.filter((f: any) => f.cr != null);
+    if (withCR.length > 0) {
+      const sorted = [...withCR].sort((a, b) => b.cr - a.cr);
+      const top = sorted[0];
+      const bottom = sorted[sorted.length - 1];
+      crFinding = `CR 最高的是${top.name}（${Number(top.cr).toFixed(2)}），最低的是${bottom.name}（${Number(bottom.cr).toFixed(2)}）`;
+    }
+  }
+
+  // 热力图发现：统计偏离单元格
+  let heatFinding = '';
+  if (heatmap.values?.length > 0) {
+    let lowCells = 0, highCells = 0, extremeCells = 0;
+    for (const row of heatmap.values) {
+      for (const cr of row) {
+        if (cr == null) continue;
+        if (cr < 0.85) lowCells++;
+        else if (cr > 2.0) extremeCells++;
+        else if (cr > 1.15) highCells++;
+      }
+    }
+    const parts: string[] = [];
+    if (lowCells) parts.push(`${lowCells} 格低于 P25`);
+    if (highCells) parts.push(`${highCells} 格高于 P75`);
+    if (extremeCells) parts.push(`${extremeCells} 格偏离严重（CR>2.0）`);
+    heatFinding = parts.length > 0 ? parts.join('，') : '所有部门职级组合都在市场合理区间内';
+  }
 
   return (
     <ModuleShell
       title="外部竞争力分析"
-      subtitle="员工薪酬与市场水平对比"
-      metrics={[
-        { label: '整体 Compa-Ratio', value: overallCR ?? '—', color: crColor, sub: '市场 P50 = 1.00' },
-        { label: '低于市场 P25', value: belowP25, sub: '人' },
-        ...(aboveP75 != null ? [{ label: '高于市场 P75', value: aboveP75, sub: '人' }] : []),
-      ]}
+      subtitle={subtitle}
       insight={insight}
       insightLoading={insightLoading}
     >
       {crByFunc.length > 0 && (
-        <ChartCard title="各职能 Compa-Ratio">
+        <ChartCard title="各职能 Compa-Ratio" finding={crFinding}>
           {/* 顶部 margin 留 24px 给 P50 标签，避免被柱子遮 */}
           <ResponsiveContainer width="100%" height={270}>
             <BarChart data={crByFunc} layout="vertical" margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
@@ -51,7 +79,7 @@ export default function ModuleExternalComp({ data, insight, insightLoading }: { 
       )}
 
       {heatmap.departments.length > 0 && heatmap.grades.length > 0 && (
-        <ChartCard title="部门 × 职级 CR 热力图">
+        <ChartCard title="部门 × 职级 CR 热力图" finding={heatFinding}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>

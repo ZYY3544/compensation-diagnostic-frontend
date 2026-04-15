@@ -6,25 +6,59 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
   const deviation = data?.deviation_matrix || { departments: [], grades: [], values: [] };
   const highCount = data?.high_dispersion_count || 0;
   const totalGrades = dispersion.length;
-  const highRatio = totalGrades > 0 ? Math.round((highCount / totalGrades) * 100) : 0;
+
+  const subtitleParts: string[] = [];
+  subtitleParts.push(`共 ${totalGrades} 个层级`);
+  if (highCount > 0) subtitleParts.push(`${highCount} 个离散度偏高`);
+  else subtitleParts.push('整体离散度正常');
+  const subtitle = subtitleParts.join(' · ');
+
+  // Boxplot 发现：极差比最大的层级（max/min）
+  let boxFinding = '';
+  if (boxplot.length > 0) {
+    const withRange = boxplot
+      .filter((b: any) => b.min > 0)
+      .map((b: any) => ({ ...b, rangeRatio: b.max / b.min }));
+    if (withRange.length > 0) {
+      const sorted = [...withRange].sort((a, b) => b.rangeRatio - a.rangeRatio);
+      const top = sorted[0];
+      boxFinding = `${top.grade} 层级薪酬分布最分散（最高/最低 ${top.rangeRatio.toFixed(1)} 倍）`;
+    }
+  }
+
+  // 离散系数表格发现：离散系数最高的层级
+  let dispFinding = '';
+  if (dispersion.length > 0) {
+    const withCoef = dispersion.filter((d: any) => d.coefficient != null);
+    if (withCoef.length > 0) {
+      const sorted = [...withCoef].sort((a, b) => b.coefficient - a.coefficient);
+      const top = sorted[0];
+      const bottom = sorted[sorted.length - 1];
+      dispFinding = `离散系数最高的是 ${top.grade}（${top.coefficient}），最低的是 ${bottom.grade}（${bottom.coefficient}）`;
+    }
+  }
+
+  // 偏离度矩阵发现：偏离度 > 15% 的单元格数量
+  let devFinding = '';
+  if (deviation.values?.length > 0) {
+    let severe = 0, moderate = 0;
+    for (const row of deviation.values) {
+      for (const v of row) {
+        if (v == null) continue;
+        if (Math.abs(v) > 15) severe++;
+        else if (Math.abs(v) > 8) moderate++;
+      }
+    }
+    const parts: string[] = [];
+    if (severe) parts.push(`${severe} 格偏离严重（>15%）`);
+    if (moderate) parts.push(`${moderate} 格偏离中等（8-15%）`);
+    devFinding = parts.length > 0 ? parts.join('，') : '各部门职级组合薪酬均衡';
+  }
 
   return (
     <ModuleShell
       title="内部公平性分析"
-      subtitle="同职级内薪酬分布"
-      metrics={[
-        {
-          label: '高离散层级',
-          value: highCount,
-          sub: `共 ${totalGrades} 个层级`,
-          color: highCount > 0 ? '#DC2626' : 'var(--green)',
-        },
-        {
-          label: '占比',
-          value: `${highRatio}%`,
-          color: highRatio > 30 ? '#DC2626' : highRatio > 0 ? '#D97706' : 'var(--green)',
-        },
-      ]}
+      subtitle={subtitle}
       insight={insight}
       insightLoading={insightLoading}
     >
@@ -59,7 +93,7 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
         const hasOutliers = clipped.some(c => c.outlierHigh != null || c.outlierLow != null);
 
         return (
-          <ChartCard title="各层级薪酬分布">
+          <ChartCard title="各层级薪酬分布" finding={boxFinding}>
             <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`}>
               {[0, 0.25, 0.5, 0.75, 1].map(r => {
                 const y = pad.top + innerH * (1 - r);
@@ -117,7 +151,7 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
       })()}
 
       {dispersion.length > 0 && (
-        <ChartCard title="各层级离散度">
+        <ChartCard title="各层级离散度" finding={dispFinding}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -150,7 +184,7 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
       )}
 
       {deviation.departments.length > 0 && (
-        <ChartCard title="部门 × 职级 薪酬偏离度">
+        <ChartCard title="部门 × 职级 薪酬偏离度" finding={devFinding}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>

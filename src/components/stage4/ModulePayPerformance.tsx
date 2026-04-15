@@ -22,28 +22,41 @@ export default function ModulePayPerformance({ data, insight, insightLoading }: 
     );
   }
 
+  // 副标题：A/B 差距 + A/C 倍数 + 区分度
+  const subtitleParts: string[] = [];
+  if (aVsBGap != null) subtitleParts.push(`A/B 差距 ${aVsBGap}%`);
+  if (aVsCRatio != null) subtitleParts.push(`A/C 倍数 ${aVsCRatio}`);
+  if (spreadAdequate === false) subtitleParts.push('⚠ 区分度不足');
+  else if (spreadAdequate === true) subtitleParts.push('区分度合理');
+  const subtitle = subtitleParts.join(' · ');
+
+  // TCC 柱状图发现：A vs C 的具体金额对比
+  let tccFinding = '';
+  if (tccByPerf.length >= 2) {
+    const aRow = tccByPerf.find((r: any) => r.grade === 'A');
+    const cRow = tccByPerf.find((r: any) => r.grade === 'C') || tccByPerf[tccByPerf.length - 1];
+    if (aRow?.avg_tcc && cRow?.avg_tcc) {
+      tccFinding = `A 级平均 ${(aRow.avg_tcc / 10000).toFixed(1)} 万，${cRow.grade} 级平均 ${(cRow.avg_tcc / 10000).toFixed(1)} 万`;
+    }
+  }
+
+  // 明细表发现：人数分布
+  let statsFinding = '';
+  if (perfStats.length > 0) {
+    const totalCount = perfStats.reduce((s: number, p: any) => s + (p.count || 0), 0);
+    const counts = perfStats.map((p: any) => `${p.grade} ${p.count} 人`).join('，');
+    statsFinding = `共 ${totalCount} 人：${counts}`;
+  }
+
   return (
     <ModuleShell
       title="绩效关联分析"
-      subtitle="不同绩效等级间的薪酬差异"
-      metrics={[
-        {
-          label: 'A/B 薪酬差距',
-          value: aVsBGap != null ? `${aVsBGap}%` : '—',
-          color: spreadAdequate === false ? '#DC2626' : 'var(--green)',
-          sub: spreadAdequate === false ? '⚠ 区分度不足' : '区分度合理',
-        },
-        {
-          label: 'A/C 薪酬倍数',
-          value: aVsCRatio ?? '—',
-          sub: '高绩效 vs 低绩效',
-        },
-      ]}
+      subtitle={subtitle || '不同绩效等级间的薪酬差异'}
       insight={insight}
       insightLoading={insightLoading}
     >
       {tccByPerf.length > 0 && (
-        <ChartCard title="各绩效等级平均年度总现金">
+        <ChartCard title="各绩效等级平均年度总现金" finding={tccFinding}>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={tccByPerf}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -61,7 +74,7 @@ export default function ModulePayPerformance({ data, insight, insightLoading }: 
       )}
 
       {perfStats.length > 0 && (
-        <ChartCard title="各绩效等级薪酬明细">
+        <ChartCard title="各绩效等级薪酬明细" finding={statsFinding}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>

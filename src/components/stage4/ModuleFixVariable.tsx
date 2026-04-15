@@ -7,33 +7,52 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
   const overallFix = data?.overall_fix_pct;
   const overallVar = data?.overall_var_pct;
 
-  // 60-80% 固薪比例视为健康区间
-  const fixHealthy = overallFix != null && overallFix >= 60 && overallFix <= 80;
-  const fixColor = overallFix == null ? undefined
-    : !fixHealthy ? '#D97706'
-    : 'var(--green)';
+  // 副标题：整体固浮比 + 健康区间标记
+  const subtitleParts: string[] = [];
+  if (overallFix != null && overallVar != null) {
+    subtitleParts.push(`整体固浮比 ${overallFix}:${overallVar}`);
+  } else if (overallFix != null) {
+    subtitleParts.push(`整体固薪占比 ${overallFix}%`);
+  }
+  if (overallFix != null) {
+    if (overallFix >= 60 && overallFix <= 80) subtitleParts.push('健康区间');
+    else subtitleParts.push('⚠ 偏离 60-80% 健康区间');
+  }
+  const subtitle = subtitleParts.join(' · ') || '固定 vs 浮动薪酬比例';
+
+  // 按职级图表发现：固薪占比最高 / 最低的职级
+  let gradeFinding = '';
+  if (byGrade.length > 0) {
+    const withFix = byGrade.filter((g: any) => g.fix_pct != null);
+    if (withFix.length > 0) {
+      const sorted = [...withFix].sort((a, b) => b.fix_pct - a.fix_pct);
+      const top = sorted[0];
+      const bottom = sorted[sorted.length - 1];
+      gradeFinding = `固薪占比最高的是 ${top.grade}（${top.fix_pct}%），最低的是 ${bottom.grade}（${bottom.fix_pct}%）`;
+    }
+  }
+
+  // 按部门图表发现：浮薪占比最高 / 最低的部门
+  let deptFinding = '';
+  if (byDept.length > 0) {
+    const withVar = byDept.filter((d: any) => d.var_pct != null);
+    if (withVar.length > 0) {
+      const sorted = [...withVar].sort((a, b) => b.var_pct - a.var_pct);
+      const top = sorted[0];
+      const bottom = sorted[sorted.length - 1];
+      deptFinding = `浮薪占比最高的部门是${top.department}（${top.var_pct}%），最低的是${bottom.department}（${bottom.var_pct}%）`;
+    }
+  }
 
   return (
     <ModuleShell
       title="薪酬结构分析"
-      subtitle="固定薪酬 vs 浮动薪酬比例"
-      metrics={[
-        {
-          label: '整体固薪占比',
-          value: overallFix != null ? `${overallFix}%` : '—',
-          color: fixColor,
-          sub: fixHealthy ? '健康区间' : overallFix != null ? '偏离 60-80% 健康区间' : undefined,
-        },
-        {
-          label: '整体浮薪占比',
-          value: overallVar != null ? `${overallVar}%` : '—',
-        },
-      ]}
+      subtitle={subtitle}
       insight={insight}
       insightLoading={insightLoading}
     >
       {byGrade.length > 0 && (
-        <ChartCard title="各职级固浮比">
+        <ChartCard title="各职级固浮比" finding={gradeFinding}>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={byGrade}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -56,7 +75,7 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
       )}
 
       {byDept.length > 0 && (
-        <ChartCard title="各部门固浮比">
+        <ChartCard title="各部门固浮比" finding={deptFinding}>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={byDept} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />

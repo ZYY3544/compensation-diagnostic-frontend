@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PixelCat from '../shared/PixelCat';
+import ProcessingBlock from './ProcessingBlock';
 import { nextMsgId } from '../../lib/msgId';
 import type { Message } from '../../types';
 
@@ -250,6 +251,10 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             )
         )}
         {messages.map((m, i) => {
+          // 处理状态块：pipeline 多步进度合并渲染，不走气泡
+          if (m.role === 'processing') {
+            return <ProcessingBlock key={m.id || i} steps={m.steps || []} />;
+          }
           // Render text with **bold** markdown support
           const renderMarkdown = (text: string) => {
             const parts = text.split(/(\*\*[^*]+\*\*)/g);

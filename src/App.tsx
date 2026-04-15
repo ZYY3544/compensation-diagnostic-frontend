@@ -13,6 +13,7 @@ import CardRenderer from './components/cards/CardRenderer';
 import PixelCat from './components/shared/PixelCat';
 import FieldMappingPanel, { type MappingSuggestion, type StandardField } from './components/stage1/FieldMappingPanel';
 import { nextMsgId } from './lib/msgId';
+import { appendProcessingStep, finishProcessing } from './lib/processing';
 import { FlowProvider, useFlow } from './lib/flow';
 import { FULL_DIAGNOSIS_FLOW } from './skills/flows';
 import type { Stage, Message, ParseResult, ReportData } from './types';
@@ -179,7 +180,8 @@ function AppInner() {
 
   const handleUpload = async (file: File) => {
     setLoading(true);
-    addMsg({ role: 'bot', text: '收到文件，正在解析...' });
+    // 进度块：收到文件 → 上传解析（完成后 finishProcessing）
+    appendProcessingStep(setMessages, '收到文件，正在上传');
     try {
       let sid = sessionId;
       if (!sid) {
@@ -187,6 +189,7 @@ function AppInner() {
         sid = sessionRes.data.id;
         setSessionId(sid);
       }
+      appendProcessingStep(setMessages, '正在解析表头和数据');
       const uploadRes = await uploadFile(sid!, file);
       const result = uploadRes.data as any;
       // Path B：后端说需要字段映射确认 → 进 confirm 步，用 mappingState 触发 FieldMappingPanel
@@ -198,6 +201,7 @@ function AppInner() {
           standardFields: result.standard_fields || [],
         });
         setLoading(false);
+        finishProcessing(setMessages);
         flow.advance();   // upload → confirm（在 confirm 步里，mappingState 非空就先渲染映射面板）
         setWorkspaceMode('narrow');
         streamMsg(
@@ -210,10 +214,7 @@ function AppInner() {
       // Path A：模板匹配，直接进数据确认
       const parseResult = result as ParseResult;
       setParseResult(parseResult);
-      const emp = parseResult.employee_count || 0;
-      const grade = parseResult.grade_count || 0;
-      const dept = parseResult.department_count || 0;
-      streamMsg(`解析完成！识别到 ${emp} 条员工记录、${grade} 个职级、${dept} 个部门。`);
+      finishProcessing(setMessages);
       setLoading(false);
       flow.advance({ parseResult });   // upload → confirm
       setWorkspaceMode('narrow');

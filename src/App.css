@@ -248,6 +248,45 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ==================== ProcessingBlock（处理状态块） ==================== */
+.processing-block {
+  margin-left: 44px;                 /* 对齐 Sparky 气泡（avatar 32 + gap 12）*/
+  padding: 8px 12px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  animation: msgFadeIn 0.3s ease;
+}
+.processing-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.processing-icon {
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+}
+.processing-text { flex: 1; }
+.status-done .processing-icon { color: #22C55E; }
+.status-fail .processing-icon { color: #EF4444; }
+.status-doing .processing-icon {
+  color: var(--brand);
+  animation: processingBreathe 1.2s ease-in-out infinite;
+}
+.status-doing .processing-text { color: var(--text-secondary); }
+.status-fail  .processing-text { color: #B91C1C; }
+@keyframes processingBreathe {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
 .msg-row:not(.user) .msg-bubble {
   background: var(--sparky-bubble);
   border: 1px solid var(--sparky-bubble-border);

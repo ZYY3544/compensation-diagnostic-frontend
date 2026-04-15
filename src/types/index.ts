@@ -1,8 +1,15 @@
+export interface ProcessingStep {
+  text: string;
+  status: 'doing' | 'done' | 'fail';
+}
+
 export interface Message {
   id?: string;      // 唯一 id，用来解决并发 streamMsg 的"谁写最后一条"竞态
-  role: 'user' | 'bot';
+  role: 'user' | 'bot' | 'processing';
   text: string;
   chips?: string[];
+  // role='processing' 时填：处理状态块里的步骤列表
+  steps?: ProcessingStep[];
 }
 
 export interface ParseResult {

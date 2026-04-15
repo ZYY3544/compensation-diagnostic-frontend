@@ -7,6 +7,7 @@ import StepFuncMatch from './StepFuncMatch';
 import StepReady from './StepReady';
 import { getCompletenessSummary, createSnapshot, runCleansing, runGradeMatch, runFuncMatch } from '../../api/client';
 import { nextMsgId } from '../../lib/msgId';
+import { appendProcessingStep, finishProcessing, failProcessing } from '../../lib/processing';
 import type { Message, ParseResult } from '../../types';
 
 interface DataConfirmProps {
@@ -103,18 +104,16 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         `可选字段未填写：${colMissing.length > 0 ? colMissing.map((c: any) => c.field).join('、') : '无'}`,
       ];
 
-      // 聊天区的引导消息「队列」跑在后台——不阻塞右侧看板出现
-      // （Chrome 后台标签会把 setInterval(30ms) 节流成 ~1s/char，
-      //   UI 状态不能再绑在这个流式播报的完成之后）
-      const introStream = (async () => {
-        await sendBotMsg('正在读取 Excel 结构...', 1500);
-        await sendBotMsg('正在识别字段和数据类型...', 2500);
-        await sendBotMsg(`解析完成！识别到 ${emp} 条员工记录，覆盖 ${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门。`, 3000);
-        await sendBotMsg('接下来做一下数据完整度分析...', 2500);
-        await sendBotMsg('正在检查各字段填充情况...', 2500);
-      })();
+      // 进度提示进 ProcessingBlock，不发独立气泡
+      appendProcessingStep(setMessages, '正在读取 Excel 结构');
+      await new Promise(r => setTimeout(r, 400));
+      appendProcessingStep(setMessages, '正在识别字段和数据类型');
+      await new Promise(r => setTimeout(r, 400));
+      appendProcessingStep(setMessages, `解析完成，识别到 ${emp} 条员工记录、${gradeCount} 个职级（${gradeRange}）、${deptCount} 个部门`);
+      await new Promise(r => setTimeout(r, 400));
+      appendProcessingStep(setMessages, '正在检查数据完整度');
 
-      // 同时异步调 AI 总结；不等 intro stream
+      // 调 AI 总结
       let aiMsg = '';
       if (sessionId) {
         try {
@@ -133,14 +132,13 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
         }
       }
 
-      // AI 响应回来（或 fallback 决定好）立即解锁看板——不再等 intro stream 逐字播完
+      finishProcessing(setMessages);       // 把剩下的 doing 都结了
       setStep1Ready(true);
       if (uniqueRows.size === 0 && colMissing.length === 0) {
         setTimeout(() => advanceStep(1), 2000);
       }
-
-      // aiMsg 作为 Sparky 的收尾台词拼到 intro stream 末尾（后台跑）
-      introStream.then(() => sendBotMsg(aiMsg, 1500));
+      // AI 总结是"跟用户讲话"—— 走正常气泡
+      sendBotMsg(aiMsg, 300);
     })();
   }, [substep, parseResult, sendBotMsg, sessionId, advanceStep]);
 
@@ -152,25 +150,19 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       setStep2MsgsSent(true);
 
       (async () => {
-        // 左右联动原则：Sparky 先讲 intro（左），API 并行跑，
-        // 两者都完成才 flip 右侧看板。这样观感上左边讲完一段
-        // 然后右边"唰地"出结果，而不是数据先到、Sparky 拖后腿。
-        const introStream = (async () => {
-          await sendBotMsg('我先复制一份你的原始数据，后续的清洗和修正都在副本上操作，改错了随时可以回退。', 1500);
-          await sendBotMsg('让我检查一下数据质量...', 2000);
-        })();
+        // 左右联动：processing 步骤 + API 并行跑，两者都完成才 flip 右侧看板
+        appendProcessingStep(setMessages, '正在备份原始数据');
+        await new Promise(r => setTimeout(r, 400));
+        appendProcessingStep(setMessages, '正在检查数据质量');
 
         if (!sessionId) { setStep2Ready(true); return; }
 
-        // 1. 快照 + 2. 清洗 API（并行 intro）
         try { await createSnapshot(sessionId); } catch {}
-        const apiPromise = runCleansing(sessionId).then(res => ({ ok: true as const, res })).catch(err => ({ ok: false as const, err }));
+        const apiPromise = runCleansing(sessionId)
+          .then(res => ({ ok: true as const, res }))
+          .catch(err => ({ ok: false as const, err }));
 
-        // 等 intro（上限 8s 防 Chrome 后台 throttle 卡死）+ api（上限 30s）
-        const [, apiResult] = await Promise.all([
-          withTimeout(introStream, 8000),
-          withTimeout(apiPromise, 30000),
-        ]);
+        const apiResult = await withTimeout(apiPromise, 30000);
 
         if (apiResult?.ok) {
           const res = apiResult.res;
@@ -181,9 +173,11 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
             || (res.data.cleansing_corrections?.length
               ? '右边可以看到清洗详情，有不对的可以撤回。'
               : '数据质量没问题，不需要额外修正。');
-          setStep2Ready(true);        // ← intro 讲完了，API 也回来了，一起揭晓
+          finishProcessing(setMessages);
+          setStep2Ready(true);
           sendBotMsg(aiMsg, 300);
         } else {
+          failProcessing(setMessages, '数据清洗服务暂时不可用');
           setStep2Ready(true);
           sendBotMsg('数据清洗服务暂时不可用，你可以手动检查后继续。', 300);
         }
@@ -199,17 +193,13 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       setStep3MsgsSent(true);
 
       (async () => {
-        const introStream = sendBotMsg('接下来把你们的职级跟市场标准对齐...', 300);
+        appendProcessingStep(setMessages, '正在把职级跟市场标准对齐');
         if (!sessionId) { setStep3Ready(true); return; }
 
         const apiPromise = runGradeMatch(sessionId)
           .then(res => ({ ok: true as const, res }))
           .catch(err => ({ ok: false as const, err }));
-
-        const [, apiResult] = await Promise.all([
-          withTimeout(introStream, 8000),
-          withTimeout(apiPromise, 30000),
-        ]);
+        const apiResult = await withTimeout(apiPromise, 30000);
 
         if (apiResult?.ok) {
           const data = apiResult.res.data;
@@ -217,10 +207,12 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
           if (data.grade_matching) {
             setParseResult(prev => prev ? { ...prev, grade_matching: data.grade_matching } : prev);
           }
+          finishProcessing(setMessages);
           setStep3Ready(true);
           sendBotMsg(data.sparky_message || '职级匹配完成，请确认右边的映射关系。', 300);
         } else {
           console.warn('[DataConfirm] grade matching failed:', apiResult?.ok === false ? apiResult.err : 'timeout');
+          failProcessing(setMessages, '职级匹配服务暂时不可用');
           setStep3Ready(true);
           sendBotMsg('职级匹配服务暂时不可用，请手动确认各职级对应关系。', 300);
         }
@@ -236,25 +228,23 @@ export default function DataConfirm({ onComplete, addMsg, setMessages, textInput
       setStep4MsgsSent(true);
 
       (async () => {
-        const introStream = sendBotMsg('最后匹配一下岗位的职能类别...', 300);
+        appendProcessingStep(setMessages, '正在匹配岗位的职能类别');
         if (!sessionId) { setStep4Ready(true); return; }
 
         const apiPromise = runFuncMatch(sessionId)
           .then(res => ({ ok: true as const, res }))
           .catch(err => ({ ok: false as const, err }));
-
-        const [, apiResult] = await Promise.all([
-          withTimeout(introStream, 8000),
-          withTimeout(apiPromise, 30000),
-        ]);
+        const apiResult = await withTimeout(apiPromise, 30000);
 
         if (apiResult?.ok) {
           const data = apiResult.res.data;
           setFuncData(data);
+          finishProcessing(setMessages);
           setStep4Ready(true);
           sendBotMsg(data.sparky_message || '职能匹配完成，请确认右边的映射关系。', 300);
         } else {
           console.warn('[DataConfirm] func matching failed:', apiResult?.ok === false ? apiResult.err : 'timeout');
+          failProcessing(setMessages, '职能匹配服务暂时不可用');
           setStep4Ready(true);
           sendBotMsg('职能匹配服务暂时不可用，请手动确认各岗位对应职能。', 300);
         }

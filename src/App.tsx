@@ -8,12 +8,12 @@ import InterviewView from './components/stage3/InterviewView';
 import UploadView from './components/stage1/UploadView';
 import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
-import { createSession, uploadFile, confirmFieldMapping, runAnalysis, getReport, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
+import { createSession, uploadFile, confirmFieldMapping, runAnalysis, getReport, getDiagnosisSummary, getDiagnosisAdvice, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
 import PixelCat from './components/shared/PixelCat';
 import FieldMappingPanel, { type MappingSuggestion, type StandardField } from './components/stage1/FieldMappingPanel';
 import { nextMsgId } from './lib/msgId';
-import { appendProcessingStep, finishProcessing } from './lib/processing';
+import { appendProcessingStep, finishProcessing, failProcessing } from './lib/processing';
 import { FlowProvider, useFlow } from './lib/flow';
 import { FULL_DIAGNOSIS_FLOW } from './skills/flows';
 import type { Stage, Message, ParseResult, ReportData } from './types';
@@ -114,6 +114,7 @@ function AppInner() {
   const [conversationKey, setConversationKey] = useState(0);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [adviceData, setAdviceData] = useState<{ advice: any[]; closing: string } | null>(null);
+  const [findingsText, setFindingsText] = useState<string>('');
   const [interviewNotes, setInterviewNotes] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   // 欢迎页 chip 的默认列表——首屏立即渲染，不用等后端 /skill/registry 的网络往返
@@ -282,32 +283,69 @@ function AppInner() {
     setLoading(true);
     setWorkspaceMode('narrow');
 
+    // 5 个模块在后端 runAnalysis 里是一次性同步算完的，没有per-module 事件流。
+    // ProcessingBlock 的 5 个 module 步骤是节奏化的视觉提示，跟 runAnalysis 实际并行
+    const MODULE_STEPS = [
+      '正在进行外部竞争力分析',
+      '正在进行内部公平性分析',
+      '正在进行薪酬结构分析',
+      '正在进行绩效关联分析',
+      '正在进行人工成本分析',
+    ];
+    const STEP_PACE = 1200;
+
+    // 后端实际工作（runAnalysis + getReport），跟 module 节奏步骤并行
     const analysisPromise = (async () => {
       await runAnalysis(sessionId);
-      await new Promise(r => setTimeout(r, 500));
       const reportRes = await getReport(sessionId);
       return reportRes.data as ReportData;
     })();
-    // 部署到 Render 免费档时后端冷启动可能 30-60s，超时给够 90s 覆盖冷启动
+    // Render 免费档冷启动 30-60s，给 90s 覆盖
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('TIMEOUT')), 90000),
     );
 
-    Promise.race([analysisPromise, timeoutPromise])
-      .then(report => {
+    (async () => {
+      try {
+        // Phase 1: 5 个模块步骤逐条出现
+        for (const stepText of MODULE_STEPS) {
+          if (cancelled) return;
+          appendProcessingStep(setMessages, stepText);
+          await new Promise(r => setTimeout(r, STEP_PACE));
+        }
+
+        // Phase 2: 等真实分析返回（前面节奏走完 ~6s 后通常已经完成）
+        const report = (await Promise.race([analysisPromise, timeoutPromise])) as ReportData;
         if (cancelled) return;
+
+        // Phase 3: 拉关键发现 + 行动建议（顺序，让步骤更新看起来对应）
+        appendProcessingStep(setMessages, '正在生成诊断关键发现');
+        try {
+          const summaryRes = await getDiagnosisSummary(sessionId);
+          if (!cancelled) setFindingsText(summaryRes.data?.opening || '');
+        } catch (e) {
+          console.warn('[analyze] getDiagnosisSummary failed', e);
+        }
+
+        if (cancelled) return;
+        appendProcessingStep(setMessages, '正在生成薪酬诊断建议');
+        try {
+          const adviceRes = await getDiagnosisAdvice(sessionId);
+          if (!cancelled) setAdviceData(adviceRes.data || null);
+        } catch (e) {
+          console.warn('[analyze] getDiagnosisAdvice failed', e);
+        }
+
+        if (cancelled) return;
+        finishProcessing(setMessages);
         setReportData(report);
         setLoading(false);
         setWorkspaceMode('wide');
-        const score = (report as ReportData)?.health_score;
-        streamMsg(score
-          ? `诊断报告已生成！整体薪酬健康度 ${score} 分。点击各模块查看详情，有问题随时问我。`
-          : '诊断报告已生成，点击各模块查看详情，有问题随时问我。');
         flow.advance({ reportData: report });  // analyze → report
-      })
-      .catch((err: any) => {
+      } catch (err: any) {
         if (cancelled) return;
         setLoading(false);
+
         const isTimeout = err instanceof Error && err.message === 'TIMEOUT';
         const httpStatus = err?.response?.status;
         const serverErr = err?.response?.data?.error;
@@ -319,7 +357,6 @@ function AppInner() {
           msg = '分析超过 90 秒还没返回，后端可能正在处理或网络抖动。点"重试"可以再跑一次。';
           errCode = 'TIMEOUT';
         } else if (httpStatus === 404) {
-          // 最常见：后端进程重启（比如 Render 自动部署）session 丢了
           msg = '后端会话已过期（多半是服务端重启过）。请点侧栏"新对话"重新开始流程。';
           errCode = 'SESSION_LOST';
         } else if (httpStatus === 400) {
@@ -329,9 +366,12 @@ function AppInner() {
           msg = `分析过程中出问题了（${httpStatus || '网络'}）。可以点"重试"再跑一次。`;
           errCode = 'ANALYZE_FAILED';
         }
+
+        failProcessing(setMessages, isTimeout ? '分析超时' : '分析失败');
         streamMsg(msg);
         flow.markError(errCode);
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [flow.currentStep?.id, flow.currentStep?.status, sessionId]);
@@ -592,9 +632,8 @@ function AppInner() {
       <ReportView
         reportData={reportData}
         adviceData={adviceData}
-        setAdviceData={setAdviceData}
+        findingsText={findingsText}
         sessionId={sessionId}
-        streamMsg={streamMsg}
       />
     );
     return null;

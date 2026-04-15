@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   getReportPdfUrl,
-  getDiagnosisSummary,
   getModuleInsight,
-  getDiagnosisAdvice,
 } from '../../api/client';
 import type { ReportData } from '../../types';
 import DiagnosisSummary from './DiagnosisSummary';
@@ -49,40 +47,15 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 interface ReportViewProps {
   reportData?: ReportData | null;
   adviceData?: { advice: any[]; closing: string } | null;
-  setAdviceData?: (d: { advice: any[]; closing: string } | null) => void;
+  findingsText?: string;            // 由 App.tsx 在 analyze 流程里预先拉好
   sessionId?: string | null;
-  streamMsg?: (text: string) => void;
 }
 
-export default function ReportView({ reportData, adviceData, setAdviceData, sessionId, streamMsg }: ReportViewProps) {
+export default function ReportView({ reportData, adviceData, findingsText, sessionId }: ReportViewProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
   const [moduleInsights, setModuleInsights] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
-  const [adviceLoading, setAdviceLoading] = useState(false);
-  const [findingsText, setFindingsText] = useState<string>('');
-  const [findingsLoading, setFindingsLoading] = useState(true);
-  const summaryFired = useRef(false);
   const insightAttempted = useRef<Set<string>>(new Set());
-
-  // 分析跑完：拉 5 维度关键发现（显示在右侧 DiagnosisSummary），同时给左侧 chat 发一条固定引导
-  // 5 维度文本不适合塞进 chat 气泡（太长、结构化），所以 chat 走简单模板，AI 输出留给右侧
-  useEffect(() => {
-    if (!sessionId || !reportData || summaryFired.current) return;
-    summaryFired.current = true;
-
-    streamMsg?.('诊断已完成，五个维度的关键发现已经放在右侧报告里。想深入聊哪个维度，直接告诉我就行。');
-
-    (async () => {
-      try {
-        const res = await getDiagnosisSummary(sessionId);
-        setFindingsText(res.data?.opening || '');
-      } catch (e) {
-        console.warn('[ReportView] getDiagnosisSummary failed', e);
-      } finally {
-        setFindingsLoading(false);
-      }
-    })();
-  }, [sessionId, reportData, streamMsg]);
 
   // 用户切到某个模块时按需 fetch 该模块的 AI 解读（只显示在右侧，不再 stream 到 chat）
   const currentModule = activeModule || MODULE_KEYS[0].key;
@@ -104,19 +77,6 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
       }
     })();
   }, [currentModule, sessionId]);
-
-  const loadAdvice = async () => {
-    if (!sessionId || adviceLoading || adviceData) return;
-    setAdviceLoading(true);
-    try {
-      const res = await getDiagnosisAdvice(sessionId);
-      setAdviceData?.(res.data || null);
-    } catch (e) {
-      console.warn('[ReportView] getDiagnosisAdvice failed', e);
-    } finally {
-      setAdviceLoading(false);
-    }
-  };
 
   if (!reportData) {
     return (
@@ -153,8 +113,8 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
 
   return (
     <div className="fade-enter">
-      {/* === Section 1: 诊断关键发现 === */}
-      <DiagnosisSummary findings_text={findingsText} loading={findingsLoading} />
+      {/* === Section 1: 诊断关键发现（findingsText 由 App 在 analyze 流程里预先拉好）=== */}
+      <DiagnosisSummary findings_text={findingsText} loading={!findingsText} />
 
       {/* === Section 2: 维度详情 === */}
       <SectionHeader title="维度详情" subtitle="点击下方任一维度查看图表与 AI 解读" />
@@ -195,7 +155,7 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
       {/* === Section 3: 行动建议 === */}
       <SectionHeader title="行动建议" subtitle="基于以上发现给出具体的执行方向" />
 
-      {/* 诊断建议——按需触发。已加载就直接渲染，未加载显示占位 + 按钮 */}
+      {/* 行动建议：App 在 analyze 流程里预先拉好。万一 advice 未拉到（fallback）显示提示 */}
       {adviceData && adviceData.advice?.length > 0 ? (
         <DiagnosisAdvice advice={adviceData.advice} closing={adviceData.closing} />
       ) : (
@@ -205,27 +165,10 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
           border: '1px dashed var(--border)',
           borderRadius: 8,
           textAlign: 'center',
+          fontSize: 13,
+          color: 'var(--text-muted)',
         }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-            想要 AI 基于这份报告给出具体的行动建议？
-          </div>
-          <button
-            onClick={loadAdvice}
-            disabled={adviceLoading}
-            style={{
-              padding: '10px 24px',
-              borderRadius: 8,
-              border: 'none',
-              background: adviceLoading ? '#cbd5e1' : 'var(--brand)',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: adviceLoading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            {adviceLoading ? 'Sparky 正在思考...' : '生成 AI 行动建议'}
-          </button>
+          暂时没有生成行动建议，请稍后刷新或重新跑诊断。
         </div>
       )}
 

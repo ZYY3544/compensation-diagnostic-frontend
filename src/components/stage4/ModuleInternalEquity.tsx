@@ -1,6 +1,6 @@
 import ModuleShell, { ChartCard } from './ModuleShell';
 
-export default function ModuleInternalEquity({ data, insight }: { data: any; insight?: string }) {
+export default function ModuleInternalEquity({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const dispersion = data?.dispersion || [];
   const boxplot = data?.boxplot || [];
   const deviation = data?.deviation_matrix || { departments: [], grades: [], values: [] };
@@ -26,6 +26,7 @@ export default function ModuleInternalEquity({ data, insight }: { data: any; ins
         },
       ]}
       insight={insight}
+      insightLoading={insightLoading}
     >
       {boxplot.length > 0 && (() => {
         // 按 IQR × 1.5 裁剪，避免一个 300k 的异常值把 Y 轴撑爆

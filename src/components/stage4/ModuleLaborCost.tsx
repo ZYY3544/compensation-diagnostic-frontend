@@ -1,7 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
 
-export default function ModuleLaborCost({ data, insight }: { data: any; insight?: string }) {
+export default function ModuleLaborCost({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const kpi = data?.kpi || {};
   const trend = data?.trend || [];
   const headcount = data?.current_headcount || 0;
@@ -32,6 +32,7 @@ export default function ModuleLaborCost({ data, insight }: { data: any; insight?
         }] : []),
       ]}
       insight={insight}
+      insightLoading={insightLoading}
     >
       {(kpi.revenue_per_head != null || kpi.profit_per_head != null) && (
         <ChartCard title="人均经营效益">

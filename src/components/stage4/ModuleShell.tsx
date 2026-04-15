@@ -16,10 +16,11 @@ interface ModuleShellProps {
   subtitle: string;
   metrics?: MetricItem[];
   insight?: string;
+  insightLoading?: boolean;
   children: ReactNode;
 }
 
-export default function ModuleShell({ title, subtitle, metrics, insight, children }: ModuleShellProps) {
+export default function ModuleShell({ title, subtitle, metrics, insight, insightLoading, children }: ModuleShellProps) {
   return (
     <div>
       <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{title}</h3>
@@ -58,7 +59,7 @@ export default function ModuleShell({ title, subtitle, metrics, insight, childre
         {children}
       </div>
 
-      {insight && (
+      {(insight || insightLoading) && (
         <div style={{
           marginTop: 16,
           padding: '10px 14px',
@@ -69,8 +70,10 @@ export default function ModuleShell({ title, subtitle, metrics, insight, childre
           lineHeight: 1.7,
           color: 'var(--text-secondary)',
           whiteSpace: 'pre-wrap',
+          fontStyle: insightLoading ? 'italic' : 'normal',
+          opacity: insightLoading ? 0.7 : 1,
         }}>
-          {insight}
+          {insightLoading ? 'Sparky 正在解读这个模块…' : insight}
         </div>
       )}
     </div>

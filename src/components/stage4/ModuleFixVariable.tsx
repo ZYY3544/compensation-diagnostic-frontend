@@ -1,7 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
 
-export default function ModuleFixVariable({ data, insight }: { data: any; insight?: string }) {
+export default function ModuleFixVariable({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const byGrade = data?.pay_mix_by_grade || [];
   const byDept = data?.pay_mix_by_dept || [];
   const overallFix = data?.overall_fix_pct;
@@ -30,6 +30,7 @@ export default function ModuleFixVariable({ data, insight }: { data: any; insigh
         },
       ]}
       insight={insight}
+      insightLoading={insightLoading}
     >
       {byGrade.length > 0 && (
         <ChartCard title="各职级固浮比">

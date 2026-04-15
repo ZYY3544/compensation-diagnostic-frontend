@@ -5,7 +5,7 @@ const PERF_COLORS: Record<string, string> = {
   'A': '#22C55E', 'B+': '#3B82F6', 'B': '#64748B', 'B-': '#F59E0B', 'C': '#EF4444',
 };
 
-export default function ModulePayPerformance({ data, insight }: { data: any; insight?: string }) {
+export default function ModulePayPerformance({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const perfStats = data?.perf_stats || [];
   const tccByPerf = data?.tcc_by_perf || [];
   const aVsCRatio = data?.a_vs_c_ratio;
@@ -40,6 +40,7 @@ export default function ModulePayPerformance({ data, insight }: { data: any; ins
         },
       ]}
       insight={insight}
+      insightLoading={insightLoading}
     >
       {tccByPerf.length > 0 && (
         <ChartCard title="各绩效等级平均年度总现金">

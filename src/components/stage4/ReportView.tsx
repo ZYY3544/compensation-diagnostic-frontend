@@ -22,9 +22,6 @@ const MODULE_KEYS = [
   { key: 'labor_cost', label: '人工成本' },
 ];
 
-// Sparky 在各模块之间的停顿（毫秒），让用户有时间读
-const BETWEEN_INSIGHTS_MS = 2500;
-
 interface ReportViewProps {
   reportData?: ReportData | null;
   adviceData?: { advice: any[]; closing: string } | null;
@@ -36,16 +33,18 @@ interface ReportViewProps {
 export default function ReportView({ reportData, adviceData, setAdviceData, sessionId, streamMsg }: ReportViewProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
   const [moduleInsights, setModuleInsights] = useState<Record<string, string>>({});
-  const aiTriggered = useRef(false);
+  const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const summaryFired = useRef(false);
+  const insightAttempted = useRef<Set<string>>(new Set());
 
-  // 挂载时拉三段 AI 叙事：开场 → 逐模块解读 → 诊断建议
-  // opening 只走 chat（streamMsg），不在右侧报告里渲染——内容跟 findings 重复
+  // 分析跑完只发 1 条 chat 消息——总结最关键发现 + 引导用户看右侧 + 提示可追问
+  // 模块解读和诊断建议都改成 lazy load，避免初始 5-7 次 AI 调用 + 信息淹没用户
   useEffect(() => {
-    if (!sessionId || !reportData || aiTriggered.current) return;
-    aiTriggered.current = true;
+    if (!sessionId || !reportData || summaryFired.current) return;
+    summaryFired.current = true;
 
     (async () => {
-      // 1. 诊断摘要 opening —— 只发到左侧 Sparky 对话，不展示在右侧
       try {
         const res = await getDiagnosisSummary(sessionId);
         const text = res.data?.opening || '';
@@ -53,33 +52,42 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
       } catch (e) {
         console.warn('[ReportView] getDiagnosisSummary failed', e);
       }
+    })();
+  }, [sessionId, reportData, streamMsg]);
 
-      // 2. 逐模块解读：Sparky 边讲边出
-      for (const mk of MODULE_KEYS) {
-        await new Promise(r => setTimeout(r, BETWEEN_INSIGHTS_MS));
-        try {
-          const res = await getModuleInsight(sessionId, mk.key);
-          const text = res.data?.insight || '';
-          if (text) {
-            setModuleInsights(prev => ({ ...prev, [mk.key]: text }));
-            streamMsg?.(`【${mk.label}】${text}`);
-          }
-        } catch (e) {
-          console.warn(`[ReportView] getModuleInsight(${mk.key}) failed`, e);
-        }
-      }
+  // 用户切到某个模块时按需 fetch 该模块的 AI 解读（只显示在右侧，不再 stream 到 chat）
+  const currentModule = activeModule || MODULE_KEYS[0].key;
+  useEffect(() => {
+    if (!currentModule || !sessionId) return;
+    if (insightAttempted.current.has(currentModule)) return;
+    insightAttempted.current.add(currentModule);
 
-      // 3. 诊断建议
-      await new Promise(r => setTimeout(r, BETWEEN_INSIGHTS_MS));
+    setInsightLoadingKey(currentModule);
+    (async () => {
       try {
-        const res = await getDiagnosisAdvice(sessionId);
-        setAdviceData?.(res.data || null);
-        if (res.data?.closing) streamMsg?.(res.data.closing);
+        const res = await getModuleInsight(sessionId, currentModule);
+        setModuleInsights(prev => ({ ...prev, [currentModule]: res.data?.insight || '' }));
       } catch (e) {
-        console.warn('[ReportView] getDiagnosisAdvice failed', e);
+        console.warn(`[ReportView] getModuleInsight(${currentModule}) failed`, e);
+        setModuleInsights(prev => ({ ...prev, [currentModule]: '' }));
+      } finally {
+        setInsightLoadingKey(prev => (prev === currentModule ? null : prev));
       }
     })();
-  }, [sessionId, reportData, streamMsg, setAdviceData]);
+  }, [currentModule, sessionId]);
+
+  const loadAdvice = async () => {
+    if (!sessionId || adviceLoading || adviceData) return;
+    setAdviceLoading(true);
+    try {
+      const res = await getDiagnosisAdvice(sessionId);
+      setAdviceData?.(res.data || null);
+    } catch (e) {
+      console.warn('[ReportView] getDiagnosisAdvice failed', e);
+    } finally {
+      setAdviceLoading(false);
+    }
+  };
 
   if (!reportData) {
     return (
@@ -90,25 +98,25 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
   }
 
   const modules = reportData.modules || {};
-  const currentModule = activeModule || MODULE_KEYS[0].key;
 
   const renderModule = () => {
     const data = modules[currentModule];
     if (!data) return <div style={{ color: 'var(--text-muted)', padding: 40, textAlign: 'center' }}>暂无数据</div>;
 
-    const insight = moduleInsights[currentModule] || '';
+    const insight = moduleInsights[currentModule];
+    const loading = insightLoadingKey === currentModule;
 
     switch (currentModule) {
       case 'external_competitiveness':
-        return <ModuleExternalComp data={data} insight={insight} />;
+        return <ModuleExternalComp data={data} insight={insight} insightLoading={loading} />;
       case 'internal_equity':
-        return <ModuleInternalEquity data={data} insight={insight} />;
+        return <ModuleInternalEquity data={data} insight={insight} insightLoading={loading} />;
       case 'pay_performance':
-        return <ModulePayPerformance data={data} insight={insight} />;
+        return <ModulePayPerformance data={data} insight={insight} insightLoading={loading} />;
       case 'fix_variable_ratio':
-        return <ModuleFixVariable data={data} insight={insight} />;
+        return <ModuleFixVariable data={data} insight={insight} insightLoading={loading} />;
       case 'labor_cost':
-        return <ModuleLaborCost data={data} insight={insight} />;
+        return <ModuleLaborCost data={data} insight={insight} insightLoading={loading} />;
       default:
         return null;
     }
@@ -155,9 +163,39 @@ export default function ReportView({ reportData, adviceData, setAdviceData, sess
         {renderModule()}
       </div>
 
-      {/* 诊断建议 */}
-      {adviceData && adviceData.advice?.length > 0 && (
+      {/* 诊断建议——按需触发。已加载就直接渲染，未加载显示占位 + 按钮 */}
+      {adviceData && adviceData.advice?.length > 0 ? (
         <DiagnosisAdvice advice={adviceData.advice} closing={adviceData.closing} />
+      ) : (
+        <div style={{
+          marginTop: 24,
+          padding: '20px 24px',
+          background: '#fff',
+          border: '1px dashed var(--border)',
+          borderRadius: 8,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+            想要 AI 基于这份报告给出具体的行动建议？
+          </div>
+          <button
+            onClick={loadAdvice}
+            disabled={adviceLoading}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 8,
+              border: 'none',
+              background: adviceLoading ? '#cbd5e1' : 'var(--brand)',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: adviceLoading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            {adviceLoading ? 'Sparky 正在思考...' : '生成 AI 行动建议'}
+          </button>
+        </div>
       )}
 
       {/* 导出 */}

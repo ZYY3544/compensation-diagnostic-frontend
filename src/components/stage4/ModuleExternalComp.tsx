@@ -1,7 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
 
-export default function ModuleExternalComp({ data, insight }: { data: any; insight?: string }) {
+export default function ModuleExternalComp({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const crByFunc = data?.cr_by_function || [];
   const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
   const overallCR = data?.overall_cr;
@@ -23,6 +23,7 @@ export default function ModuleExternalComp({ data, insight }: { data: any; insig
         ...(aboveP75 != null ? [{ label: '高于市场 P75', value: aboveP75, sub: '人' }] : []),
       ]}
       insight={insight}
+      insightLoading={insightLoading}
     >
       {crByFunc.length > 0 && (
         <ChartCard title="各职能 Compa-Ratio">

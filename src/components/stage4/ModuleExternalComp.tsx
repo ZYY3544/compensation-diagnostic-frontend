@@ -1,7 +1,10 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
+import GradeTrendChart from './GradeTrendChart';
 
-export default function ModuleExternalComp({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
+export default function ModuleExternalComp({ data, insight, insightLoading, gradeTrendTcc, gradeTrendBase }: {
+  data: any; insight?: string; insightLoading?: boolean; gradeTrendTcc?: any; gradeTrendBase?: any;
+}) {
   const crByFunc = data?.cr_by_function || [];
   const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
   const overallCR = data?.overall_cr;
@@ -53,6 +56,13 @@ export default function ModuleExternalComp({ data, insight, insightLoading }: { 
       insight={insight}
       insightLoading={insightLoading}
     >
+      {/* 核心图表：职级薪酬趋势图 */}
+      {gradeTrendTcc?.grades?.length > 0 && gradeTrendBase?.grades?.length > 0 && (
+        <ChartCard title="职级薪酬趋势">
+          <GradeTrendChart tccData={gradeTrendTcc} baseData={gradeTrendBase} />
+        </ChartCard>
+      )}
+
       {crByFunc.length > 0 && (
         <ChartCard title="各职能 Compa-Ratio" finding={crFinding}>
           {/* 顶部 margin 留 24px 给 P50 标签，避免被柱子遮 */}

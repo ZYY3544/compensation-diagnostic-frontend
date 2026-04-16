@@ -97,7 +97,8 @@ export default function ReportView({ reportData, adviceData, findingsText, sessi
 
     switch (currentModule) {
       case 'external_competitiveness':
-        return <ModuleExternalComp data={data} insight={insight} insightLoading={loading} />;
+        return <ModuleExternalComp data={data} insight={insight} insightLoading={loading}
+          gradeTrendTcc={reportData?.grade_trend_tcc} gradeTrendBase={reportData?.grade_trend_base} />;
       case 'internal_equity':
         return <ModuleInternalEquity data={data} insight={insight} insightLoading={loading} />;
       case 'pay_performance':

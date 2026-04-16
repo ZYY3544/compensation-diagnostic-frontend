@@ -58,6 +58,8 @@ export interface ReportData {
   health_score: number;
   key_findings: { severity: string; text: string }[];
   modules: Record<string, any>;
+  grade_trend_tcc?: any;
+  grade_trend_base?: any;
 }
 
 export type Stage = 1 | 2 | 3 | 4;

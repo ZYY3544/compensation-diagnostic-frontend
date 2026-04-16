@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
 import GradeTrendChart from './GradeTrendChart';
@@ -10,6 +11,9 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
   const overallCR = data?.overall_cr;
   const belowP25 = data?.total_below_p25 || 0;
   const aboveP75 = data?.total_above_p75 ?? null;
+  const deviationTop = data?.deviation_top || [];
+  const deviationAnomalies = data?.deviation_anomalies || [];
+  const deviationSummary = data?.summary_text || '';
 
   // 副标题关键指标概要
   const subtitleParts: string[] = [];
@@ -125,6 +129,90 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
           </div>
         </ChartCard>
       )}
+
+      {(deviationTop.length > 0 || deviationAnomalies.length > 0) && (
+        <ChartCard title="偏离严重 Top 5 岗位组" finding={deviationSummary}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border, #E5E7EB)' }}>
+                  <th style={devTh('60px', 'center')}>排名</th>
+                  <th style={devTh(undefined, 'left')}>岗位 / 职级</th>
+                  <th style={devTh('64px', 'center')}>人数</th>
+                  <th style={devTh('110px', 'right')}>公司中位值</th>
+                  <th style={devTh('100px', 'right')}>市场 P50</th>
+                  <th style={devTh('120px', 'right')}>偏离幅度</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deviationTop.map((row: any) => {
+                  const devStyle = deviationColor(row.deviation_pct);
+                  const arrow = row.deviation_pct < 0 ? '↓' : row.deviation_pct > 0 ? '↑' : '';
+                  const sign = row.deviation_pct > 0 ? '+' : '';
+                  return (
+                    <tr key={row.rank} style={{ height: 48, borderBottom: '1px solid var(--border, #F3F4F6)' }}>
+                      <td style={devTd('center', 600)}>{row.rank}</td>
+                      <td style={devTd('left', 500)}>{row.function} {row.grade}</td>
+                      <td style={devTd('center')}>{row.headcount}</td>
+                      <td style={devTd('right')}>{Number(row.company_median).toLocaleString()}</td>
+                      <td style={devTd('right')}>{Number(row.market_p50).toLocaleString()}</td>
+                      <td style={devTd('right')}>
+                        <span style={{
+                          display: 'inline-block', padding: '4px 10px', borderRadius: 4,
+                          background: devStyle.bg, color: devStyle.color, fontWeight: 600, fontSize: 12,
+                        }}>
+                          {sign}{row.deviation_pct}% {arrow}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {deviationAnomalies.map((row: any, i: number) => {
+                  const sign = row.deviation_pct > 0 ? '+' : '';
+                  return (
+                    <tr key={`anom-${i}`} style={{
+                      height: 48, background: '#F9FAFB', color: '#6B7280',
+                      borderBottom: '1px solid var(--border, #F3F4F6)',
+                    }}>
+                      <td style={devTd('center')}>—</td>
+                      <td style={devTd('left')}>
+                        {row.function} {row.grade}
+                        <span style={{
+                          marginLeft: 8, padding: '2px 6px', borderRadius: 3,
+                          background: '#E5E7EB', color: '#6B7280', fontSize: 11, fontWeight: 500,
+                        }}>疑似数据异常</span>
+                      </td>
+                      <td style={devTd('center')}>{row.headcount}</td>
+                      <td style={devTd('right')}>{Number(row.company_median).toLocaleString()}</td>
+                      <td style={devTd('right')}>{Number(row.market_p50).toLocaleString()}</td>
+                      <td style={devTd('right')}>{sign}{row.deviation_pct}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </ChartCard>
+      )}
     </ModuleShell>
   );
+}
+
+function devTh(width: string | undefined, align: 'left' | 'right' | 'center'): CSSProperties {
+  return {
+    padding: '10px 12px', textAlign: align, color: 'var(--text-muted, #6B7280)',
+    fontWeight: 500, fontSize: 12, ...(width ? { width } : {}),
+  };
+}
+
+function devTd(align: 'left' | 'right' | 'center', fontWeight: number = 400): CSSProperties {
+  return { padding: '0 12px', textAlign: align, fontWeight };
+}
+
+function deviationColor(pct: number): { bg: string; color: string } {
+  if (pct < -20) return { bg: '#FEE2E2', color: '#991B1B' };   // 深红
+  if (pct < -10) return { bg: '#FEF3C7', color: '#92400E' };   // 橙
+  if (pct <= 10) return { bg: '#D1FAE5', color: '#065F46' };   // 绿（±10% 正常）
+  if (pct <= 20) return { bg: '#DBEAFE', color: '#1E40AF' };   // 浅蓝
+  return { bg: '#BFDBFE', color: '#1E3A8A' };                   // 深蓝
 }

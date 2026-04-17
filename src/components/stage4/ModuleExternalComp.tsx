@@ -1,12 +1,10 @@
 import type { CSSProperties } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import ModuleShell, { ChartCard } from './ModuleShell';
 import GradeTrendChart from './GradeTrendChart';
 
 export default function ModuleExternalComp({ data, insight, insightLoading, gradeTrendTcc, gradeTrendBase }: {
   data: any; insight?: string; insightLoading?: boolean; gradeTrendTcc?: any; gradeTrendBase?: any;
 }) {
-  const crByFunc = data?.cr_by_function || [];
   const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
   const overallCR = data?.overall_cr;
   const belowP25 = data?.total_below_p25 || 0;
@@ -21,18 +19,6 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
   subtitleParts.push(`${belowP25} 人低于 P25`);
   if (aboveP75 != null) subtitleParts.push(`${aboveP75} 人高于 P75`);
   const subtitle = subtitleParts.join(' · ');
-
-  // 图表发现：代码生成，从 crByFunc 里挑最高 / 最低
-  let crFinding = '';
-  if (crByFunc.length > 0) {
-    const withCR = crByFunc.filter((f: any) => f.cr != null);
-    if (withCR.length > 0) {
-      const sorted = [...withCR].sort((a, b) => b.cr - a.cr);
-      const top = sorted[0];
-      const bottom = sorted[sorted.length - 1];
-      crFinding = `CR 最高的是${top.name}（${Number(top.cr).toFixed(2)}），最低的是${bottom.name}（${Number(bottom.cr).toFixed(2)}）`;
-    }
-  }
 
   // 热力图发现：统计偏离单元格
   let heatFinding = '';
@@ -64,31 +50,6 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
       {gradeTrendTcc?.grades?.length > 0 && gradeTrendBase?.grades?.length > 0 && (
         <ChartCard title="职级薪酬趋势">
           <GradeTrendChart tccData={gradeTrendTcc} baseData={gradeTrendBase} />
-        </ChartCard>
-      )}
-
-      {crByFunc.length > 0 && (
-        <ChartCard title="各职能 Compa-Ratio" finding={crFinding}>
-          {/* 顶部 margin 留 24px 给 P50 标签，避免被柱子遮 */}
-          <ResponsiveContainer width="100%" height={270}>
-            <BarChart data={crByFunc} layout="vertical" margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" domain={[0, 'auto']} />
-              <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(v: any) => [Number(v).toFixed(2), 'CR']} />
-              <ReferenceLine
-                x={1}
-                stroke="#666"
-                strokeDasharray="3 3"
-                label={{ value: '市场 P50', position: 'top', fill: '#666', fontSize: 11, fontWeight: 600 }}
-              />
-              <Bar dataKey="cr" radius={[0, 4, 4, 0]}>
-                {crByFunc.map((entry: any, i: number) => (
-                  <Cell key={i} fill={entry.cr < 0.9 ? '#EF4444' : entry.cr < 1.0 ? '#F59E0B' : '#22C55E'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
         </ChartCard>
       )}
 

@@ -13,12 +13,13 @@ interface Props {
 const MIN_WIDTH = 380;           // 最窄：保证卡片能渲染
 // 最宽：留给左侧对话区至少 420px，否则聊天会挤死
 
-// 切模式时计算默认宽度。wide 走 70% 视口（对话区拿剩下的 30%）；
+// 切模式时计算默认宽度。wide 走黄金分割（看板 ≈61.8% / 对话 ≈38.2%）；
 // narrow 仍用固定 440px 给轻 skill 卡片用。
+const GOLDEN_RATIO = 0.618;
 function getDefaultWidth(mode: WorkspaceMode): number {
   if (mode === 'hidden' || mode === 'fullscreen') return 0;
   if (mode === 'wide') {
-    const target = Math.round(window.innerWidth * 0.7);
+    const target = Math.round(window.innerWidth * GOLDEN_RATIO);
     const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - 420);
     return Math.min(maxWidth, Math.max(MIN_WIDTH, target));
   }

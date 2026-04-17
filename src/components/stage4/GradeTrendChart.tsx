@@ -426,9 +426,8 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
             const opacity = noHighlight ? 0.6 : isHighlighted ? 0.85 : 0.18;
             const r = noHighlight ? 4 : isHighlighted ? 5 : 3.5;
             return emps.map((emp, ei) => {
-              // 同一职级内 X 方向做一点点抖动避免重叠
-              const jitter = emps.length > 1 ? ((ei % 5) - 2) * 3 : 0;
-              const cx = xScale(gi) + jitter;
+              // 同职级所有散点对齐在职级的垂直线上（不再做横向抖动）
+              const cx = xScale(gi);
               const cy = yScale(emp.salary);
               return (
                 <circle key={`${g}-${ei}`} cx={cx} cy={cy} r={r}

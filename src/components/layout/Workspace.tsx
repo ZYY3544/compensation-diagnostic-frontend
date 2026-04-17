@@ -10,28 +10,40 @@ interface Props {
   onModeChange?: (mode: WorkspaceMode) => void;
 }
 
-// 切模式时的默认起始宽度（px）
-const MODE_DEFAULT_WIDTH: Record<WorkspaceMode, number> = {
-  hidden: 0,
-  narrow: 440,
-  wide: 720,
-  fullscreen: 0,  // 全屏走单独逻辑
-};
-
 const MIN_WIDTH = 380;           // 最窄：保证卡片能渲染
 // 最宽：留给左侧对话区至少 420px，否则聊天会挤死
 
+// 切模式时计算默认宽度。wide 走 70% 视口（对话区拿剩下的 30%）；
+// narrow 仍用固定 440px 给轻 skill 卡片用。
+function getDefaultWidth(mode: WorkspaceMode): number {
+  if (mode === 'hidden' || mode === 'fullscreen') return 0;
+  if (mode === 'wide') {
+    const target = Math.round(window.innerWidth * 0.7);
+    const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - 420);
+    return Math.min(maxWidth, Math.max(MIN_WIDTH, target));
+  }
+  return 440;  // narrow
+}
+
 export default function Workspace({ mode, title, subtitle, children, onModeChange }: Props) {
   // 可变宽度：用户拖过后记住；切 mode 时用默认值重置
-  const [width, setWidth] = useState<number>(MODE_DEFAULT_WIDTH[mode] || 440);
+  const [width, setWidth] = useState<number>(() => getDefaultWidth(mode) || 440);
   const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef(false);
 
   // mode 切换时重置宽度
   useEffect(() => {
     if (mode !== 'hidden' && mode !== 'fullscreen') {
-      setWidth(MODE_DEFAULT_WIDTH[mode]);
+      setWidth(getDefaultWidth(mode));
     }
+  }, [mode]);
+
+  // 窗口 resize 时，wide 模式按比例同步；narrow 保持固定值不动
+  useEffect(() => {
+    if (mode !== 'wide') return;
+    const onResize = () => setWidth(getDefaultWidth('wide'));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [mode]);
 
   // 拖拽监听

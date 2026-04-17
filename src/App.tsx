@@ -204,7 +204,7 @@ function AppInner() {
         setLoading(false);
         finishProcessing(setMessages);
         flow.advance();   // upload → confirm（在 confirm 步里，mappingState 非空就先渲染映射面板）
-        setWorkspaceMode('narrow');
+        setWorkspaceMode('wide');
         streamMsg(
           `我看了一下你的数据，识别到 ${result.suggestion?.mappings?.length || 0} 个字段，` +
           `${result.suggestion?.missing_required?.length || 0} 个必填字段还没找到。` +
@@ -218,7 +218,7 @@ function AppInner() {
       finishProcessing(setMessages);
       setLoading(false);
       flow.advance({ parseResult });   // upload → confirm
-      setWorkspaceMode('narrow');
+      setWorkspaceMode('wide');
     } catch (err) {
       console.warn('Upload API failed', err);
       streamMsg('上传失败了，后端服务可能还在启动中。请稍后重新上传。');
@@ -253,13 +253,13 @@ function AppInner() {
     setInterviewNotes(notes);
     streamMsg('好的，我已经了解了你们的情况。现在上传薪酬数据 Excel，我来帮你做一次全面体检。');
     flow.advance({ interviewNotes: notes });  // interview → upload
-    setWorkspaceMode('narrow');
+    setWorkspaceMode('wide');
   };
 
   const handleSkipInterview = () => {
     streamMsg('没问题，我们直接开始。上传公司薪酬数据 Excel，我会帮你完成数据清洗、市场对标和五大模块诊断。');
     flow.advance();  // interview → upload（标 skipped 语义留给后续需要时）
-    setWorkspaceMode('narrow');
+    setWorkspaceMode('wide');
   };
 
   // DataConfirm 的 onComplete 回调——进 analyze 步（auto-step，由下方 useEffect 触发分析）
@@ -281,7 +281,7 @@ function AppInner() {
 
     let cancelled = false;
     setLoading(true);
-    setWorkspaceMode('narrow');
+    setWorkspaceMode('wide');
 
     // 5 个模块在后端 runAnalysis 里是一次性同步算完的，没有per-module 事件流。
     // ProcessingBlock 的 5 个 module 步骤是节奏化的视觉提示，跟 runAnalysis 实际并行
@@ -437,7 +437,10 @@ function AppInner() {
     if (skillKey === 'full_diagnosis') {
       // 初始化 flow；currentStep = interview，组件从 flow 读当前步
       flow.start('full_diagnosis', FULL_DIAGNOSIS_FLOW);
-      setWorkspaceMode('narrow');
+      // 重模式直接给右侧看板更大空间：收起侧栏 + 工作台开到 wide（720px）
+      // 用户仍可点左上角 PanelLeft 图标手动重开侧栏
+      setSidebarOpen(false);
+      setWorkspaceMode('wide');
       setConversationKey(k => k + 1);    // 防御性 fallback 保留
       streamMsg(
         '好的，我们做一次完整的薪酬诊断。我会先通过几个问题了解你们的业务背景，' +

@@ -10,7 +10,6 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
   const belowP25 = data?.total_below_p25 || 0;
   const aboveP75 = data?.total_above_p75 ?? null;
   const deviationTop = data?.deviation_top || [];
-  const deviationAnomalies = data?.deviation_anomalies || [];
   const deviationSummary = data?.summary_text || '';
 
   // 副标题关键指标概要
@@ -97,8 +96,8 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
         </ChartCard>
       )}
 
-      {(deviationTop.length > 0 || deviationAnomalies.length > 0) && (
-        <ChartCard title="偏离严重 Top 5 岗位组" finding={deviationSummary}>
+      {deviationTop.length > 0 && (
+        <ChartCard title="偏离市场最大的岗位组（前 10%）" finding={deviationSummary}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -113,11 +112,11 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
               </thead>
               <tbody>
                 {deviationTop.map((row: any) => {
-                  const devStyle = deviationColor(row.deviation_pct);
+                  const devStyle = severityColor(row.deviation_pct);
                   const arrow = row.deviation_pct < 0 ? '↓' : row.deviation_pct > 0 ? '↑' : '';
                   const sign = row.deviation_pct > 0 ? '+' : '';
                   return (
-                    <tr key={row.rank} style={{ height: 48, borderBottom: '1px solid var(--border, #F3F4F6)' }}>
+                    <tr key={row.rank} style={{ height: 40, borderBottom: '1px solid var(--border, #F3F4F6)' }}>
                       <td style={devTd('center', 600)}>{row.rank}</td>
                       <td style={devTd('left', 500)}>{row.function} {row.grade}</td>
                       <td style={devTd('center')}>{row.headcount}</td>
@@ -131,28 +130,6 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                           {sign}{row.deviation_pct}% {arrow}
                         </span>
                       </td>
-                    </tr>
-                  );
-                })}
-                {deviationAnomalies.map((row: any, i: number) => {
-                  const sign = row.deviation_pct > 0 ? '+' : '';
-                  return (
-                    <tr key={`anom-${i}`} style={{
-                      height: 48, background: '#F9FAFB', color: '#6B7280',
-                      borderBottom: '1px solid var(--border, #F3F4F6)',
-                    }}>
-                      <td style={devTd('center')}>—</td>
-                      <td style={devTd('left')}>
-                        {row.function} {row.grade}
-                        <span style={{
-                          marginLeft: 8, padding: '2px 6px', borderRadius: 3,
-                          background: '#E5E7EB', color: '#6B7280', fontSize: 11, fontWeight: 500,
-                        }}>疑似数据异常</span>
-                      </td>
-                      <td style={devTd('center')}>{row.headcount}</td>
-                      <td style={devTd('right')}>{Number(row.company_median).toLocaleString()}</td>
-                      <td style={devTd('right')}>{Number(row.market_p50).toLocaleString()}</td>
-                      <td style={devTd('right')}>{sign}{row.deviation_pct}%</td>
                     </tr>
                   );
                 })}
@@ -176,10 +153,11 @@ function devTd(align: 'left' | 'right' | 'center', fontWeight: number = 400): CS
   return { padding: '0 12px', textAlign: align, fontWeight };
 }
 
-function deviationColor(pct: number): { bg: string; color: string } {
-  if (pct < -20) return { bg: '#FEE2E2', color: '#991B1B' };   // 深红
-  if (pct < -10) return { bg: '#FEF3C7', color: '#92400E' };   // 橙
-  if (pct <= 10) return { bg: '#D1FAE5', color: '#065F46' };   // 绿（±10% 正常）
-  if (pct <= 20) return { bg: '#DBEAFE', color: '#1E40AF' };   // 浅蓝
-  return { bg: '#BFDBFE', color: '#1E3A8A' };                   // 深蓝
+// 颜色按"偏离绝对幅度"分档（不分方向）；方向用 ↑↓ 箭头另外表达。
+// 这张表本身就是"偏离最大的前 10%"，每一行都是值得关注的，不出现绿色"OK"。
+function severityColor(pct: number): { bg: string; color: string } {
+  const abs = Math.abs(pct);
+  if (abs >= 30) return { bg: '#FEE2E2', color: '#991B1B' };   // 深红：≥30%
+  if (abs >= 15) return { bg: '#FED7AA', color: '#9A3412' };   // 橙：15-30%
+  return { bg: '#FEF3C7', color: '#92400E' };                  // 黄：<15%
 }

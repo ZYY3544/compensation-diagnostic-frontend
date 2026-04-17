@@ -77,8 +77,14 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                         else if (cr <= 2.0) { bg = '#FEF3C7'; color = '#92400E'; }
                         else { bg = '#FCA5A5'; color = '#7F1D1D'; fontWeight = 700; }
                       }
+                      const count = heatmap.counts?.[di]?.[gi] ?? 0;
+                      const grade = heatmap.grades[gi];
+                      const tip = cr != null
+                        ? `${dept} · ${grade}\n${count} 人 · CR ${cr.toFixed(2)}`
+                        : `${dept} · ${grade}\n暂无数据`;
                       return (
-                        <td key={gi} style={{ padding: '8px', textAlign: 'center', background: bg, color, fontWeight }}>
+                        <td key={gi} title={tip}
+                          style={{ padding: '8px', textAlign: 'center', background: bg, color, fontWeight, cursor: 'default' }}>
                           {cr != null ? cr.toFixed(2) : '—'}
                         </td>
                       );

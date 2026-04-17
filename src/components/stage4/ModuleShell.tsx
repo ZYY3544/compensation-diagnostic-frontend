@@ -10,6 +10,18 @@
  */
 import type { ReactNode } from 'react';
 
+// 匹配 insight 里的关键数字/术语：CR 1.54 / P25 / +12.5% / 22 人 / 5.2 万
+// split 时捕获组会作为分隔片段保留；拆完奇数位 index 就是匹配到的关键词
+const HIGHLIGHT_RE = /(CR\s*\d+(?:\.\d+)?|P\d+|[+\-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*[人万])/g;
+
+function highlightInsight(text: string): ReactNode[] {
+  return text.split(HIGHLIGHT_RE).map((part, i) =>
+    i % 2 === 1
+      ? <strong key={i} style={{ color: '#D85A30', fontWeight: 600 }}>{part}</strong>
+      : part
+  );
+}
+
 interface ModuleShellProps {
   title: string;
   subtitle: string;
@@ -40,7 +52,7 @@ export default function ModuleShell({ title, subtitle, insight, insightLoading, 
           fontStyle: insightLoading ? 'italic' : 'normal',
           opacity: insightLoading ? 0.7 : 1,
         }}>
-          {insightLoading ? 'Sparky 正在解读这个维度…' : insight}
+          {insightLoading ? 'Sparky 正在解读这个维度…' : highlightInsight(insight || '')}
         </div>
       )}
 

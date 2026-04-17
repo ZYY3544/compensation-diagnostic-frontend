@@ -52,8 +52,8 @@ const DEV_COLORS = {
   deepLow: { bg: '#991B1B', label: '深红' },      // < -15%
 };
 
-const BRAND = '#D85A30';        // 品牌橙
-const BRAND_DEEP = '#993C1D';   // 深橙（连线）
+const BRAND = '#D85A30';        // 品牌橙（员工散点）
+const MEDIAN_COLOR = '#0F766E'; // 深青（公司中位线 + 三角节点，跟散点形状色都区分开）
 const MARKET_GRAY = '#888780';
 
 export default function GradeTrendChart({ tccData, baseData }: Props) {
@@ -393,7 +393,7 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
         <LegendBand />
         <LegendLine color={MARKET_GRAY} dashed label="市场 P50" />
         <LegendDot color={BRAND} label="员工散点" />
-        <LegendLine color={BRAND_DEEP} width={3} label="公司中位连线" />
+        <LegendTriangleLine color={MEDIAN_COLOR} label="公司中位" />
       </div>
 
       <div style={{ position: 'relative' }}>
@@ -443,7 +443,7 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
 
           {/* 公司中位连线（主线） */}
           {companyPath && (
-            <path d={companyPath} fill="none" stroke={BRAND_DEEP} strokeWidth={3}
+            <path d={companyPath} fill="none" stroke={MEDIAN_COLOR} strokeWidth={3}
               strokeLinejoin="round" strokeLinecap="round" />
           )}
 
@@ -458,22 +458,24 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
               <line key={`dash-${g}`}
                 x1={xScale(i - 1)} y1={yScale(prevV / 10000)}
                 x2={xScale(i)} y2={yScale(v / 10000)}
-                stroke={BRAND_DEEP} strokeWidth={2} strokeDasharray="5 4" opacity={0.5} />
+                stroke={MEDIAN_COLOR} strokeWidth={2} strokeDasharray="5 4" opacity={0.5} />
             );
           })}
 
-          {/* 公司中位节点 */}
+          {/* 公司中位节点：三角形，跟员工散点（圆形）区分 */}
           {grades.map((g, i) => {
             const v = company_actual[i];
             const count = company_counts?.[i] ?? 0;
             if (!v || v <= 0) return null;
             const cx = xScale(i), cy = yScale(v / 10000);
             const isHighlighted = highlightGrade === g;
-            const r = isHighlighted ? 6 : 4;
+            const r = isHighlighted ? 7 : 5;
+            // 向上的等腰三角形，视觉中心对齐 (cx, cy)
+            const points = `${cx},${cy - r} ${cx - r},${cy + r * 0.8} ${cx + r},${cy + r * 0.8}`;
             return (
-              <circle key={g} cx={cx} cy={cy} r={r}
-                fill={count < 3 ? '#fff' : BRAND_DEEP}
-                stroke={BRAND_DEEP} strokeWidth={2}
+              <polygon key={g} points={points}
+                fill={count < 3 ? '#fff' : MEDIAN_COLOR}
+                stroke={MEDIAN_COLOR} strokeWidth={2}
                 style={{ cursor: 'pointer' }}
                 onClick={() => onHighlight(g)}
                 onMouseEnter={() => setHover({ type: 'node', grade: g, i, x: cx, y: cy })}
@@ -488,7 +490,7 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
             const lowSample = count < 3;
             return (
               <text key={g} x={xScale(i)} y={H - pad.bottom + 22} textAnchor="middle" fontSize={11}
-                fill={highlightGrade === g ? BRAND_DEEP : lowSample ? '#CBD5E1' : '#475569'}
+                fill={highlightGrade === g ? MEDIAN_COLOR : lowSample ? '#CBD5E1' : '#475569'}
                 fontWeight={highlightGrade === g ? 700 : 500}>
                 {g} ({count})
               </text>
@@ -626,6 +628,19 @@ function LegendLine({ color, dashed, width = 2, label }: {
       <svg width={20} height={10}>
         <line x1={0} x2={20} y1={5} y2={5} stroke={color} strokeWidth={width}
           strokeDasharray={dashed ? '4 3' : undefined} />
+      </svg>
+      {label}
+    </span>
+  );
+}
+
+function LegendTriangleLine({ color, label }: { color: string; label: string }) {
+  // 图例：小三角 + 短连线，对应图里的三角节点 + 中位连线
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <svg width={26} height={12}>
+        <line x1={0} x2={26} y1={6} y2={6} stroke={color} strokeWidth={3} />
+        <polygon points="13,2 8,10 18,10" fill={color} stroke={color} strokeWidth={1} />
       </svg>
       {label}
     </span>

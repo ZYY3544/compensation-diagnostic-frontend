@@ -13,6 +13,7 @@
  * - 悬停 → Tooltip
  */
 import { useState, useMemo } from 'react';
+import { ChartCard } from './ModuleShell';
 
 interface AnonEmployee {
   id: string;
@@ -38,9 +39,33 @@ interface GradeTrendData {
   employees_by_grade?: Record<string, AnonEmployee[]>;
 }
 
+// 方案 X：后端按部门预聚合，前端切换零请求
+interface DeptBundle {
+  overall?: GradeTrendData;
+  by_department?: Record<string, GradeTrendData>;
+  // 兼容老结构：data 可能直接是 GradeTrendData
+  grades?: string[];
+}
+
 interface Props {
-  tccData: GradeTrendData;
-  baseData: GradeTrendData;
+  tccData: DeptBundle | GradeTrendData;
+  baseData: DeptBundle | GradeTrendData;
+}
+
+const ALL_DEPT = '__overall__';
+
+// 把 props（DeptBundle 或老的 GradeTrendData）规整成 {dept: data} 字典
+function normalizeBundle(input: DeptBundle | GradeTrendData | undefined): {
+  overall: GradeTrendData | undefined;
+  byDept: Record<string, GradeTrendData>;
+} {
+  if (!input) return { overall: undefined, byDept: {} };
+  const asBundle = input as DeptBundle;
+  if (asBundle.overall !== undefined || asBundle.by_department !== undefined) {
+    return { overall: asBundle.overall, byDept: asBundle.by_department || {} };
+  }
+  // 老结构：直接是 GradeTrendData
+  return { overall: input as GradeTrendData, byDept: {} };
 }
 
 // 颜色阈值（对应 CR 值 ±15% / ±5%）
@@ -57,73 +82,162 @@ const MEDIAN_COLOR = '#0F766E'; // 深青（公司中位线 + 三角节点，跟
 const MARKET_GRAY = '#888780';
 
 export default function GradeTrendChart({ tccData, baseData }: Props) {
-  const [view, setView] = useState<'overview' | 'detail'>('overview');
+  const tcc = useMemo(() => normalizeBundle(tccData), [tccData]);
+  const base = useMemo(() => normalizeBundle(baseData), [baseData]);
+
+  // 部门列表：取 tcc 和 base 都有的并集（一般两个 bundle 一致）
+  const departments = useMemo(() => {
+    const set = new Set<string>([
+      ...Object.keys(tcc.byDept),
+      ...Object.keys(base.byDept),
+    ]);
+    return [ALL_DEPT, ...Array.from(set).sort()];
+  }, [tcc, base]);
+
+  if (!tcc.overall || !tcc.overall.grades?.length) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ChartCard title="各职级 vs 市场分位">
+        <OverviewSection tcc={tcc} base={base} departments={departments} />
+      </ChartCard>
+      <ChartCard title="员工分布与中位趋势">
+        <DetailSection tcc={tcc} base={base} departments={departments} />
+      </ChartCard>
+    </div>
+  );
+}
+
+// 选当前部门的 GradeTrendData：默认 overall；按部门时若无数据 fallback 到 overall
+function pickData(bundle: { overall?: GradeTrendData; byDept: Record<string, GradeTrendData> },
+                  dept: string): GradeTrendData | undefined {
+  if (dept === ALL_DEPT) return bundle.overall;
+  return bundle.byDept[dept] || bundle.overall;
+}
+
+// =========================================================================
+// Section 1: 职级偏离柱状图（独立 toolbar：薪酬口径 / 分位 / 部门）
+// =========================================================================
+function OverviewSection({ tcc, base, departments }: {
+  tcc: { overall?: GradeTrendData; byDept: Record<string, GradeTrendData> };
+  base: { overall?: GradeTrendData; byDept: Record<string, GradeTrendData> };
+  departments: string[];
+}) {
   const [salaryType, setSalaryType] = useState<'tcc' | 'base'>('tcc');
-  const [highlightGrade, setHighlightGrade] = useState<string | null>(null);
-
-  const data = salaryType === 'tcc' ? tccData : baseData;
-  if (!data || !data.grades || data.grades.length === 0) return null;
-
-  const handleBarClick = (grade: string) => {
-    setHighlightGrade(grade);
-    setView('detail');
-  };
+  const [quartile, setQuartile] = useState<'p25' | 'p50' | 'p75'>('p50');
+  const [dept, setDept] = useState<string>(ALL_DEPT);
+  const data = pickData(salaryType === 'tcc' ? tcc : base, dept);
+  if (!data || !data.grades?.length) return <EmptyHint text="该部门数据不足，无法画图。" />;
 
   return (
     <div>
-      {/* 顶部工具栏：左=口径切换，右=视图切换 */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: 12, flexWrap: 'wrap', gap: 8,
-      }}>
+      <Toolbar>
         <SegmentedControl
           options={[{ value: 'tcc', label: '年度总现金' }, { value: 'base', label: '年度基本工资' }]}
           value={salaryType}
           onChange={v => setSalaryType(v as 'tcc' | 'base')}
         />
         <SegmentedControl
-          options={[{ value: 'overview', label: '概览视图' }, { value: 'detail', label: '详细视图' }]}
-          value={view}
-          onChange={v => setView(v as 'overview' | 'detail')}
+          options={[{ value: 'p25', label: 'vs P25' }, { value: 'p50', label: 'vs P50' }, { value: 'p75', label: 'vs P75' }]}
+          value={quartile}
+          onChange={v => setQuartile(v as 'p25' | 'p50' | 'p75')}
         />
-      </div>
+        <DeptSelect value={dept} onChange={setDept} options={departments} />
+      </Toolbar>
 
-      {/* Storyline */}
       {data.storyline && (
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
           {data.storyline}
         </div>
       )}
 
-      {view === 'overview' ? (
-        <OverviewChart data={data} onBarClick={handleBarClick} />
-      ) : (
-        <DetailChart
-          data={data}
-          highlightGrade={highlightGrade}
-          onHighlight={setHighlightGrade}
-        />
-      )}
+      <OverviewChart data={data} quartile={quartile} />
     </div>
+  );
+}
+
+// =========================================================================
+// Section 2: 详细趋势 + 散点（独立 toolbar：薪酬口径 / 部门）
+// =========================================================================
+function DetailSection({ tcc, base, departments }: {
+  tcc: { overall?: GradeTrendData; byDept: Record<string, GradeTrendData> };
+  base: { overall?: GradeTrendData; byDept: Record<string, GradeTrendData> };
+  departments: string[];
+}) {
+  const [salaryType, setSalaryType] = useState<'tcc' | 'base'>('tcc');
+  const [dept, setDept] = useState<string>(ALL_DEPT);
+  const [highlightGrade, setHighlightGrade] = useState<string | null>(null);
+  const data = pickData(salaryType === 'tcc' ? tcc : base, dept);
+  if (!data || !data.grades?.length) return <EmptyHint text="该部门数据不足，无法画图。" />;
+
+  return (
+    <div>
+      <Toolbar>
+        <SegmentedControl
+          options={[{ value: 'tcc', label: '年度总现金' }, { value: 'base', label: '年度基本工资' }]}
+          value={salaryType}
+          onChange={v => setSalaryType(v as 'tcc' | 'base')}
+        />
+        <DeptSelect value={dept} onChange={setDept} options={departments} />
+      </Toolbar>
+
+      <DetailChart data={data} highlightGrade={highlightGrade} onHighlight={setHighlightGrade} />
+    </div>
+  );
+}
+
+function Toolbar({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,
+      flexWrap: 'wrap',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function DeptSelect({ value, onChange, options }: {
+  value: string; onChange: (v: string) => void; options: string[];
+}) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{
+        fontSize: 12, padding: '5px 10px', borderRadius: 6,
+        border: '1px solid var(--border, #e5e7eb)',
+        background: '#fff', color: 'var(--text-secondary, #475569)',
+        cursor: 'pointer', minWidth: 120,
+      }}>
+      {options.map(opt => (
+        <option key={opt} value={opt}>
+          {opt === ALL_DEPT ? '公司整体' : opt}
+        </option>
+      ))}
+    </select>
   );
 }
 
 // =========================================================================
 // 概览视图：差值柱状图
 // =========================================================================
-function OverviewChart({ data, onBarClick }: {
+function OverviewChart({ data, quartile = 'p50' }: {
   data: GradeTrendData;
-  onBarClick: (grade: string) => void;
+  quartile?: 'p25' | 'p50' | 'p75';
 }) {
-  const { grades, company_actual, market_p50_actual, company_counts } = data;
+  const { grades, company_actual, company_counts } = data;
+  const marketSeries =
+    quartile === 'p25' ? data.market_p25_actual :
+    quartile === 'p75' ? data.market_p75_actual :
+    data.market_p50_actual;
+  const quartileLabel = quartile.toUpperCase();
 
-  // 每个职级的偏离率
+  // 每个职级的偏离率（vs 选定分位）
   const deviations = useMemo(() => grades.map((g, i) => {
     const company = company_actual[i];
-    const mkt = market_p50_actual[i];
+    const mkt = marketSeries[i];
     if (!company || !mkt || mkt <= 0) return { grade: g, pct: null as number | null, hasMarket: false };
     return { grade: g, pct: (company - mkt) / mkt * 100, hasMarket: true };
-  }), [grades, company_actual, market_p50_actual]);
+  }), [grades, company_actual, marketSeries]);
 
   const validPcts = deviations.map(d => d.pct).filter((v): v is number => v != null);
   if (validPcts.length === 0) {
@@ -169,7 +283,7 @@ function OverviewChart({ data, onBarClick }: {
         ))}
 
         {/* 零线标签 */}
-        <text x={W - pad.right + 4} y={zeroY + 4} fontSize={10} fill="#64748B">市场 P50</text>
+        <text x={W - pad.right + 4} y={zeroY + 4} fontSize={10} fill="#64748B">市场 {quartileLabel}</text>
 
         {/* 柱子 */}
         {deviations.map((d, i) => {
@@ -199,8 +313,6 @@ function OverviewChart({ data, onBarClick }: {
 
           return (
             <g key={d.grade}
-              style={{ cursor: 'pointer' }}
-              onClick={() => onBarClick(d.grade)}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
             >
@@ -228,13 +340,13 @@ function OverviewChart({ data, onBarClick }: {
       {hoverIdx != null && deviations[hoverIdx].hasMarket && (() => {
         const d = deviations[hoverIdx];
         const company = company_actual[hoverIdx];
-        const mkt = market_p50_actual[hoverIdx];
+        const mkt = marketSeries[hoverIdx];
         const count = company_counts?.[hoverIdx] ?? 0;
         return (
           <div style={tooltipStyle(hoverIdx, n)}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.grade}</div>
             <div>公司中位：{(company / 10000).toFixed(1)} 万</div>
-            <div>市场 P50：{(mkt! / 10000).toFixed(1)} 万</div>
+            <div>市场 {quartileLabel}：{(mkt! / 10000).toFixed(1)} 万</div>
             <div>样本量：{count} 人</div>
             <div style={{ marginTop: 4, color: d.pct! < 0 ? '#991B1B' : '#C2410C', fontWeight: 600 }}>
               偏离 {d.pct! > 0 ? '+' : ''}{d.pct!.toFixed(1)}%
@@ -255,9 +367,6 @@ function OverviewChart({ data, onBarClick }: {
         <LegendSwatch color={DEV_COLORS.deepHigh.bg} label="> +15% (明显偏高)" />
       </div>
 
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center' }}>
-        点击任一柱子可切换到详细视图聚焦该职级
-      </div>
     </div>
   );
 }

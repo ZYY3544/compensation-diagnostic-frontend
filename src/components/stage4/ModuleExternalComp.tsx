@@ -60,11 +60,9 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
         />
       )}
 
-      {/* 核心图表：职级薪酬趋势图 */}
+      {/* 职级薪酬趋势：上下两张图（GradeTrendChart 内部各自包了 ChartCard） */}
       {(gradeTrendTcc?.overall?.grades?.length > 0 || gradeTrendTcc?.grades?.length > 0) && (
-        <ChartCard title="职级薪酬趋势">
-          <GradeTrendChart tccData={gradeTrendTcc} baseData={gradeTrendBase} />
-        </ChartCard>
+        <GradeTrendChart tccData={gradeTrendTcc} baseData={gradeTrendBase} />
       )}
 
       {heatmapRows.length > 0 && heatmap.grades.length > 0 && (

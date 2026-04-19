@@ -68,25 +68,16 @@ function normalizeBundle(input: DeptBundle | GradeTrendData | undefined): {
   return { overall: input as GradeTrendData, byDept: {} };
 }
 
-// 颜色阈值（对应 CR 值 ±15% / ±5%）
-const DEV_COLORS = {
-  deepHigh: { bg: '#C2410C', label: '深橙' },     // > +15%
-  lightHigh: { bg: '#FDBA74', label: '浅橙' },    // +5% ~ +15%
-  neutral: { bg: '#CBD5E1', label: '灰' },        // -5% ~ +5%
-  lightLow: { bg: '#FCA5A5', label: '浅红' },     // -15% ~ -5%
-  deepLow: { bg: '#991B1B', label: '深红' },      // < -15%
+// 5 档纯色填充（柔光 hover 给层次感，不再用渐变）
+const DEV_FLAT: Record<string, string> = {
+  deepHigh: '#C2410C',
+  lightHigh: '#FB923C',
+  neutral: '#94A3B8',
+  lightLow: '#F87171',
+  deepLow: '#991B1B',
 };
 
-// 每档对应的渐变色对（顶部稍亮、底部基础色），用 SVG <linearGradient> 渲染立体感
-const DEV_GRADIENT_STOPS: Record<string, [string, string]> = {
-  deepHigh: ['#E25814', '#C2410C'],
-  lightHigh: ['#FED7AA', '#FB923C'],
-  neutral: ['#E2E8F0', '#94A3B8'],
-  lightLow: ['#FECACA', '#F87171'],
-  deepLow: ['#B91C1C', '#7F1D1D'],
-};
-
-function deviationGradientKey(pct: number): keyof typeof DEV_GRADIENT_STOPS {
+function deviationKey(pct: number): keyof typeof DEV_FLAT {
   if (pct > 15) return 'deepHigh';
   if (pct > 5) return 'lightHigh';
   if (pct >= -5) return 'neutral';
@@ -362,16 +353,9 @@ function OverviewChart({ data, quartile = 'p50' }: {
     <div style={{ position: 'relative' }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', minHeight: 280 }}>
         <defs>
-          {/* 5 档偏离色的垂直线性渐变（顶部稍亮、底部稍深，模拟轻微立体感） */}
-          {Object.entries(DEV_GRADIENT_STOPS).map(([key, [c1, c2]]) => (
-            <linearGradient key={key} id={`bar-grad-${key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={c1} />
-              <stop offset="100%" stopColor={c2} />
-            </linearGradient>
-          ))}
-          {/* 柱子 hover 时的柔光 */}
+          {/* 柱子 hover 时的柔光（去渐变后用更柔和的同色光晕代替描边） */}
           <filter id="bar-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -420,7 +404,8 @@ function OverviewChart({ data, quartile = 'p50' }: {
           }
 
           const pct = d.pct!;
-          const gradKey = deviationGradientKey(pct);
+          const colorKey = deviationKey(pct);
+          const fillColor = DEV_FLAT[colorKey];
           const topY = pct >= 0 ? yScale(pct) : zeroY;
           const barH = Math.max(Math.abs(yScale(pct) - zeroY), 1);
           const labelY = pct >= 0 ? topY - 8 : topY + barH + 14;
@@ -432,9 +417,10 @@ function OverviewChart({ data, quartile = 'p50' }: {
               style={{ cursor: 'default' }}
             >
               <rect x={cx - barW / 2} y={topY} width={barW} height={barH}
-                fill={`url(#bar-grad-${gradKey})`} rx={5} ry={5}
+                fill={fillColor} rx={5} ry={5}
+                opacity={isHover ? 0.92 : 1}
                 filter={isHover ? 'url(#bar-glow)' : undefined}
-                style={{ transition: 'filter 0.18s' }}
+                style={{ transition: 'opacity 0.15s, filter 0.18s' }}
               />
               {/* 顶端百分比：hover 时品牌色加粗 */}
               <text x={cx} y={labelY} textAnchor="middle"
@@ -480,11 +466,11 @@ function OverviewChart({ data, quartile = 'p50' }: {
         display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: 'var(--text-muted)',
         flexWrap: 'wrap', justifyContent: 'center',
       }}>
-        <LegendSwatch color={DEV_COLORS.deepLow.bg} label="< -15% (明显偏低)" />
-        <LegendSwatch color={DEV_COLORS.lightLow.bg} label="-15% ~ -5%" />
-        <LegendSwatch color={DEV_COLORS.neutral.bg} label="±5% (贴近市场)" />
-        <LegendSwatch color={DEV_COLORS.lightHigh.bg} label="+5% ~ +15%" />
-        <LegendSwatch color={DEV_COLORS.deepHigh.bg} label="> +15% (明显偏高)" />
+        <LegendSwatch color={DEV_FLAT.deepLow} label="< -15% (明显偏低)" />
+        <LegendSwatch color={DEV_FLAT.lightLow} label="-15% ~ -5%" />
+        <LegendSwatch color={DEV_FLAT.neutral} label="±5% (贴近市场)" />
+        <LegendSwatch color={DEV_FLAT.lightHigh} label="+5% ~ +15%" />
+        <LegendSwatch color={DEV_FLAT.deepHigh} label="> +15% (明显偏高)" />
       </div>
 
     </div>
@@ -765,10 +751,12 @@ function DetailTooltip({ hover, data }: {
     position: 'absolute',
     left: `${leftPct}%`, top: hover.y,
     transform: leftPct > 70 ? 'translate(-110%, -50%)' : 'translate(10%, -50%)',
-    background: 'rgba(17, 24, 39, 0.94)', color: '#fff',
-    padding: '8px 12px', borderRadius: 6, fontSize: 12,
+    background: '#fff',
+    color: '#0F172A',
+    border: '1px solid #E2E8F0',
+    padding: '10px 14px', borderRadius: 10, fontSize: 12, lineHeight: 1.5,
     pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 10,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.05)',
   };
 
   if (hover.type === 'scatter') {
@@ -787,9 +775,9 @@ function DetailTooltip({ hover, data }: {
     }
     return (
       <div style={style}>
-        <div style={{ fontWeight: 600 }}>员工 #{emp.id} · {emp.dept}</div>
+        <div style={{ fontWeight: 600, marginBottom: 2 }}>员工 #{emp.id} · {emp.dept}</div>
         <div>薪酬：{emp.salary.toFixed(1)} 万</div>
-        {relPos && <div style={{ opacity: 0.8 }}>市场位置：{relPos}</div>}
+        {relPos && <div style={{ color: '#64748B' }}>市场位置：{relPos}</div>}
       </div>
     );
   }
@@ -898,10 +886,12 @@ function tooltipStyle(idx: number, total: number): React.CSSProperties {
     position: 'absolute',
     left: `${leftPct}%`, top: 0,
     transform: leftPct > 70 ? 'translate(-110%, 0)' : 'translate(10%, 0)',
-    background: 'rgba(17, 24, 39, 0.94)', color: '#fff',
-    padding: '8px 12px', borderRadius: 6, fontSize: 12,
+    background: '#fff',
+    color: '#0F172A',
+    border: '1px solid #E2E8F0',
+    padding: '10px 14px', borderRadius: 10, fontSize: 12, lineHeight: 1.5,
     pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 10,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.05)',
     minWidth: 140,
   };
 }

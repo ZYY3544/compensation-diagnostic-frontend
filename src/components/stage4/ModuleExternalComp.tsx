@@ -116,13 +116,14 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                             style={{
                               padding: '8px', textAlign: 'center', background: bg, color, fontWeight,
                               cursor: 'default',
-                              // hover：内描边（用 inset shadow，避免影响表格 layout）+ 外发光
+                              // hover：仅用柔和外阴影 + 1px 同色细边，让单元格"轻轻浮起"，
+                              // 不再用粗黑描边
                               boxShadow: isHover
-                                ? 'inset 0 0 0 2px #1F2937, 0 2px 8px rgba(31,41,55,0.18)'
+                                ? '0 6px 18px rgba(15,23,42,0.14), 0 0 0 1px rgba(15,23,42,0.10)'
                                 : undefined,
                               position: isHover ? 'relative' : undefined,
                               zIndex: isHover ? 1 : undefined,
-                              transition: 'box-shadow 0.12s',
+                              transition: 'box-shadow 0.18s',
                             }}>
                             {cr != null ? cr.toFixed(2) : '—'}
                           </td>

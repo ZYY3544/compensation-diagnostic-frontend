@@ -1,4 +1,14 @@
+import { useState } from 'react';
 import ModuleShell, { ChartCard } from './ModuleShell';
+
+// 品牌色家族（跟外部竞争力图表的色调对齐）
+const BOX_HIGH = '#D85A30';        // 离散度偏高：品牌橙
+const BOX_HIGH_FILL = '#FEF2EE';   // 偏高盒子的浅橙底
+const BOX_NORMAL = '#0F766E';      // 正常：深青（跟外部竞争力中位连线一致）
+const BOX_NORMAL_FILL = '#ECFDF5'; // 正常盒子的浅青底
+const TEXT_PRIMARY = '#0F172A';
+const TEXT_MUTED = '#94A3B8';
+const TEXT_SUB = '#64748B';
 
 export default function ModuleInternalEquity({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const dispersion = data?.dispersion || [];
@@ -13,16 +23,25 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
   else subtitleParts.push('整体离散度正常');
   const subtitle = subtitleParts.join(' · ');
 
-  // Boxplot 发现：极差比最大的层级（max/min）
+  // Boxplot 发现：用 P75/P25 倍数衡量"中间 50% 员工的薪酬跨度"——盒子越长，
+  // 这一级内部薪酬差异越大。同时附带 max/min 倍数提示有无极端离群值。
   let boxFinding = '';
   if (boxplot.length > 0) {
-    const withRange = boxplot
-      .filter((b: any) => b.min > 0)
-      .map((b: any) => ({ ...b, rangeRatio: b.max / b.min }));
-    if (withRange.length > 0) {
-      const sorted = [...withRange].sort((a, b) => b.rangeRatio - a.rangeRatio);
+    const withIqr = boxplot
+      .filter((b: any) => b.q1 > 0 && b.q3 > 0)
+      .map((b: any) => ({
+        ...b,
+        iqrRatio: b.q3 / b.q1,
+        rangeRatio: b.min > 0 ? b.max / b.min : 1,
+      }));
+    if (withIqr.length > 0) {
+      const sorted = [...withIqr].sort((a, b) => b.iqrRatio - a.iqrRatio);
       const top = sorted[0];
-      boxFinding = `${top.grade} 层级薪酬分布最分散（最高/最低 ${top.rangeRatio.toFixed(1)} 倍）`;
+      boxFinding = `${top.grade} 这一级内部薪酬跨度最大（中间 50% 员工 P75/P25 = ${top.iqrRatio.toFixed(1)} 倍）`;
+      // 极端离群值提示：max/min 比 P75/P25 大很多说明有显著离群
+      if (top.rangeRatio / top.iqrRatio > 2 && top.rangeRatio > 5) {
+        boxFinding += `，含离群整体跨度 ${top.rangeRatio.toFixed(1)} 倍`;
+      }
     }
   }
 
@@ -62,93 +81,9 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
       insight={insight}
       insightLoading={insightLoading}
     >
-      {boxplot.length > 0 && (() => {
-        // 按 IQR × 1.5 裁剪，避免一个 300k 的异常值把 Y 轴撑爆
-        const clipped: Array<{ grade: string; whiskerLow: number; whiskerHigh: number; q1: number; median: number; q3: number; min: number; max: number; outlierHigh: number | null; outlierLow: number | null; status?: string }> = [];
-        const coreVals: number[] = [];
-        for (const b of boxplot) {
-          const iqr = (b.q3 ?? b.max) - (b.q1 ?? b.min);
-          const upperFence = (b.q3 ?? b.max) + 1.5 * iqr;
-          const lowerFence = (b.q1 ?? b.min) - 1.5 * iqr;
-          const whiskerHigh = Math.min(b.max, upperFence);
-          const whiskerLow = Math.max(b.min, lowerFence);
-          clipped.push({
-            grade: b.grade, q1: b.q1 ?? b.min, median: b.median ?? (b.min + b.max) / 2, q3: b.q3 ?? b.max,
-            min: b.min, max: b.max, whiskerLow, whiskerHigh,
-            outlierHigh: b.max > upperFence ? b.max : null,
-            outlierLow: b.min < lowerFence ? b.min : null,
-            status: b.status,
-          });
-          coreVals.push(whiskerLow, b.q1 ?? b.min, b.median ?? (b.min + b.max) / 2, b.q3 ?? b.max, whiskerHigh);
-        }
-        const yMax = Math.max(...coreVals) * 1.05;
-        const yMin = 0;
-        const chartW = 640, chartH = 260;
-        const pad = { top: 20, right: 20, bottom: 40, left: 60 };
-        const innerW = chartW - pad.left - pad.right;
-        const innerH = chartH - pad.top - pad.bottom;
-        const yScale = (v: number) => pad.top + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
-        const boxW = Math.min(42, (innerW / clipped.length) * 0.55);
-        const xScale = (i: number) => pad.left + (i + 0.5) * (innerW / clipped.length);
-        const hasOutliers = clipped.some(c => c.outlierHigh != null || c.outlierLow != null);
-
-        return (
-          <ChartCard title="各层级薪酬分布" finding={boxFinding}>
-            <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`}>
-              {[0, 0.25, 0.5, 0.75, 1].map(r => {
-                const y = pad.top + innerH * (1 - r);
-                const val = yMin + (yMax - yMin) * r;
-                return (
-                  <g key={r}>
-                    <line x1={pad.left} x2={chartW - pad.right} y1={y} y2={y} stroke="#f0f0f4" strokeDasharray="3 3" />
-                    <text x={pad.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#a0a0b0">
-                      {val >= 10000 ? `${(val / 10000).toFixed(val >= 100000 ? 0 : 1)}万` : val >= 1000 ? `${(val / 1000).toFixed(0)}k` : Math.round(val)}
-                    </text>
-                  </g>
-                );
-              })}
-              {clipped.map((c, i) => {
-                const isHigh = c.status === 'high';
-                const color = isHigh ? '#DC2626' : '#3B82F6';
-                const cx = xScale(i);
-                return (
-                  <g key={i}>
-                    <line x1={cx} x2={cx} y1={yScale(c.whiskerLow)} y2={yScale(c.whiskerHigh)} stroke={color} />
-                    <line x1={cx - boxW / 2} x2={cx + boxW / 2} y1={yScale(c.whiskerLow)} y2={yScale(c.whiskerLow)} stroke={color} />
-                    <line x1={cx - boxW / 2} x2={cx + boxW / 2} y1={yScale(c.whiskerHigh)} y2={yScale(c.whiskerHigh)} stroke={color} />
-                    <rect x={cx - boxW / 2} y={yScale(c.q3)} width={boxW} height={Math.max(1, yScale(c.q1) - yScale(c.q3))}
-                      fill={isHigh ? '#FEE2E2' : '#DBEAFE'} stroke={color} />
-                    <line x1={cx - boxW / 2} x2={cx + boxW / 2} y1={yScale(c.median)} y2={yScale(c.median)} stroke={color} strokeWidth={2} />
-                    {c.outlierHigh != null && (
-                      <polygon points={`${cx - 5},${pad.top + 2} ${cx + 5},${pad.top + 2} ${cx},${pad.top + 9}`} fill={color}>
-                        <title>{`离群高值: ¥${c.outlierHigh.toLocaleString()}`}</title>
-                      </polygon>
-                    )}
-                    {c.outlierLow != null && (
-                      <circle cx={cx} cy={yScale(c.whiskerLow) + 10} r={3} fill="#fff" stroke={color}>
-                        <title>{`离群低值: ¥${c.outlierLow.toLocaleString()}`}</title>
-                      </circle>
-                    )}
-                    <text x={cx} y={chartH - pad.bottom + 18} textAnchor="middle" fontSize={11} fill="#6b6b7e" fontWeight={isHigh ? 500 : 400}>
-                      {c.grade}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-              {boxplot.map((b: any) => (
-                <div key={b.grade} style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {b.grade}: ¥{b.min.toLocaleString()} ~ ¥{b.max.toLocaleString()}
-                </div>
-              ))}
-            </div>
-            {hasOutliers && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>▼ 表示超出主体数据范围的离群值（&gt; P75 + 1.5×IQR）</div>
-            )}
-          </ChartCard>
-        );
-      })()}
+      {boxplot.length > 0 && (
+        <BoxPlotSection boxplot={boxplot} finding={boxFinding} />
+      )}
 
       {dispersion.length > 0 && (
         <ChartCard title="各层级离散度" finding={dispFinding}>
@@ -218,5 +153,292 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
         </ChartCard>
       )}
     </ModuleShell>
+  );
+}
+
+// =========================================================================
+// 箱线图 Section：精修版本，加完整元素说明
+// =========================================================================
+interface BoxRaw {
+  grade: string;
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  status?: string;
+}
+
+interface BoxClipped extends BoxRaw {
+  whiskerLow: number;
+  whiskerHigh: number;
+  outlierHigh: number | null;
+  outlierLow: number | null;
+}
+
+function BoxPlotSection({ boxplot, finding }: { boxplot: BoxRaw[]; finding: string }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  // Tukey 1.5×IQR 裁剪：盒子=P25-P75，须线最远到 ±1.5×IQR，超出的标为离群
+  const clipped: BoxClipped[] = [];
+  const coreVals: number[] = [];
+  for (const b of boxplot) {
+    const iqr = (b.q3 ?? b.max) - (b.q1 ?? b.min);
+    const upperFence = (b.q3 ?? b.max) + 1.5 * iqr;
+    const lowerFence = (b.q1 ?? b.min) - 1.5 * iqr;
+    const whiskerHigh = Math.min(b.max, upperFence);
+    const whiskerLow = Math.max(b.min, lowerFence);
+    clipped.push({
+      grade: b.grade,
+      q1: b.q1 ?? b.min,
+      median: b.median ?? (b.min + b.max) / 2,
+      q3: b.q3 ?? b.max,
+      min: b.min, max: b.max,
+      whiskerLow, whiskerHigh,
+      outlierHigh: b.max > upperFence ? b.max : null,
+      outlierLow: b.min < lowerFence ? b.min : null,
+      status: b.status,
+    });
+    coreVals.push(whiskerLow, b.q1 ?? b.min, b.median ?? (b.min + b.max) / 2, b.q3 ?? b.max, whiskerHigh);
+  }
+  const yMax = Math.max(...coreVals) * 1.05;
+  const yMin = 0;
+  const chartW = 640, chartH = 280;
+  const pad = { top: 24, right: 24, bottom: 44, left: 60 };
+  const innerW = chartW - pad.left - pad.right;
+  const innerH = chartH - pad.top - pad.bottom;
+  const yScale = (v: number) => pad.top + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
+  const boxW = Math.min(48, (innerW / clipped.length) * 0.55);
+  const xScale = (i: number) => pad.left + (i + 0.5) * (innerW / clipped.length);
+  const hasOutliers = clipped.some(c => c.outlierHigh != null || c.outlierLow != null);
+
+  const fmtMoney = (v: number) => v >= 10000
+    ? `${(v / 10000).toFixed(v >= 100000 ? 0 : 1)}万`
+    : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${Math.round(v)}`;
+
+  return (
+    <ChartCard title="各层级薪酬分布" finding={finding}>
+      <div style={{ position: 'relative' }}>
+        <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} style={{ overflow: 'visible' }}>
+          <defs>
+            {/* 盒子柔影 filter */}
+            <filter id="box-shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.12" />
+            </filter>
+            {/* hover 时的柔光 */}
+            <filter id="box-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Y 网格 */}
+          {[0, 0.25, 0.5, 0.75, 1].map(r => {
+            const y = pad.top + innerH * (1 - r);
+            const val = yMin + (yMax - yMin) * r;
+            return (
+              <g key={r}>
+                <line x1={pad.left} x2={chartW - pad.right} y1={y} y2={y}
+                  stroke="#eef2f7" strokeDasharray="3 4" />
+                <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize={10} fill={TEXT_MUTED}>
+                  {fmtMoney(val)}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* 每个职级的箱线 */}
+          {clipped.map((c, i) => {
+            const isHigh = c.status === 'high';
+            const stroke = isHigh ? BOX_HIGH : BOX_NORMAL;
+            const fill = isHigh ? BOX_HIGH_FILL : BOX_NORMAL_FILL;
+            const cx = xScale(i);
+            const isHover = hoverIdx === i;
+            const halfW = boxW / 2;
+            const capW = halfW * 0.55;
+
+            return (
+              <g key={i}
+                onMouseEnter={() => setHoverIdx(i)}
+                onMouseLeave={() => setHoverIdx(null)}
+                style={{ cursor: 'default' }}
+              >
+                {/* 须线（中央细线） */}
+                <line x1={cx} x2={cx} y1={yScale(c.whiskerLow)} y2={yScale(c.whiskerHigh)}
+                  stroke={stroke} strokeWidth={1.2} opacity={0.8} />
+                {/* 须线两端的小帽（短线段，比上下细线宽更窄，更精致） */}
+                <line x1={cx - capW} x2={cx + capW} y1={yScale(c.whiskerLow)} y2={yScale(c.whiskerLow)}
+                  stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+                <line x1={cx - capW} x2={cx + capW} y1={yScale(c.whiskerHigh)} y2={yScale(c.whiskerHigh)}
+                  stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+
+                {/* 盒子（P25-P75，圆角 + 柔影） */}
+                <rect x={cx - halfW} y={yScale(c.q3)}
+                  width={boxW} height={Math.max(1, yScale(c.q1) - yScale(c.q3))}
+                  fill={fill} stroke={stroke} strokeWidth={1.4}
+                  rx={4} ry={4}
+                  filter={isHover ? 'url(#box-glow)' : 'url(#box-shadow)'}
+                  opacity={isHover ? 0.95 : 1}
+                  style={{ transition: 'opacity 0.15s' }}
+                />
+                {/* 中位线（粗一点，强调） */}
+                <line x1={cx - halfW + 2} x2={cx + halfW - 2}
+                  y1={yScale(c.median)} y2={yScale(c.median)}
+                  stroke={stroke} strokeWidth={2.5} strokeLinecap="round" />
+
+                {/* 离群高值（▼） */}
+                {c.outlierHigh != null && (
+                  <polygon points={`${cx - 5},${pad.top + 2} ${cx + 5},${pad.top + 2} ${cx},${pad.top + 9}`}
+                    fill={stroke}>
+                    <title>{`离群高值: ¥${c.outlierHigh.toLocaleString()}`}</title>
+                  </polygon>
+                )}
+                {/* 离群低值（○） */}
+                {c.outlierLow != null && (
+                  <circle cx={cx} cy={yScale(c.whiskerLow) + 12} r={3.5}
+                    fill="#fff" stroke={stroke} strokeWidth={1.5}>
+                    <title>{`离群低值: ¥${c.outlierLow.toLocaleString()}`}</title>
+                  </circle>
+                )}
+
+                {/* X 轴：职级标签 */}
+                <text x={cx} y={chartH - pad.bottom + 18} textAnchor="middle"
+                  fontSize={11} fontWeight={isHover ? 700 : isHigh ? 600 : 500}
+                  fill={isHover ? TEXT_PRIMARY : TEXT_SUB}
+                  style={{ transition: 'all 0.15s' }}>
+                  {c.grade}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* hover Tooltip */}
+        {hoverIdx != null && (() => {
+          const c = clipped[hoverIdx];
+          const cx = xScale(hoverIdx);
+          const leftPct = (cx / chartW) * 100;
+          const rightSide = leftPct > 65;
+          return (
+            <div style={{
+              position: 'absolute',
+              left: `${leftPct}%`, top: yScale(c.median) - 60,
+              transform: rightSide ? 'translate(-110%, 0)' : 'translate(10%, 0)',
+              background: '#fff', color: TEXT_PRIMARY,
+              border: '1px solid #E2E8F0',
+              padding: '10px 14px', borderRadius: 10, fontSize: 12, lineHeight: 1.55,
+              pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 10,
+              boxShadow: '0 12px 28px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.05)',
+              minWidth: 160,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{c.grade}</div>
+              <div style={{ color: TEXT_SUB }}>P75：¥{Math.round(c.q3).toLocaleString()}</div>
+              <div><strong>中位 P50：¥{Math.round(c.median).toLocaleString()}</strong></div>
+              <div style={{ color: TEXT_SUB }}>P25：¥{Math.round(c.q1).toLocaleString()}</div>
+              <div style={{ marginTop: 4, color: TEXT_SUB, fontSize: 11 }}>
+                整体：¥{c.min.toLocaleString()} ~ ¥{c.max.toLocaleString()}
+              </div>
+              {(c.outlierHigh || c.outlierLow) && (
+                <div style={{ marginTop: 4, color: BOX_HIGH, fontSize: 11 }}>
+                  ⚠ 含离群
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* 元素图例（关键，让用户看懂） */}
+      <BoxLegend hasOutliers={hasOutliers} />
+
+      {/* 各职级薪酬区间清单 */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 12,
+        paddingTop: 12, borderTop: '1px dashed #E2E8F0',
+      }}>
+        {boxplot.map((b: BoxRaw) => (
+          <div key={b.grade} style={{ fontSize: 11, color: TEXT_SUB }}>
+            <span style={{ fontWeight: 600, color: TEXT_PRIMARY }}>{b.grade}</span>
+            <span style={{ marginLeft: 6, color: TEXT_MUTED }}>
+              ¥{b.min.toLocaleString()} ~ ¥{b.max.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </ChartCard>
+  );
+}
+
+// 箱线图元素图例：每个元素配一个迷你 SVG 图标 + 文字说明
+function BoxLegend({ hasOutliers }: { hasOutliers: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 18,
+      marginTop: 16, padding: '10px 14px',
+      background: '#F8FAFC', borderRadius: 8,
+      fontSize: 11, color: TEXT_SUB,
+    }}>
+      <LegendItem icon={<BoxIcon />} label={<span><strong style={{ color: TEXT_PRIMARY }}>盒子</strong> = 中间 50% 员工 (P25-P75)</span>} />
+      <LegendItem icon={<MedianIcon />} label={<span><strong style={{ color: TEXT_PRIMARY }}>粗线</strong> = 中位数 P50</span>} />
+      <LegendItem icon={<WhiskerIcon />} label={<span><strong style={{ color: TEXT_PRIMARY }}>上下细线</strong> = 主体数据范围</span>} />
+      {hasOutliers && (
+        <>
+          <LegendItem icon={<TriangleIcon />} label={<span><strong style={{ color: TEXT_PRIMARY }}>▼</strong> = 离群高值 (&gt; P75 + 1.5×IQR)</span>} />
+          <LegendItem icon={<CircleIcon />} label={<span><strong style={{ color: TEXT_PRIMARY }}>○</strong> = 离群低值 (&lt; P25 − 1.5×IQR)</span>} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function LegendItem({ icon, label }: { icon: React.ReactNode; label: React.ReactNode }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {icon}
+      <span>{label}</span>
+    </span>
+  );
+}
+
+// 迷你图标：跟图表里的元素同色（用品牌橙做演示色，实际图里两种状态色都用）
+function BoxIcon() {
+  return (
+    <svg width={20} height={14} viewBox="0 0 20 14">
+      <rect x="2" y="3" width="16" height="8" rx="2" fill={BOX_NORMAL_FILL} stroke={BOX_NORMAL} strokeWidth={1.4} />
+      <line x1="4" x2="16" y1="7" y2="7" stroke={BOX_NORMAL} strokeWidth={1.6} />
+    </svg>
+  );
+}
+function MedianIcon() {
+  return (
+    <svg width={20} height={14} viewBox="0 0 20 14">
+      <line x1="2" x2="18" y1="7" y2="7" stroke={BOX_NORMAL} strokeWidth={2.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+function WhiskerIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 14 14">
+      <line x1="7" x2="7" y1="2" y2="12" stroke={BOX_NORMAL} strokeWidth={1.2} />
+      <line x1="4" x2="10" y1="2" y2="2" stroke={BOX_NORMAL} strokeWidth={1.5} strokeLinecap="round" />
+      <line x1="4" x2="10" y1="12" y2="12" stroke={BOX_NORMAL} strokeWidth={1.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+function TriangleIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 14 14">
+      <polygon points="7,3 11,10 3,10" fill={BOX_HIGH} />
+    </svg>
+  );
+}
+function CircleIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 14 14">
+      <circle cx="7" cy="7" r="3.5" fill="#fff" stroke={BOX_HIGH} strokeWidth={1.5} />
+    </svg>
   );
 }

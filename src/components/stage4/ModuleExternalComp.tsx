@@ -8,19 +8,21 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
   // 热力图悬停高亮：记当前 hover 的 (行, 列) 索引；同行行标题、同列列头一起加粗，单元格自身描边
   const [hoverCell, setHoverCell] = useState<{ di: number; gi: number } | null>(null);
 
-  const heatmap = data?.cr_heatmap || { departments: [], grades: [], values: [] };
+  const heatmap = data?.cr_heatmap || { rows: [], grades: [], values: [], counts: [], row_label: '行' };
+  // 兼容旧后端：还在用 departments 时自动映射成 rows
+  const heatmapRows: string[] = heatmap.rows || heatmap.functions || heatmap.departments || [];
+  const heatmapRowLabel: string = heatmap.row_label || '部门';
   const overallCR = data?.overall_cr;
-  const belowP25 = data?.total_below_p25 || 0;
-  const aboveP75 = data?.total_above_p75 ?? null;
+  const summary = data?.summary || {};
+  const avgPercentile: number | null = summary.avg_percentile ?? null;
+  const totalHeadcount: number = summary.total_headcount || 0;
+  const segmentDistribution: Array<{key: string; label: string; count: number; pct: number}> =
+    summary.segment_distribution || [];
   const deviationTop = data?.deviation_top || [];
   const deviationSummary = data?.summary_text || '';
 
-  // 副标题关键指标概要
-  const subtitleParts: string[] = [];
-  if (overallCR != null) subtitleParts.push(`整体 CR ${overallCR}`);
-  subtitleParts.push(`${belowP25} 人低于 P25`);
-  if (aboveP75 != null) subtitleParts.push(`${aboveP75} 人高于 P75`);
-  const subtitle = subtitleParts.join(' · ');
+  // 副标题保持简洁：副标题位置已经被顶部 KPI 总览块取代，这里给个一句话定位
+  const subtitle = `共 ${totalHeadcount} 人参与对标 · 详细分布见下方`;
 
   // 热力图发现：统计偏离单元格
   let heatFinding = '';
@@ -48,20 +50,30 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
       insight={insight}
       insightLoading={insightLoading}
     >
+      {/* 顶部 KPI 总览块：整体 CR / 整体分位 / 四段人数分布 */}
+      {totalHeadcount > 0 && (
+        <OverviewKpis
+          overallCR={overallCR}
+          avgPercentile={avgPercentile}
+          totalHeadcount={totalHeadcount}
+          segments={segmentDistribution}
+        />
+      )}
+
       {/* 核心图表：职级薪酬趋势图 */}
-      {gradeTrendTcc?.grades?.length > 0 && gradeTrendBase?.grades?.length > 0 && (
+      {(gradeTrendTcc?.overall?.grades?.length > 0 || gradeTrendTcc?.grades?.length > 0) && (
         <ChartCard title="职级薪酬趋势">
           <GradeTrendChart tccData={gradeTrendTcc} baseData={gradeTrendBase} />
         </ChartCard>
       )}
 
-      {heatmap.departments.length > 0 && heatmap.grades.length > 0 && (
-        <ChartCard title="部门 × 职级 CR 热力图" finding={heatFinding}>
+      {heatmapRows.length > 0 && heatmap.grades.length > 0 && (
+        <ChartCard title={`${heatmapRowLabel} × 职级 CR 热力图`} finding={heatFinding}>
           <div style={{ overflowX: 'auto' }} onMouseLeave={() => setHoverCell(null)}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>部门</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>{heatmapRowLabel}</th>
                   {heatmap.grades.map((g: string, gi: number) => {
                     const isCol = hoverCell?.gi === gi;
                     return (
@@ -76,16 +88,16 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                 </tr>
               </thead>
               <tbody>
-                {heatmap.departments.map((dept: string, di: number) => {
+                {heatmapRows.map((rowLabel: string, di: number) => {
                   const isRow = hoverCell?.di === di;
                   return (
-                    <tr key={dept}>
+                    <tr key={rowLabel}>
                       <td style={{
                         padding: '8px',
                         fontWeight: isRow ? 700 : 500,
                         color: isRow ? 'var(--text-primary)' : undefined,
                         transition: 'color 0.12s, font-weight 0.12s',
-                      }}>{dept}</td>
+                      }}>{rowLabel}</td>
                       {(heatmap.values[di] || []).map((cr: number | null, gi: number) => {
                         let bg = '#F9FAFB', color = 'inherit', fontWeight: number | string = 500;
                         if (cr != null) {
@@ -97,8 +109,8 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                         const count = heatmap.counts?.[di]?.[gi] ?? 0;
                         const grade = heatmap.grades[gi];
                         const tip = cr != null
-                          ? `${dept} · ${grade}\n${count} 人 · CR ${cr.toFixed(2)}`
-                          : `${dept} · ${grade}\n暂无数据`;
+                          ? `${rowLabel} · ${grade}\n${count} 人 · CR ${cr.toFixed(2)}`
+                          : `${rowLabel} · ${grade}\n暂无数据`;
                         const isHover = hoverCell?.di === di && hoverCell?.gi === gi;
                         return (
                           <td key={gi} title={tip}
@@ -134,11 +146,12 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border, #E5E7EB)' }}>
                   <th style={devTh('56px', 'center')}>排名</th>
-                  <th style={devTh('100px', 'left')}>员工 ID</th>
-                  <th style={devTh('110px', 'left')}>部门</th>
-                  <th style={devTh(undefined, 'left')}>岗位 / 职级</th>
-                  <th style={devTh('110px', 'right')}>个人薪酬</th>
-                  <th style={devTh('100px', 'right')}>市场 P50</th>
+                  <th style={devTh('90px', 'left')}>工号</th>
+                  <th style={devTh(undefined, 'left')}>岗位</th>
+                  <th style={devTh('64px', 'center')}>职级</th>
+                  <th style={devTh('110px', 'left')}>一级部门</th>
+                  <th style={devTh('120px', 'right')}>所在级别公司 P50</th>
+                  <th style={devTh('120px', 'right')}>所在级别市场 P50</th>
                   <th style={devTh('150px', 'right')}>vs 市场 P50 偏离度</th>
                 </tr>
               </thead>
@@ -151,9 +164,12 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                     <tr key={row.rank} style={{ height: 40, borderBottom: '1px solid var(--border, #F3F4F6)' }}>
                       <td style={devTd('center', 600)}>{row.rank}</td>
                       <td style={devTd('left')}>{row.id || '—'}</td>
+                      <td style={devTd('left', 500)}>{row.job_title || '—'}</td>
+                      <td style={devTd('center')}>{row.grade || '—'}</td>
                       <td style={devTd('left')}>{row.department || '—'}</td>
-                      <td style={devTd('left', 500)}>{[row.job_title, row.grade].filter(Boolean).join(' / ') || '—'}</td>
-                      <td style={devTd('right')}>{Number(row.base_monthly).toLocaleString()}</td>
+                      <td style={devTd('right')}>
+                        {row.company_grade_p50 ? Number(row.company_grade_p50).toLocaleString() : '—'}
+                      </td>
                       <td style={devTd('right')}>{Number(row.market_p50).toLocaleString()}</td>
                       <td style={devTd('right')}>
                         <span style={{
@@ -172,6 +188,76 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
         </ChartCard>
       )}
     </ModuleShell>
+  );
+}
+
+// =========================================================================
+// 顶部 KPI 总览块：6 张小卡 —— 整体 CR、整体分位、四段人数分布
+// =========================================================================
+function OverviewKpis({ overallCR, avgPercentile, totalHeadcount, segments }: {
+  overallCR?: number | null;
+  avgPercentile?: number | null;
+  totalHeadcount: number;
+  segments: Array<{ key: string; label: string; count: number; pct: number }>;
+}) {
+  // CR 颜色：<0.85 红 / 0.85-1.15 绿 / 1.15-2.0 橙 / >2.0 深红
+  const crColor = (cr: number) => {
+    if (cr < 0.85) return '#991B1B';
+    if (cr <= 1.15) return '#065F46';
+    if (cr <= 2.0) return '#92400E';
+    return '#7F1D1D';
+  };
+  // 分位段颜色：低分位红，高分位绿
+  const segColor: Record<string, string> = {
+    below_p25: '#991B1B',
+    p25_p50: '#92400E',
+    p50_p75: '#065F46',
+    above_p75: '#1E40AF',
+  };
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(6, 1fr)',
+      gap: 12,
+      marginBottom: 4,
+    }}>
+      <KpiCard label="整体 CR" value={overallCR != null ? overallCR.toFixed(2) : '—'}
+        color={overallCR != null ? crColor(overallCR) : undefined}
+        hint={`${totalHeadcount} 人参与对标`} />
+      <KpiCard label="整体市场分位" value={avgPercentile != null ? `P${avgPercentile}` : '—'}
+        hint="所有员工分位算术平均" />
+      {segments.map(seg => (
+        <KpiCard key={seg.key} label={seg.label}
+          value={`${seg.count} 人`}
+          color={segColor[seg.key]}
+          hint={`${seg.pct}%`} />
+      ))}
+    </div>
+  );
+}
+
+function KpiCard({ label, value, color, hint }: {
+  label: string; value: string; color?: string; hint?: string;
+}) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid var(--border)',
+      borderRadius: 8,
+      padding: '14px 14px',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: color || 'var(--text-primary)', lineHeight: 1 }}>
+        {value}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+          {hint}
+        </div>
+      )}
+    </div>
   );
 }
 

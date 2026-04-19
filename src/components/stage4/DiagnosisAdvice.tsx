@@ -22,9 +22,7 @@ export default function DiagnosisAdvice({ advice, closing }: Props) {
   }
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>诊断建议</h3>
-
+    <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {advice.map((a, i) => {
           const pc = PRIORITY_COLORS[a.priority] || PRIORITY_COLORS.P3;

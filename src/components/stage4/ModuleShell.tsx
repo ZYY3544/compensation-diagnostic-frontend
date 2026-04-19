@@ -68,17 +68,22 @@ export function ChartCard({ title, finding, children }: { title: string; finding
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid var(--border)',
-      borderRadius: 8,
-      padding: 20,
+      border: '1px solid #eef0f3',
+      borderRadius: 12,
+      padding: 22,
+      boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.03)',
     }}>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: finding ? 6 : 12 }}>{title}</div>
+      <div style={{
+        fontSize: 14, fontWeight: 600, marginBottom: finding ? 6 : 14,
+        color: 'var(--text-primary, #0f172a)',
+        letterSpacing: '0.01em',
+      }}>{title}</div>
       {finding && (
         <div style={{
-          fontSize: 13,
+          fontSize: 12,
           color: 'var(--text-muted)',
-          marginBottom: 12,
-          lineHeight: 1.5,
+          marginBottom: 14,
+          lineHeight: 1.55,
         }}>
           {finding}
         </div>

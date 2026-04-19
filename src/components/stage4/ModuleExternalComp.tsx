@@ -237,21 +237,37 @@ function OverviewKpis({ overallCR, avgPercentile, totalHeadcount, segments }: {
 function KpiCard({ label, value, color, hint }: {
   label: string; value: string; color?: string; hint?: string;
 }) {
+  const accent = color || '#94A3B8';
   return (
     <div style={{
+      position: 'relative',
       background: '#fff',
-      border: '1px solid var(--border)',
-      borderRadius: 8,
-      padding: '14px 14px',
+      border: '1px solid #eef0f3',
+      borderRadius: 10,
+      padding: '14px 16px 12px',
+      boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+      overflow: 'hidden',
     }}>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>
+      {/* 顶部细色条作为视觉锚 */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: accent, opacity: 0.85,
+      }} />
+      <div style={{
+        fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, fontWeight: 500,
+        letterSpacing: '0.02em', marginTop: 2,
+      }}>
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || 'var(--text-primary)', lineHeight: 1 }}>
+      <div style={{
+        fontSize: 24, fontWeight: 700,
+        color: color || 'var(--text-primary)',
+        lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+      }}>
         {value}
       </div>
       {hint && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
           {hint}
         </div>
       )}

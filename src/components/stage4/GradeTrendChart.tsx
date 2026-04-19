@@ -12,7 +12,7 @@
  * - 点击散点/中位节点 → 切换高亮职级
  * - 悬停 → Tooltip
  */
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { ChartCard } from './ModuleShell';
 
 interface AnonEmployee {
@@ -77,6 +77,23 @@ const DEV_COLORS = {
   deepLow: { bg: '#991B1B', label: '深红' },      // < -15%
 };
 
+// 每档对应的渐变色对（顶部稍亮、底部基础色），用 SVG <linearGradient> 渲染立体感
+const DEV_GRADIENT_STOPS: Record<string, [string, string]> = {
+  deepHigh: ['#E25814', '#C2410C'],
+  lightHigh: ['#FED7AA', '#FB923C'],
+  neutral: ['#E2E8F0', '#94A3B8'],
+  lightLow: ['#FECACA', '#F87171'],
+  deepLow: ['#B91C1C', '#7F1D1D'],
+};
+
+function deviationGradientKey(pct: number): keyof typeof DEV_GRADIENT_STOPS {
+  if (pct > 15) return 'deepHigh';
+  if (pct > 5) return 'lightHigh';
+  if (pct >= -5) return 'neutral';
+  if (pct >= -15) return 'lightLow';
+  return 'deepLow';
+}
+
 const BRAND = '#D85A30';        // 品牌橙（员工散点）
 const MEDIAN_COLOR = '#0F766E'; // 深青（公司中位线 + 三角节点，跟散点形状色都区分开）
 const MARKET_GRAY = '#888780';
@@ -132,17 +149,15 @@ function OverviewSection({ tcc, base, departments }: {
   return (
     <div>
       <Toolbar>
-        <SegmentedControl
+        <Dropdown label="薪酬口径" value={salaryType}
           options={[{ value: 'tcc', label: '年度总现金' }, { value: 'base', label: '年度基本工资' }]}
-          value={salaryType}
-          onChange={v => setSalaryType(v as 'tcc' | 'base')}
-        />
-        <SegmentedControl
-          options={[{ value: 'p25', label: 'vs P25' }, { value: 'p50', label: 'vs P50' }, { value: 'p75', label: 'vs P75' }]}
-          value={quartile}
-          onChange={v => setQuartile(v as 'p25' | 'p50' | 'p75')}
-        />
-        <DeptSelect value={dept} onChange={setDept} options={departments} />
+          onChange={v => setSalaryType(v as 'tcc' | 'base')} />
+        <Dropdown label="对比分位" value={quartile}
+          options={[{ value: 'p25', label: '市场 P25' }, { value: 'p50', label: '市场 P50' }, { value: 'p75', label: '市场 P75' }]}
+          onChange={v => setQuartile(v as 'p25' | 'p50' | 'p75')} />
+        <Dropdown label="部门" value={dept}
+          options={departments.map(d => ({ value: d, label: d === ALL_DEPT ? '公司整体' : d }))}
+          onChange={setDept} />
       </Toolbar>
 
       {data.storyline && (
@@ -173,12 +188,12 @@ function DetailSection({ tcc, base, departments }: {
   return (
     <div>
       <Toolbar>
-        <SegmentedControl
+        <Dropdown label="薪酬口径" value={salaryType}
           options={[{ value: 'tcc', label: '年度总现金' }, { value: 'base', label: '年度基本工资' }]}
-          value={salaryType}
-          onChange={v => setSalaryType(v as 'tcc' | 'base')}
-        />
-        <DeptSelect value={dept} onChange={setDept} options={departments} />
+          onChange={v => setSalaryType(v as 'tcc' | 'base')} />
+        <Dropdown label="部门" value={dept}
+          options={departments.map(d => ({ value: d, label: d === ALL_DEPT ? '公司整体' : d }))}
+          onChange={setDept} />
       </Toolbar>
 
       <DetailChart data={data} highlightGrade={highlightGrade} onHighlight={setHighlightGrade} />
@@ -197,23 +212,98 @@ function Toolbar({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DeptSelect({ value, onChange, options }: {
-  value: string; onChange: (v: string) => void; options: string[];
+// =========================================================================
+// 自定义 Dropdown：胶囊触发按钮 + 浮层菜单。比 SegmentedControl 更紧凑统一，
+// 支持任意选项数；点击外部关闭，选中项有品牌色 + 勾。
+// =========================================================================
+function Dropdown({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (v: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const current = options.find(o => o.value === value)?.label ?? '';
+
   return (
-    <select value={value} onChange={e => onChange(e.target.value)}
-      style={{
-        fontSize: 12, padding: '5px 10px', borderRadius: 6,
-        border: '1px solid var(--border, #e5e7eb)',
-        background: '#fff', color: 'var(--text-secondary, #475569)',
-        cursor: 'pointer', minWidth: 120,
-      }}>
-      {options.map(opt => (
-        <option key={opt} value={opt}>
-          {opt === ALL_DEPT ? '公司整体' : opt}
-        </option>
-      ))}
-    </select>
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '7px 14px', borderRadius: 999,
+          border: '1px solid ' + (open ? '#D85A30' : 'var(--border, #e5e7eb)'),
+          background: open ? '#FEF7F4' : '#fff',
+          fontSize: 12, color: 'var(--text-secondary, #475569)',
+          cursor: 'pointer',
+          transition: 'all 0.15s',
+          boxShadow: open ? '0 0 0 3px rgba(216,90,48,0.10)' : '0 1px 2px rgba(15,23,42,0.04)',
+          fontFamily: 'inherit',
+        }}
+        onMouseEnter={e => { if (!open) e.currentTarget.style.borderColor = '#cbd5e1'; }}
+        onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border, #e5e7eb)'; }}
+      >
+        <span style={{ color: 'var(--text-muted, #94a3b8)', fontSize: 11 }}>{label}</span>
+        <span style={{ fontWeight: 600, color: 'var(--text-primary, #0f172a)' }}>{current}</span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+          minWidth: '100%', whiteSpace: 'nowrap',
+          background: '#fff',
+          border: '1px solid var(--border, #e5e7eb)', borderRadius: 10,
+          boxShadow: '0 12px 28px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.04)',
+          padding: 4, zIndex: 50,
+          maxHeight: 280, overflowY: 'auto',
+        }}>
+          {options.map(opt => {
+            const sel = opt.value === value;
+            return (
+              <div key={opt.value}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                style={{
+                  padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
+                  fontSize: 12,
+                  background: sel ? '#FEF2EE' : 'transparent',
+                  color: sel ? '#D85A30' : 'var(--text-secondary, #475569)',
+                  fontWeight: sel ? 600 : 400,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#F8FAFC'; }}
+                onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span>{opt.label}</span>
+                {sel && <span style={{ fontSize: 10 }}>✓</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width={10} height={10} viewBox="0 0 16 16" fill="none"
+      style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={1.5}
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -271,19 +361,44 @@ function OverviewChart({ data, quartile = 'p50' }: {
   return (
     <div style={{ position: 'relative' }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', minHeight: 280 }}>
+        <defs>
+          {/* 5 档偏离色的垂直线性渐变（顶部稍亮、底部稍深，模拟轻微立体感） */}
+          {Object.entries(DEV_GRADIENT_STOPS).map(([key, [c1, c2]]) => (
+            <linearGradient key={key} id={`bar-grad-${key}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={c1} />
+              <stop offset="100%" stopColor={c2} />
+            </linearGradient>
+          ))}
+          {/* 柱子 hover 时的柔光 */}
+          <filter id="bar-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
         {/* Y 网格 */}
         {ticks.map(v => (
           <g key={v}>
             <line x1={pad.left} x2={W - pad.right} y1={yScale(v)} y2={yScale(v)}
-              stroke={v === 0 ? '#94a3b8' : '#f0f0f4'} strokeDasharray={v === 0 ? undefined : '3 3'} />
+              stroke={v === 0 ? '#cbd5e1' : '#eef2f7'}
+              strokeWidth={v === 0 ? 1.5 : 1}
+              strokeDasharray={v === 0 ? undefined : '3 4'} />
             <text x={pad.left - 8} y={yScale(v) + 4} textAnchor="end" fontSize={10} fill="#94a3b8">
               {v > 0 ? '+' : ''}{v}%
             </text>
           </g>
         ))}
 
-        {/* 零线标签 */}
-        <text x={W - pad.right + 4} y={zeroY + 4} fontSize={10} fill="#64748B">市场 {quartileLabel}</text>
+        {/* 零线标签：右侧带胶囊背景 */}
+        <g>
+          <rect x={W - pad.right - 2} y={zeroY - 9} width={56} height={16} rx={8}
+            fill="#fff" stroke="#cbd5e1" strokeWidth={1} />
+          <text x={W - pad.right + 26} y={zeroY + 3} textAnchor="middle"
+            fontSize={10} fill="#475569" fontWeight={600}>市场 {quartileLabel}</text>
+        </g>
 
         {/* 柱子 */}
         {deviations.map((d, i) => {
@@ -293,11 +408,10 @@ function OverviewChart({ data, quartile = 'p50' }: {
           const isHover = hoverIdx === i;
 
           if (!d.hasMarket) {
-            // 缺少市场数据：灰色条带 + 提示
             return (
               <g key={d.grade}>
                 <rect x={cx - barW / 2} y={zeroY - 2} width={barW} height={4}
-                  fill="#E5E7EB" opacity={0.6} />
+                  fill="#E5E7EB" opacity={0.6} rx={2} />
                 <text x={cx} y={H - pad.bottom + 22} textAnchor="middle" fontSize={10} fill="#CBD5E1">
                   缺数据
                 </text>
@@ -306,30 +420,36 @@ function OverviewChart({ data, quartile = 'p50' }: {
           }
 
           const pct = d.pct!;
-          const color = deviationColor(pct);
+          const gradKey = deviationGradientKey(pct);
           const topY = pct >= 0 ? yScale(pct) : zeroY;
           const barH = Math.max(Math.abs(yScale(pct) - zeroY), 1);
-          const labelY = pct >= 0 ? topY - 6 : topY + barH + 14;
+          const labelY = pct >= 0 ? topY - 8 : topY + barH + 14;
 
           return (
             <g key={d.grade}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
+              style={{ cursor: 'default' }}
             >
               <rect x={cx - barW / 2} y={topY} width={barW} height={barH}
-                fill={color} rx={3} ry={3}
-                opacity={isHover ? 0.85 : 1}
-                stroke={isHover ? '#1f2937' : 'none'}
-                strokeWidth={1}
+                fill={`url(#bar-grad-${gradKey})`} rx={5} ry={5}
+                filter={isHover ? 'url(#bar-glow)' : undefined}
+                style={{ transition: 'filter 0.18s' }}
               />
-              {/* 顶端百分比 */}
-              <text x={cx} y={labelY} textAnchor="middle" fontSize={11} fontWeight={600} fill="#334155">
+              {/* 顶端百分比：hover 时品牌色加粗 */}
+              <text x={cx} y={labelY} textAnchor="middle"
+                fontSize={isHover ? 12 : 11}
+                fontWeight={700}
+                fill={isHover ? '#0f172a' : '#475569'}
+                style={{ transition: 'all 0.15s' }}>
                 {pct > 0 ? '+' : ''}{Math.round(pct)}%
               </text>
               {/* X 轴：职级 + 样本量 */}
               <text x={cx} y={H - pad.bottom + 22} textAnchor="middle" fontSize={11}
-                fill={lowSample ? '#CBD5E1' : '#475569'} fontWeight={500}>
-                {d.grade} ({count})
+                fill={lowSample ? '#CBD5E1' : isHover ? '#0f172a' : '#475569'}
+                fontWeight={isHover ? 700 : 500}
+                style={{ transition: 'all 0.15s' }}>
+                {d.grade} <tspan fill="#94a3b8" fontSize={10}>· {count}人</tspan>
               </text>
             </g>
           );
@@ -507,41 +627,58 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
 
       <div style={{ position: 'relative' }}>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', minHeight: 280 }}>
+          <defs>
+            {/* 市场 P25-P75 带的纵向渐变（顶部稍浓、底部稍淡，模拟柔和光感） */}
+            <linearGradient id="market-band" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={MARKET_GRAY} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={MARKET_GRAY} stopOpacity="0.08" />
+            </linearGradient>
+            {/* 散点的柔和阴影 */}
+            <filter id="dot-shadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="0.5" stdDeviation="0.6" floodOpacity="0.25" />
+            </filter>
+            {/* 中位连线的发光效果 */}
+            <filter id="median-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor={MEDIAN_COLOR} floodOpacity="0.18" />
+            </filter>
+          </defs>
+
           {/* Y 网格 + 刻度 */}
           {yTicks.map(v => (
             <g key={v}>
               <line x1={pad.left} x2={W - pad.right} y1={yScale(v)} y2={yScale(v)}
-                stroke="#f0f0f4" strokeDasharray="3 3" />
+                stroke="#eef2f7" strokeDasharray="3 4" />
               <text x={pad.left - 8} y={yScale(v) + 4} textAnchor="end" fontSize={10} fill="#94a3b8">
                 {v.toFixed(v >= 100 ? 0 : 1)} 万
               </text>
             </g>
           ))}
 
-          {/* 市场 P25-P75 带 */}
-          {bandPath && <path d={bandPath} fill={MARKET_GRAY} opacity={0.18} />}
+          {/* 市场 P25-P75 带：渐变填充 + 边沿淡描边 */}
+          {bandPath && <path d={bandPath} fill="url(#market-band)" stroke={MARKET_GRAY}
+            strokeOpacity={0.25} strokeWidth={0.6} />}
 
           {/* 市场 P50 虚线 */}
           {p50Path && (
             <path d={p50Path} fill="none" stroke={MARKET_GRAY} strokeWidth={1.5}
-              strokeDasharray="6 4" />
+              strokeDasharray="6 4" opacity={0.85} />
           )}
 
-          {/* 员工散点 */}
+          {/* 员工散点：带柔和阴影 */}
           {grades.map((g, gi) => {
             const emps = employees_by_grade[g] || [];
             const isHighlighted = highlightGrade === g;
             const noHighlight = highlightGrade == null;
-            const opacity = noHighlight ? 0.6 : isHighlighted ? 0.85 : 0.18;
-            const r = noHighlight ? 4 : isHighlighted ? 5 : 3.5;
+            const opacity = noHighlight ? 0.7 : isHighlighted ? 0.9 : 0.18;
+            const r = noHighlight ? 4 : isHighlighted ? 5.5 : 3.5;
             return emps.map((emp, ei) => {
-              // 同职级所有散点对齐在职级的垂直线上（不再做横向抖动）
               const cx = xScale(gi);
               const cy = yScale(emp.salary);
               return (
                 <circle key={`${g}-${ei}`} cx={cx} cy={cy} r={r}
                   fill={BRAND} opacity={opacity}
-                  style={{ cursor: 'pointer' }}
+                  filter="url(#dot-shadow)"
+                  style={{ cursor: 'pointer', transition: 'r 0.15s, opacity 0.15s' }}
                   onClick={() => onHighlight(g)}
                   onMouseEnter={() => setHover({ type: 'scatter', grade: g, emp, x: cx, y: cy })}
                   onMouseLeave={() => setHover(null)}
@@ -550,10 +687,11 @@ function DetailChart({ data, highlightGrade, onHighlight }: {
             });
           })}
 
-          {/* 公司中位连线（主线） */}
+          {/* 公司中位连线（主线，带柔和发光） */}
           {companyPath && (
-            <path d={companyPath} fill="none" stroke={MEDIAN_COLOR} strokeWidth={3}
-              strokeLinejoin="round" strokeLinecap="round" />
+            <path d={companyPath} fill="none" stroke={MEDIAN_COLOR} strokeWidth={2.5}
+              strokeLinejoin="round" strokeLinecap="round"
+              filter="url(#median-glow)" />
           )}
 
           {/* 小样本职级的连线用虚线连过去（补全视觉） */}
@@ -681,33 +819,6 @@ function DetailTooltip({ hover, data }: {
 // =========================================================================
 // 辅助组件
 // =========================================================================
-function SegmentedControl({ options, value, onChange }: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {options.map(opt => {
-        const active = opt.value === value;
-        return (
-          <button key={opt.value} onClick={() => onChange(opt.value)}
-            style={{
-              fontSize: 12, padding: '5px 14px', borderRadius: 6,
-              border: active ? '1px solid var(--blue, #3b82f6)' : '1px solid var(--border, #e5e7eb)',
-              background: active ? '#EFF6FF' : '#fff',
-              color: active ? 'var(--blue, #2563eb)' : 'var(--text-secondary, #475569)',
-              fontWeight: active ? 600 : 400,
-              cursor: 'pointer',
-            }}>
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -781,14 +892,6 @@ function EmptyHint({ text }: { text: string }) {
 // =========================================================================
 // 工具
 // =========================================================================
-function deviationColor(pct: number): string {
-  if (pct > 15) return DEV_COLORS.deepHigh.bg;
-  if (pct > 5) return DEV_COLORS.lightHigh.bg;
-  if (pct >= -5) return DEV_COLORS.neutral.bg;
-  if (pct >= -15) return DEV_COLORS.lightLow.bg;
-  return DEV_COLORS.deepLow.bg;
-}
-
 function tooltipStyle(idx: number, total: number): React.CSSProperties {
   const leftPct = ((idx + 0.5) / total) * 100;
   return {

@@ -167,7 +167,9 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                       <td style={devTd('center')}>{row.grade || '—'}</td>
                       <td style={devTd('left')}>{row.department || '—'}</td>
                       <td style={devTd('right')}>
-                        {row.company_grade_p50 ? Number(row.company_grade_p50).toLocaleString() : '—'}
+                        {row.company_grade_p50 != null
+                          ? Number(row.company_grade_p50).toLocaleString()
+                          : '—'}
                       </td>
                       <td style={devTd('right')}>{Number(row.market_p50).toLocaleString()}</td>
                       <td style={devTd('right')}>

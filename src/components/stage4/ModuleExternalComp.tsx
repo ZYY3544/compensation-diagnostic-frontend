@@ -116,10 +116,10 @@ export default function ModuleExternalComp({ data, insight, insightLoading, grad
                             style={{
                               padding: '8px', textAlign: 'center', background: bg, color, fontWeight,
                               cursor: 'default',
-                              // hover：仅用柔和外阴影 + 1px 同色细边，让单元格"轻轻浮起"，
-                              // 不再用粗黑描边
+                              // hover：品牌橙 2px 描边 + 同色柔光，在彩色单元格背景上够醒目，
+                              // 又不像之前的粗黑描边那么硬
                               boxShadow: isHover
-                                ? '0 6px 18px rgba(15,23,42,0.14), 0 0 0 1px rgba(15,23,42,0.10)'
+                                ? '0 0 0 2px #D85A30, 0 8px 20px rgba(216,90,48,0.25), 0 2px 6px rgba(15,23,42,0.08)'
                                 : undefined,
                               position: isHover ? 'relative' : undefined,
                               zIndex: isHover ? 1 : undefined,

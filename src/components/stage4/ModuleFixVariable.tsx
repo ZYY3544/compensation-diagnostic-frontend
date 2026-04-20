@@ -4,16 +4,27 @@ import ModuleShell, { ChartCard } from './ModuleShell';
 
 export default function ModuleFixVariable({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const [dept, setDept] = useState<string>('__all__');
+  const [func, setFunc] = useState<string>(''); // 职能筛选：默认空，初始化后取第一个
 
   const overallByGrade = data?.pay_mix_by_grade || [];
   const byDept = data?.pay_mix_by_dept || [];
   const byDeptGrade = data?.pay_mix_by_dept_grade || {};
+  const byFuncGrade = data?.pay_mix_by_func_grade || {};
   const departments = data?.departments || [];
+  const functions: string[] = data?.functions || [];
   const overallFix = data?.overall_fix_pct;
   const overallVar = data?.overall_var_pct;
 
+  // 初始化 func 到第一个可用职能
+  useEffect(() => {
+    if (!func && functions.length > 0) {
+      setFunc(functions[0]);
+    }
+  }, [func, functions]);
+
   // 根据筛选项切换数据源
   const byGrade = dept === '__all__' ? overallByGrade : (byDeptGrade[dept] || []);
+  const funcGradeRows: any[] = (func && byFuncGrade[func]) || [];
 
   // 副标题：整体固浮比 + 健康区间标记
   const subtitleParts: string[] = [];
@@ -98,6 +109,60 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
           </div>
         </ChartCard>
       )}
+
+      {/* 职能 × 职级 固浮比：公司 vs 市场对比 */}
+      {funcGradeRows.length > 0 && (() => {
+        // 自动生成 finding：挑出公司 vs 市场差距最大的职级
+        let maxDiffGrade = '';
+        let maxDiff = 0;
+        let maxDir: 'over' | 'under' = 'over';
+        for (const r of funcGradeRows) {
+          if (r.market_fix_pct == null) continue;
+          const diff = r.company_fix_pct - r.market_fix_pct;
+          if (Math.abs(diff) > Math.abs(maxDiff)) {
+            maxDiff = diff;
+            maxDiffGrade = r.grade;
+            maxDir = diff > 0 ? 'over' : 'under';
+          }
+        }
+        const funcFinding = maxDiffGrade
+          ? `${func}职能 ${maxDiffGrade} 的固定占比${maxDir === 'over' ? '高于' : '低于'}市场 ${Math.abs(maxDiff)} 个百分点，激励结构${maxDir === 'over' ? '偏保守' : '偏进取'}`
+          : `${func}职能 vs 市场固浮比对比`;
+
+        return (
+          <ChartCard title="公司 vs 市场 固浮比对比" finding={funcFinding}>
+            {functions.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Dropdown label="职能" value={func}
+                  options={functions.map(f => ({ value: f, label: f }))}
+                  onChange={setFunc} />
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height={Math.max(220, funcGradeRows.length * 70)}>
+              <BarChart data={funcGradeRows} layout="vertical" barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 11 }} domain={[0, 100]}
+                  tickFormatter={(v: number) => `${v}%`} />
+                <YAxis type="category" dataKey="grade" width={50} tick={{ fontSize: 11 }} />
+                <Tooltip
+                  formatter={(v: any, name: string) => v == null ? ['暂无', name] : [`${v}%`, name]} />
+                <Legend />
+                <Bar dataKey="company_fix_pct" name="公司-固定" stackId="company"
+                  fill="#3B82F6" maxBarSize={22} />
+                <Bar dataKey="company_var_pct" name="公司-浮动" stackId="company"
+                  fill="#F59E0B" maxBarSize={22} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="market_fix_pct" name="市场-固定" stackId="market"
+                  fill="#93C5FD" maxBarSize={22} />
+                <Bar dataKey="market_var_pct" name="市场-浮动" stackId="market"
+                  fill="#FCD34D" maxBarSize={22} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+              上条：公司内部该职级固浮比 · 下条：同职能同 Hay 职级的市场 P50 固浮比
+            </div>
+          </ChartCard>
+        );
+      })()}
 
       {byDept.length > 0 && dept === '__all__' && (
         <ChartCard title="各部门固浮比" finding={deptFinding}>

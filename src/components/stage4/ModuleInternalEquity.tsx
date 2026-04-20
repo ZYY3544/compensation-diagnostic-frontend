@@ -12,10 +12,25 @@ const TEXT_SUB = '#64748B';
 
 export default function ModuleInternalEquity({ data, insight, insightLoading }: { data: any; insight?: string; insightLoading?: boolean }) {
   const [salaryType, setSalaryType] = useState<'base' | 'tcc'>('base');
-  // 范围 filter：'__overall__' | 'dept:<name>' | 'func:<name>'
-  const [scope, setScope] = useState<string>('__overall__');
+  // 部门 filter：'__all__' | 部门名
+  const [dept, setDept] = useState<string>('__all__');
+  // 职能 filter：'__all__' | 职能名
+  const [func, setFunc] = useState<string>('__all__');
 
-  // 从 views 里按 salaryType + scope 切出当前视图
+  // 部门/职能互斥：选一个另一个自动重置，保证后端只需做单维度切片
+  const handleDeptChange = (v: string) => {
+    setDept(v);
+    if (v !== '__all__') setFunc('__all__');
+  };
+  const handleFuncChange = (v: string) => {
+    setFunc(v);
+    if (v !== '__all__') setDept('__all__');
+  };
+
+  // 组装 scope key 给 pickView（保持 views 结构不变）
+  const scope = dept !== '__all__' ? `dept:${dept}`
+    : func !== '__all__' ? `func:${func}`
+    : '__overall__';
   const view = pickView(data, salaryType, scope);
   const dispersion = view?.dispersion || data?.dispersion || [];
   const boxplot = view?.boxplot || data?.boxplot || [];
@@ -65,18 +80,20 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
       insight={insight}
       insightLoading={insightLoading}
     >
-      {/* 薪酬口径 + 范围（部门/职能）筛选 —— 对模块内所有图表生效 */}
-      {data?.views && (
-        <ModuleToolbar
-          salaryType={salaryType} onSalaryChange={setSalaryType}
-          scope={scope} onScopeChange={setScope}
-          departments={data?.departments || []}
-          functions={data?.functions || []}
-        />
-      )}
-
       {boxplot.length > 0 && (
-        <BoxPlotSection boxplot={boxplot} finding={boxFinding} />
+        <BoxPlotSection
+          boxplot={boxplot}
+          finding={boxFinding}
+          toolbar={data?.views ? (
+            <ModuleToolbar
+              salaryType={salaryType} onSalaryChange={setSalaryType}
+              dept={dept} onDeptChange={handleDeptChange}
+              func={func} onFuncChange={handleFuncChange}
+              departments={data?.departments || []}
+              functions={data?.functions || []}
+            />
+          ) : null}
+        />
       )}
 
       {dispersion.length > 0 && (
@@ -274,26 +291,31 @@ function pickView(data: any, salaryType: 'base' | 'tcc', scope: string) {
   return data.views.overall?.[salaryType];
 }
 
-function ModuleToolbar({ salaryType, onSalaryChange, scope, onScopeChange, departments, functions }: {
+function ModuleToolbar({ salaryType, onSalaryChange, dept, onDeptChange, func, onFuncChange, departments, functions }: {
   salaryType: 'base' | 'tcc';
   onSalaryChange: (v: 'base' | 'tcc') => void;
-  scope: string;
-  onScopeChange: (v: string) => void;
+  dept: string;
+  onDeptChange: (v: string) => void;
+  func: string;
+  onFuncChange: (v: string) => void;
   departments: string[];
   functions: string[];
 }) {
-  // 范围下拉：公司整体 + 各部门 + 各职能
-  const scopeOptions = [
-    { value: '__overall__', label: '公司整体' },
-    ...departments.map(d => ({ value: `dept:${d}`, label: `部门：${d}` })),
-    ...functions.map(f => ({ value: `func:${f}`, label: `职能：${f}` })),
+  const deptOptions = [
+    { value: '__all__', label: '全部' },
+    ...departments.map(d => ({ value: d, label: d })),
+  ];
+  const funcOptions = [
+    { value: '__all__', label: '全部' },
+    ...functions.map(f => ({ value: f, label: f })),
   ];
   return (
-    <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
       <Dropdown label="薪酬口径" value={salaryType}
         options={[{ value: 'base', label: '年基本工资' }, { value: 'tcc', label: '年度总现金' }]}
         onChange={v => onSalaryChange(v as 'base' | 'tcc')} />
-      <Dropdown label="范围" value={scope} options={scopeOptions} onChange={onScopeChange} />
+      <Dropdown label="部门" value={dept} options={deptOptions} onChange={onDeptChange} />
+      <Dropdown label="职能" value={func} options={funcOptions} onChange={onFuncChange} />
     </div>
   );
 }
@@ -382,7 +404,9 @@ interface BoxClipped extends BoxRaw {
   whiskerHigh: number;
 }
 
-function BoxPlotSection({ boxplot, finding }: { boxplot: BoxRaw[]; finding: string }) {
+function BoxPlotSection({ boxplot, finding, toolbar }: {
+  boxplot: BoxRaw[]; finding: string; toolbar?: React.ReactNode;
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   // Tukey 1.5×IQR 裁剪：盒子=P25-P75，须线最远到 ±1.5×IQR，超出的标为离群
@@ -421,6 +445,7 @@ function BoxPlotSection({ boxplot, finding }: { boxplot: BoxRaw[]; finding: stri
 
   return (
     <ChartCard title="各层级薪酬分布" finding={finding}>
+      {toolbar}
       <div style={{ position: 'relative' }}>
         <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} style={{ overflow: 'visible' }}>
           <defs>

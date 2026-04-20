@@ -19,7 +19,9 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
   const view = pickView(data, salaryType, scope);
   const dispersion = view?.dispersion || data?.dispersion || [];
   const boxplot = view?.boxplot || data?.boxplot || [];
-  const deviation = view?.deviation_matrix || data?.deviation_matrix || { departments: [], grades: [], values: [] };
+  const gradeDeptMedians = view?.grade_dept_medians || data?.grade_dept_medians || {
+    grades: [], departments: [], values: [], overall_medians: [],
+  };
   const highCount = view?.high_dispersion_count ?? data?.high_dispersion_count ?? 0;
   const totalGrades = dispersion.length;
 
@@ -55,22 +57,6 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
     }
   }
 
-  // 偏离度矩阵发现：偏离度 > 15% 的单元格数量
-  let devFinding = '';
-  if (deviation.values?.length > 0) {
-    let severe = 0, moderate = 0;
-    for (const row of deviation.values) {
-      for (const v of row) {
-        if (v == null) continue;
-        if (Math.abs(v) > 15) severe++;
-        else if (Math.abs(v) > 8) moderate++;
-      }
-    }
-    const parts: string[] = [];
-    if (severe) parts.push(`${severe} 格偏离严重（>15%）`);
-    if (moderate) parts.push(`${moderate} 格偏离中等（8-15%）`);
-    devFinding = parts.length > 0 ? parts.join('，') : '各部门职级组合薪酬均衡';
-  }
 
   return (
     <ModuleShell
@@ -126,42 +112,154 @@ export default function ModuleInternalEquity({ data, insight, insightLoading }: 
         </ChartCard>
       )}
 
-      {deviation.departments.length > 0 && (
-        <ChartCard title="部门 × 职级 薪酬偏离度" finding={devFinding}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>部门</th>
-                  {deviation.grades.map((g: string) => (
-                    <th key={g} style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>{g}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {deviation.departments.map((dept: string, di: number) => (
-                  <tr key={dept}>
-                    <td style={{ padding: '8px', fontWeight: 500 }}>{dept}</td>
-                    {(deviation.values[di] || []).map((val: number | null, gi: number) => {
-                      const bg = val == null ? '#F9FAFB'
-                        : Math.abs(val) > 15 ? '#FEE2E2'
-                        : Math.abs(val) > 8 ? '#FEF3C7'
-                        : '#D1FAE5';
-                      return (
-                        <td key={gi} style={{ padding: '8px', textAlign: 'center', background: bg, fontWeight: 500 }}>
-                          {val != null ? `${val > 0 ? '+' : ''}${val}%` : '—'}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </ChartCard>
+      {gradeDeptMedians.grades.length > 0 && gradeDeptMedians.departments.length > 0 && (
+        <GradeDeptMatrix data={gradeDeptMedians} />
       )}
     </ModuleShell>
   );
+}
+
+// =========================================================================
+// 职级 × 部门 中位值矩阵：行=职级，列=部门，最右列=公司整体中位
+// 支持"绝对值"和"相对比例"两种显示模式切换
+// =========================================================================
+interface GDMatrixData {
+  grades: string[];
+  departments: string[];
+  values: (number | null)[][];        // [gradeIdx][deptIdx] 绝对中位
+  overall_medians: (number | null)[]; // [gradeIdx] 公司整体中位
+}
+
+function GradeDeptMatrix({ data }: { data: GDMatrixData }) {
+  const [mode, setMode] = useState<'absolute' | 'relative'>('absolute');
+
+  const { grades, departments, values, overall_medians } = data;
+
+  const fmtMoney = (v: number) => v >= 10000
+    ? `${(v / 10000).toFixed(v >= 1000000 ? 0 : 1)}万`
+    : `${Math.round(v).toLocaleString()}`;
+
+  // 相对比例颜色：< 0.9 偏低红，0.9-1.1 绿，1.1-1.3 浅橙，> 1.3 深橙
+  const ratioColor = (r: number): { bg: string; fg: string } => {
+    if (r < 0.9) return { bg: '#FEE2E2', fg: '#991B1B' };
+    if (r <= 1.1) return { bg: '#D1FAE5', fg: '#065F46' };
+    if (r <= 1.3) return { bg: '#FED7AA', fg: '#9A3412' };
+    return { bg: '#FEF2EE', fg: '#C2410C' };
+  };
+
+  const finding = (() => {
+    // 找偏离最大的格子
+    let maxAbs = 0;
+    let maxCell = '';
+    for (let gi = 0; gi < grades.length; gi++) {
+      const overall = overall_medians[gi];
+      if (!overall) continue;
+      for (let di = 0; di < departments.length; di++) {
+        const v = values[gi]?.[di];
+        if (v == null) continue;
+        const ratio = v / overall;
+        const abs = Math.abs(ratio - 1);
+        if (abs > maxAbs) {
+          maxAbs = abs;
+          maxCell = `${grades[gi]} 的 ${departments[di]}（${ratio > 1 ? '+' : '-'}${Math.round(abs * 100)}%）`;
+        }
+      }
+    }
+    return maxCell ? `偏离最大的是 ${maxCell}` : '各部门职级组合薪酬均衡';
+  })();
+
+  return (
+    <ChartCard title="职级 × 部门 薪酬中位对比" finding={finding}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <Dropdown label="显示" value={mode}
+          options={[
+            { value: 'absolute', label: '绝对值' },
+            { value: 'relative', label: '相对整体中位' },
+          ]}
+          onChange={v => setMode(v as 'absolute' | 'relative')} />
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={matrixTh('left', 72)}>职级</th>
+              {departments.map(d => (
+                <th key={d} style={matrixTh('center')}>{d}</th>
+              ))}
+              <th style={{ ...matrixTh('center', 110),
+                borderLeft: '2px solid #E2E8F0',
+                background: '#F8FAFC',
+                color: TEXT_PRIMARY, fontWeight: 600 }}>公司整体</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grades.map((g, gi) => {
+              const overall = overall_medians[gi];
+              return (
+                <tr key={g}>
+                  <td style={matrixTd('left', 600)}>{g}</td>
+                  {departments.map((_d, di) => {
+                    const v = values[gi]?.[di];
+                    if (v == null) {
+                      return <td key={di} style={matrixTd('center', 400, '#F9FAFB', TEXT_MUTED)}>—</td>;
+                    }
+                    if (mode === 'absolute') {
+                      return <td key={di} style={matrixTd('center', 500)}>{fmtMoney(v)}</td>;
+                    }
+                    // 相对比例
+                    if (!overall) {
+                      return <td key={di} style={matrixTd('center', 400, '#F9FAFB', TEXT_MUTED)}>—</td>;
+                    }
+                    const ratio = v / overall;
+                    const { bg, fg } = ratioColor(ratio);
+                    const signed = ratio > 1 ? `+${Math.round((ratio - 1) * 100)}%` : `${Math.round((ratio - 1) * 100)}%`;
+                    return (
+                      <td key={di} style={matrixTd('center', 600, bg, fg)}>
+                        {signed}
+                      </td>
+                    );
+                  })}
+                  <td style={{
+                    ...matrixTd('center', 700),
+                    borderLeft: '2px solid #E2E8F0',
+                    background: '#F8FAFC',
+                  }}>
+                    {overall != null ? fmtMoney(overall) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 8 }}>
+        {mode === 'absolute'
+          ? '单元格 = 该部门在该职级的中位薪酬（绝对数）；最右列 = 不分部门的整体中位'
+          : '单元格 = 该部门中位 / 整体中位 - 1（百分比偏离），+ 偏高 / - 偏低'}
+      </div>
+    </ChartCard>
+  );
+}
+
+function matrixTh(align: 'left' | 'center' | 'right', width?: number): React.CSSProperties {
+  return {
+    padding: '8px 10px', textAlign: align,
+    color: TEXT_MUTED, fontWeight: 500, fontSize: 11,
+    borderBottom: '1px solid #E2E8F0',
+    ...(width ? { width } : {}),
+  };
+}
+
+function matrixTd(align: 'left' | 'center' | 'right',
+                  fontWeight: number = 400,
+                  bg: string = 'transparent',
+                  color: string = TEXT_PRIMARY): React.CSSProperties {
+  return {
+    padding: '10px', textAlign: align,
+    fontWeight, background: bg, color,
+    borderBottom: '1px solid #F1F5F9',
+  };
 }
 
 // =========================================================================

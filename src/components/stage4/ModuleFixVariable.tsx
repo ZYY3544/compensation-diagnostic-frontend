@@ -90,11 +90,11 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
               <YAxis tick={{ fontSize: 11 }} domain={[0, 100]}
                 tickFormatter={(v: number) => `${v}%`} />
               <Tooltip
-                formatter={(v: any, name: string, ctx: any) => {
+                formatter={((v: any, name: any, ctx: any) => {
                   const row = ctx?.payload || {};
                   const abs = name === '固定薪酬' ? row.fixed : row.variable;
                   return [`${v}%  ·  ¥${Number(abs || 0).toLocaleString()}`, name];
-                }} />
+                }) as any} />
               <Legend />
               <Bar dataKey="fix_pct" name="固定薪酬" stackId="a" fill="#3B82F6" maxBarSize={36} />
               <Bar dataKey="var_pct" name="浮动薪酬" stackId="a" fill="#F59E0B" maxBarSize={36} radius={[4, 4, 0, 0]} />
@@ -145,7 +145,7 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
                   tickFormatter={(v: number) => `${v}%`} />
                 <YAxis type="category" dataKey="grade" width={50} tick={{ fontSize: 11 }} />
                 <Tooltip
-                  formatter={(v: any, name: string) => v == null ? ['暂无', name] : [`${v}%`, name]} />
+                  formatter={((v: any, name: any) => v == null ? ['暂无', name] : [`${v}%`, name]) as any} />
                 <Legend />
                 <Bar dataKey="company_fix_pct" name="公司-固定" stackId="company"
                   fill="#3B82F6" maxBarSize={22} />
@@ -173,11 +173,11 @@ export default function ModuleFixVariable({ data, insight, insightLoading }: { d
                 tickFormatter={(v: number) => `${v}%`} />
               <YAxis type="category" dataKey="department" width={90} tick={{ fontSize: 11 }} />
               <Tooltip
-                formatter={(v: any, name: string, ctx: any) => {
+                formatter={((v: any, name: any, ctx: any) => {
                   const row = ctx?.payload || {};
                   const abs = name === '固定' ? row.fixed : row.variable;
                   return [`${v}%  ·  ¥${Number(abs || 0).toLocaleString()}`, name];
-                }} />
+                }) as any} />
               <Legend />
               <Bar dataKey="fix_pct" name="固定" stackId="a" fill="#3B82F6" maxBarSize={28} />
               <Bar dataKey="var_pct" name="浮动" stackId="a" fill="#F59E0B" maxBarSize={28} radius={[0, 4, 4, 0]} />

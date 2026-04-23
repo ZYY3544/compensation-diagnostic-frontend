@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from './components/layout/Sidebar';
-import TopNav from './components/layout/TopNav';
 import Workspace, { type WorkspaceMode } from './components/layout/Workspace';
 import WelcomeView from './components/layout/WelcomeView';
 import SparkyPanel from './components/layout/SparkyPanel';
@@ -648,11 +647,10 @@ function AppInner() {
     : '业务访谈';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
-      {/* 顶部菜单栏 —— 给浏览器 chrome 让出缓冲，放品牌 + 用户菜单（预留登录入口）*/}
-      <TopNav userName="用户" userRole="HR" />
-      {/* 三栏主内容 —— position:relative 让 Workspace 全屏时的 absolute 定位锚定到这一行而非 viewport，
-          否则 top:0 会跑到 TopNav 下面，把右上角全屏切换按钮顶没 */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
+      {/* 顶部 TopNav 已经被外层 WorkspaceShell 接管（含工具切换 + 用户菜单），
+          诊断模块自己不再画顶栏 */}
+      {/* 三栏主内容 —— position:relative 让 Workspace 全屏时的 absolute 定位锚定到这一行而非 viewport */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
       {/* 左侧边栏（可收起） */}
       {sidebarOpen && (

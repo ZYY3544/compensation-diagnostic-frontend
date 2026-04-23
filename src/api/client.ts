@@ -6,6 +6,44 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({ baseURL: API_BASE });
 
+// Auth token 自动塞 Authorization 头
+const TOKEN_KEY = 'mx_token';
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+api.interceptors.request.use(config => {
+  const t = getToken();
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
+});
+
+// 401 → 清 token 跳登录页
+api.interceptors.response.use(
+  r => r,
+  err => {
+    if (err?.response?.status === 401 && typeof window !== 'undefined') {
+      setToken(null);
+      const path = window.location.pathname;
+      if (path !== '/login' && path !== '/register') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(err);
+  }
+);
+
+// ---------- Auth API ----------
+export const registerApi = (data: { email: string; password: string; display_name?: string; company_name?: string }) =>
+  api.post('/auth/register', data);
+export const loginApi = (data: { email: string; password: string }) =>
+  api.post('/auth/login', data);
+export const fetchMe = () => api.get('/auth/me');
+
 export const createSession = () => api.post('/sessions/');
 
 export const uploadFile = (sessionId: string, file: File) => {

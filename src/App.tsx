@@ -700,8 +700,16 @@ function AppInner() {
           <ToolGallery
             onSelectTool={(key) => {
               if (key === 'diagnosis') {
-                // 留在当前 App，关闭 gallery 回到 Sparky 对话页
+                // 关闭 gallery 并立即触发完整诊断流程（等价于原来的 onStartDiagnosis）
                 setShowToolGallery(false);
+                flow.reset();
+                setMessages([]);
+                setParseResult(null);
+                setReportData(null);
+                setSkillResult(null);
+                setMappingState(null);
+                addMsg({ role: 'user', text: '做一次完整的薪酬诊断' });
+                dispatchSkill('full_diagnosis', '做一次完整的薪酬诊断');
               } else if (key === 'je') {
                 nav('/je');
               }

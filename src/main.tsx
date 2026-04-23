@@ -8,6 +8,7 @@ import RegisterPage from './auth/RegisterPage';
 import ProtectedRoute from './auth/ProtectedRoute';
 import WorkspaceShell from './layout/WorkspaceShell';
 import App from './App';
+import JeApp from './je/JeApp';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -19,7 +20,8 @@ createRoot(document.getElementById('root')!).render(
           <Route element={<ProtectedRoute><WorkspaceShell /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/diagnosis" replace />} />
             <Route path="/diagnosis/*" element={<App />} />
-            {/* 未来：/je/* /design/* /assessment/* */}
+            <Route path="/je/*" element={<JeApp />} />
+            {/* 未来：/design/* /assessment/* */}
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

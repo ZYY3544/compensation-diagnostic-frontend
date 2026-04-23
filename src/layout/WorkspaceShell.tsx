@@ -24,7 +24,7 @@ interface Tool {
 
 const TOOLS: Tool[] = [
   { key: 'diagnosis',  path: '/diagnosis',  icon: '📊', name: '薪酬诊断',     desc: '上传薪酬数据 → 5 模块全面体检', ready: true },
-  { key: 'je',         path: '/je',         icon: '🎯', name: '岗位价值评估', desc: '基于 Hay 体系评估岗位价值',     ready: false },
+  { key: 'je',         path: '/je',         icon: '🎯', name: '岗位价值评估', desc: '基于 Hay 体系评估岗位价值',     ready: true },
   { key: 'design',     path: '/design',     icon: '🎨', name: '薪酬设计',     desc: '生成调薪方案 / 薪酬带宽',       ready: false },
   { key: 'assessment', path: '/assessment', icon: '🧠', name: '人才测评',     desc: '心理测评 + 发展建议',           ready: false },
 ];

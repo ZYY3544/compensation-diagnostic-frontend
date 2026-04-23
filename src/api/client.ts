@@ -107,6 +107,50 @@ export const getReportPdfUrl = (sessionId: string) => {
   return `${base}/report/${sessionId}/export-pdf`;
 };
 
+// ===== JE (Job Evaluation) API =====
+export interface JeJob {
+  id: string;
+  title: string;
+  department: string | null;
+  function: string;
+  jd_text: string;
+  factors: Record<string, string> | null;
+  result: {
+    kh_score?: number;
+    ps_score?: number;
+    acc_score?: number;
+    total_score?: number;
+    job_grade?: number;
+    profile?: string | null;
+    pk_reasoning?: string;
+    convergence_stats?: any;
+    match_score?: number | null;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const jeListFunctions = () =>
+  api.get<{ catalog: Record<string, string[]> }>('/je/functions');
+
+export const jeListJobs = () =>
+  api.get<{ jobs: JeJob[] }>('/je/jobs');
+
+export const jeCreateJob = (data: { title: string; function: string; department?: string; jd_text: string }) =>
+  api.post<{ job: JeJob }>('/je/jobs', data);
+
+export const jeGetJob = (jobId: string) =>
+  api.get<{ job: JeJob }>(`/je/jobs/${jobId}`);
+
+export const jeUpdateJd = (jobId: string, jdText: string) =>
+  api.patch<{ job: JeJob }>(`/je/jobs/${jobId}/jd`, { jd_text: jdText });
+
+export const jeUpdateFactors = (jobId: string, factors: Record<string, string>) =>
+  api.patch<{ job: JeJob }>(`/je/jobs/${jobId}/factors`, { factors });
+
+export const jeDeleteJob = (jobId: string) =>
+  api.delete<{ ok: boolean }>(`/je/jobs/${jobId}`);
+
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>
   api.get('/skill/registry', { params: mode ? { mode } : undefined });

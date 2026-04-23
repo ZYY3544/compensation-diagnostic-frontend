@@ -11,7 +11,6 @@ import DataConfirm from './components/stage2/DataConfirm';
 import ReportView from './components/stage4/ReportView';
 import { createSession, uploadFile, confirmFieldMapping, runAnalysis, getReport, getDiagnosisSummary, getDiagnosisAdvice, getSkillRegistry, invokeSkill, classifyIntent } from './api/client';
 import CardRenderer from './components/cards/CardRenderer';
-import PixelCat from './components/shared/PixelCat';
 import FieldMappingPanel, { type MappingSuggestion, type StandardField } from './components/stage1/FieldMappingPanel';
 import { nextMsgId } from './lib/msgId';
 import { appendProcessingStep, finishProcessing, failProcessing } from './lib/processing';

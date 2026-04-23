@@ -9,7 +9,7 @@ export interface ConversationItem {
 interface Props {
   conversations?: ConversationItem[];
   onNewChat?: () => void;
-  onStartDiagnosis?: () => void;
+  onOpenToolGallery?: () => void;
   onSelect?: (id: string) => void;
   userName?: string;
   userRole?: string;
@@ -26,15 +26,15 @@ function IconCompose({ size = 18 }: { size?: number }) {
   );
 }
 
-// BarChart3 —— 用于"薪酬诊断"
-function IconBarChart({ size = 18 }: { size?: number }) {
+// LayoutGrid —— 用于"Tool"（工具集合入口）
+function IconGrid({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3v18h18" />
-      <rect x="7" y="12" width="3" height="6" rx="0.5" />
-      <rect x="12" y="8" width="3" height="10" rx="0.5" />
-      <rect x="17" y="4" width="3" height="14" rx="0.5" />
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   );
 }
@@ -71,7 +71,7 @@ function SidebarButton({
 }
 
 export default function Sidebar({
-  conversations = [], onNewChat, onStartDiagnosis, onSelect,
+  conversations = [], onNewChat, onOpenToolGallery, onSelect,
   userName = '用户', userRole = 'HR',
 }: Props) {
   return (
@@ -82,10 +82,10 @@ export default function Sidebar({
       display: 'flex', flexDirection: 'column', color: 'var(--text-primary)',
       overflow: 'hidden',      // 内部对话列表用 flex:1 + overflowY:auto 独立滚，外框不跟着动
     }}>
-      {/* 主要操作区：新对话 + 薪酬诊断 */}
+      {/* 主要操作区：新对话 + Tool（工具集合） */}
       <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <SidebarButton icon={<IconCompose />} label="新对话" onClick={onNewChat} />
-        <SidebarButton icon={<IconBarChart />} label="薪酬诊断" onClick={onStartDiagnosis} />
+        <SidebarButton icon={<IconGrid />} label="Tool" onClick={onOpenToolGallery} />
       </div>
 
       {/* 最近 */}

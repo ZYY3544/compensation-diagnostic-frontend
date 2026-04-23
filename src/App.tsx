@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
+import ToolGallery from './components/layout/ToolGallery';
 import Workspace, { type WorkspaceMode } from './components/layout/Workspace';
 import WelcomeView from './components/layout/WelcomeView';
 import SparkyPanel from './components/layout/SparkyPanel';
@@ -103,6 +105,8 @@ function AppInner() {
   })();
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('hidden');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showToolGallery, setShowToolGallery] = useState(false);
+  const nav = useNavigate();
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -666,18 +670,9 @@ function AppInner() {
             setReportData(null);
             setMappingState(null);
             setConversationKey(k => k + 1);
+            setShowToolGallery(false);
           }}
-          onStartDiagnosis={() => {
-            // 重置 flow + 清数据，dispatchSkill 内部会 flow.start(FULL_DIAGNOSIS_FLOW)
-            flow.reset();
-            setMessages([]);
-            setParseResult(null);
-            setReportData(null);
-            setSkillResult(null);
-            setMappingState(null);
-            addMsg({ role: 'user', text: '做一次完整的薪酬诊断' });
-            dispatchSkill('full_diagnosis', '做一次完整的薪酬诊断');
-          }}
+          onOpenToolGallery={() => setShowToolGallery(true)}
           userName="用户"
           userRole="HR"
         />
@@ -704,24 +699,37 @@ function AppInner() {
           </div>
         </div>
 
-        {/* 对话内容 —— 永远渲染 SparkyPanel，输入框常驻底部；欢迎态时把 hero 放到消息区 */}
-        <SparkyPanel
-          messages={messages}
-          setMessages={setMessages}
-          sessionId={sessionId}
-          visible={true}
-          onClose={() => {}}
-          onNonChatSend={handleNonChatSend}
-          embedded={true}
-          welcomeHero={isWelcome ? (
-            <WelcomeView
-              chips={skillChips.map((c: any) => ({
-                label: c.label,
-                onClick: () => handleChipClick(c.skillKey),
-              }))}
-            />
-          ) : undefined}
-        />
+        {/* 主内容：默认是 SparkyPanel；点 sidebar 的 Tool 后切到 ToolGallery */}
+        {showToolGallery ? (
+          <ToolGallery
+            onSelectTool={(key) => {
+              if (key === 'diagnosis') {
+                // 留在当前 App，关闭 gallery 回到 Sparky 对话页
+                setShowToolGallery(false);
+              } else if (key === 'je') {
+                nav('/je');
+              }
+            }}
+          />
+        ) : (
+          <SparkyPanel
+            messages={messages}
+            setMessages={setMessages}
+            sessionId={sessionId}
+            visible={true}
+            onClose={() => {}}
+            onNonChatSend={handleNonChatSend}
+            embedded={true}
+            welcomeHero={isWelcome ? (
+              <WelcomeView
+                chips={skillChips.map((c: any) => ({
+                  label: c.label,
+                  onClick: () => handleChipClick(c.skillKey),
+                }))}
+              />
+            ) : undefined}
+          />
+        )}
       </div>
 
       {/* 右侧工作台 */}

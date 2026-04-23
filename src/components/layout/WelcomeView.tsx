@@ -24,7 +24,7 @@ export default function WelcomeView({ chips = [] }: Props) {
       <PixelCat size={48} />
       <h1 className="welcome-title">你好，我是 Sparky</h1>
       <p className="welcome-sub">
-        你的 AI 薪酬顾问。不管是做一次完整的薪酬诊断，还是快速查一个岗位的市场行情，直接跟我说就行。
+        你的 AI HR 专业顾问。从薪酬体系、岗位价值，到组织设计与人才发展，复杂的 HR 问题都可以直接问我。
       </p>
       {chips.length > 0 && (
         <div className="welcome-chips">

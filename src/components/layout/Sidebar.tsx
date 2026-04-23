@@ -10,9 +10,21 @@ interface Props {
   conversations?: ConversationItem[];
   onNewChat?: () => void;
   onOpenToolGallery?: () => void;
+  onCollapse?: () => void;
   onSelect?: (id: string) => void;
   userName?: string;
   userRole?: string;
+}
+
+// PanelLeft —— sidebar 收起按钮
+function IconCollapse({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+    </svg>
+  );
 }
 
 // Lucide 风格的 compose / edit 图标——用于"新对话"
@@ -71,7 +83,7 @@ function SidebarButton({
 }
 
 export default function Sidebar({
-  conversations = [], onNewChat, onOpenToolGallery, onSelect,
+  conversations = [], onNewChat, onOpenToolGallery, onCollapse, onSelect,
   userName = '用户', userRole = 'HR',
 }: Props) {
   return (
@@ -82,8 +94,26 @@ export default function Sidebar({
       display: 'flex', flexDirection: 'column', color: 'var(--text-primary)',
       overflow: 'hidden',      // 内部对话列表用 flex:1 + overflowY:auto 独立滚，外框不跟着动
     }}>
+      {/* 顶部 toggle 按钮（收起 sidebar） */}
+      {onCollapse && (
+        <div style={{ padding: '12px 12px 4px', display: 'flex', justifyContent: 'flex-start' }}>
+          <button onClick={onCollapse}
+            aria-label="收起侧栏"
+            style={{
+              width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 'none', borderRadius: 8,
+              color: 'var(--text-secondary)', cursor: 'pointer',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+            <IconCollapse />
+          </button>
+        </div>
+      )}
+
       {/* 主要操作区：新对话 + Tool（工具集合） */}
-      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <SidebarButton icon={<IconCompose />} label="新对话" onClick={onNewChat} />
         <SidebarButton icon={<IconGrid />} label="Tool" onClick={onOpenToolGallery} />
       </div>

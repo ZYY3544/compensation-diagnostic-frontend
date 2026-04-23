@@ -123,10 +123,10 @@ function AppInner() {
   // 欢迎页 chip 的默认列表——首屏立即渲染，不用等后端 /skill/registry 的网络往返
   // 后端响应回来后由 useEffect 覆盖（字段一致时用户看不出切换）
   const [skillChips, setSkillChips] = useState<any[]>([
-    { icon: '🔍', label: '🔍 查一下市场薪酬水平',     skillKey: 'external_benchmark' },
-    { icon: '📊', label: '📊 做一次完整的薪酬诊断',   skillKey: 'full_diagnosis' },
-    { icon: '🤝', label: '🤝 候选人定薪建议',         skillKey: 'offer_check' },
-    { icon: '💰', label: '💰 调薪预算怎么分配',       skillKey: 'salary_simulation' },
+    { icon: '',  label: '查一下市场薪酬水平',     skillKey: 'external_benchmark' },
+    { icon: '',  label: '评估一个岗位的价值',     skillKey: 'job_evaluation' },
+    { icon: '',  label: '做一次完整的薪酬诊断',   skillKey: 'full_diagnosis' },
+    { icon: '',  label: '招聘候选人定薪怎么定',   skillKey: 'offer_check' },
   ]);
   // Skill 调用结果（供 CardRenderer 渲染）
   const [skillResult, setSkillResult] = useState<{
@@ -673,6 +673,7 @@ function AppInner() {
             setShowToolGallery(false);
           }}
           onOpenToolGallery={() => setShowToolGallery(true)}
+          onCollapse={() => setSidebarOpen(false)}
           userName="用户"
           userRole="HR"
         />
@@ -686,18 +687,14 @@ function AppInner() {
         borderRight: '1px solid var(--border)',
         overflow: 'hidden',     // 关键：防止内部消息累积撑破列宽，让 .sparky-messages 内部滚动
         height: '100%',         // 显式占满 flex-row 父高度
+        position: 'relative',   // 给浮动 SidebarToggle 一个定位锚点
       }}>
-        {/* Header —— 侧栏开关 + 小版 PixelCat + 品牌名 */}
-        <div style={{ height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--panel-bg)' }}>
-          <SidebarToggle open={sidebarOpen} onClick={() => setSidebarOpen(v => !v)} />
-          <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <PixelCat size={24} />
+        {/* Sidebar 收起时，主区左上角显示一个浮动 toggle 按钮（重新打开 sidebar 用） */}
+        {!sidebarOpen && (
+          <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 50 }}>
+            <SidebarToggle open={false} onClick={() => setSidebarOpen(true)} />
           </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>Sparky</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>AI 薪酬顾问</div>
-          </div>
-        </div>
+        )}
 
         {/* 主内容：默认是 SparkyPanel；点 sidebar 的 Tool 后切到 ToolGallery */}
         {showToolGallery ? (

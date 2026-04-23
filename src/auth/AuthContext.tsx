@@ -29,13 +29,20 @@ interface AuthState {
 
 const AuthCtx = createContext<AuthState | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [loading, setLoading] = useState(true);
+// 开发期开关：VITE_AUTH_DISABLED=true 时 mock admin 用户，跳过登录注册流程。
+// 上线前把变量改成 false（或删掉）即可启用真实登录。
+const AUTH_DISABLED = import.meta.env.VITE_AUTH_DISABLED === 'true';
+const ADMIN_USER: User = { id: 'usr_admin', email: 'admin@mingxi.local', display_name: '管理员' };
+const ADMIN_WORKSPACE: Workspace = { id: 'ws_admin', name: '铭曦管理员', company_name: '铭曦' };
 
-  // mount: 有 token 就 verify
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(AUTH_DISABLED ? ADMIN_USER : null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(AUTH_DISABLED ? ADMIN_WORKSPACE : null);
+  const [loading, setLoading] = useState(!AUTH_DISABLED);
+
+  // mount: 有 token 就 verify（AUTH_DISABLED 模式直接跳过）
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     const t = getToken();
     if (!t) {
       setLoading(false);
@@ -67,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    if (AUTH_DISABLED) return;
     setToken(null);
     setUser(null);
     setWorkspace(null);

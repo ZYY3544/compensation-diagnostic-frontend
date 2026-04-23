@@ -86,7 +86,7 @@ export default function Workspace({ mode, title, subtitle, children, onModeChang
         height: '100%',           // 撑满 flex-row 父高度，独立滚动
         overflowY: 'auto',        // 自己的滚动容器，不跟左侧对话区联动
         padding: '24px 28px',
-        background: '#f9fafb',
+        background: '#fff',
         borderLeft: '1px solid var(--border)',
         transition: isDragging ? 'none' : 'width 0.2s',
         position: isFullscreen ? 'absolute' : 'relative',

@@ -320,15 +320,12 @@ function DetailLayout({
       </div>
 
       {/* 右：Workspace 工作台（wide 模式默认 0.618 黄金比例，可拖拽分隔条） */}
-      {/* mode='narrow' 给主诊断的轻 skill 用（440 固定）；这里传 initialWidth
-          覆盖默认值，让 chat 占视觉主导（约 62%），跟主诊断 wide+sidebar 实际呈现的
-          "对话区窄但 workspace 没那么宽"的感觉对齐。
-          0.382 = 1 - 黄金；innerWidth*0.382 在 1440 屏≈550，足够候选卡三列下拉横排 */}
+      {/* 完全复用主诊断的 Workspace wide 模式：workspace 占黄金 0.618，
+          chat flex:1 占剩余，左右两栏之间可拖拽分隔条调宽窄 */}
       <Workspace
-        mode="narrow"
+        mode="wide"
         title={job.title}
         subtitle={`${job.department || '未分组'} · ${job.function}`}
-        initialWidth={Math.max(520, Math.round(window.innerWidth * 0.382))}
       >
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button onClick={onBack} style={{

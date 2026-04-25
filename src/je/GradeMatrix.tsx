@@ -15,6 +15,7 @@
 import { useMemo, useState } from 'react';
 import type { JeJob, JeAnomaly } from '../api/client';
 import JeSparkyChat from './JeSparkyChat';
+import Workspace from '../components/layout/Workspace';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
@@ -26,7 +27,6 @@ const NEUTRAL = '#94A3B8';
 
 const SPARSE_THRESHOLD = 10;
 const MATRIX_MIN_JOBS = 5;
-const CHAT_WIDTH = 380;
 
 interface Props {
   jobs: JeJob[];
@@ -57,14 +57,17 @@ export default function GradeMatrix({
 
   const useMatrix = evaluated.length >= MATRIX_MIN_JOBS;
 
+  // 复用主诊断的 Workspace 组件 → chat flex:1 占剩余 + workspace wide 黄金 0.618
+  // 跟主诊断 wide 模式完全一致；用户可拖拽分隔条调整宽度
+  const wsTitle = useMatrix ? '职级图谱' : evaluated.length > 0 ? '岗位列表' : (jobs.length === 0 ? '开始评估' : '评估中');
   return (
     <div style={{
       display: 'flex', height: '100%',
       background: '#FAFAFA',
     }}>
-      {/* ---- 左：Sparky 对话区 ---- */}
+      {/* ---- 左：Sparky 对话区（flex:1 占剩余） ---- */}
       <div style={{
-        width: CHAT_WIDTH, flexShrink: 0,
+        flex: 1, minWidth: 0,
         borderRight: '1px solid #E2E8F0', background: '#fff',
         display: 'flex', flexDirection: 'column',
         height: '100%', overflow: 'hidden',
@@ -79,8 +82,8 @@ export default function GradeMatrix({
         />
       </div>
 
-      {/* ---- 右：工作台 ---- */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 32px' }}>
+      {/* ---- 右：Workspace（wide 黄金，可拖拽） ---- */}
+      <Workspace mode="wide" title={wsTitle} subtitle={evaluated.length > 0 ? `${evaluated.length} 个岗位` : undefined}>
         {jobs.length === 0 ? (
           <RightEmptyHint onBatchUpload={onBatchUpload} onSingleEval={onSingleEval} />
         ) : evaluated.length === 0 ? (
@@ -92,18 +95,10 @@ export default function GradeMatrix({
             {anomalies.length > 0 && <AnomalyBar anomalies={anomalies} onJobSelect={onJobSelect} />}
 
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12,
+              display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12, gap: 8,
             }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
-                {useMatrix ? '职级图谱' : '岗位列表'}
-                <span style={{ marginLeft: 8, fontSize: 11, color: '#94A3B8', fontWeight: 400 }}>
-                  {evaluated.length} 个
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {useMatrix && <AxisToggle mode={axisMode} onChange={setAxisMode} />}
-                <button onClick={onBatchUpload} style={primaryBtn}>批量上传</button>
-              </div>
+              {useMatrix && <AxisToggle mode={axisMode} onChange={setAxisMode} />}
+              <button onClick={onBatchUpload} style={primaryBtn}>批量上传</button>
             </div>
 
             {useMatrix
@@ -120,7 +115,7 @@ export default function GradeMatrix({
             )}
           </>
         )}
-      </div>
+      </Workspace>
     </div>
   );
 }

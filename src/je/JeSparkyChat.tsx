@@ -22,22 +22,27 @@ interface Props {
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
   onJobByTitle: (title: string) => void;
+  /**
+   * 指定当前正在 detail 视图查看的岗位。给了之后开场消息变成对该岗位的
+   * 评估解释（PK reasoning），代替矩阵主视图的整体提示。
+   */
+  currentJob?: JeJob | null;
 }
 
-export default function JeSparkyChat({ jobs, anomalies, onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle }: Props) {
+export default function JeSparkyChat({ jobs, anomalies, onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle, currentJob }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: 'sparky', text: buildOpening(jobs, anomalies) },
+    { role: 'sparky', text: buildOpening(jobs, anomalies, currentJob) },
   ]);
   const [input, setInput] = useState('');
   const evaluated = jobs.filter(j => j.result?.job_grade != null);
   const initRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // jobs/anomalies 变化时重写开场白（只覆盖第一条）
+  // jobs / anomalies / currentJob 变化时重写开场白（只覆盖第一条）
   useEffect(() => {
     if (!initRef.current) { initRef.current = true; return; }
-    setMessages(prev => [{ role: 'sparky', text: buildOpening(jobs, anomalies) }, ...prev.slice(1)]);
-  }, [jobs.length, anomalies.length]);
+    setMessages(prev => [{ role: 'sparky', text: buildOpening(jobs, anomalies, currentJob) }, ...prev.slice(1)]);
+  }, [jobs.length, anomalies.length, currentJob?.id, currentJob?.result?.pk_reasoning]);
 
   // 新消息进来自动滚到底
   useEffect(() => {
@@ -156,7 +161,20 @@ function Chip({ label, onClick, highlight }: { label: string; onClick: () => voi
 
 // ---------- 状态 → 开场白 ----------
 
-function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[]): string {
+function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[], currentJob?: JeJob | null): string {
+  // detail 视图：开场用该岗位的评估推理，让用户在 chat 里直接看到"为什么是这个职级"
+  if (currentJob) {
+    const reasoning = (currentJob.result?.pk_reasoning || '').trim();
+    const grade = currentJob.result?.job_grade;
+    const total = currentJob.result?.total_score;
+    const head = `这是「${currentJob.title}」的评估解释${grade != null ? `（当前 G${grade} · ${total ?? '—'} 分）` : ''}：`;
+    if (reasoning) {
+      return `${head}\n\n${reasoning}\n\n右边是 3 套候选方案，可以直接调档位重算，或采用其他方案。`;
+    }
+    return `${head}\n\n这个岗位是 HR 手改因子算出来的，没有 LLM 推理记录。要重新生成 LLM 推理可以编辑 JD。`;
+  }
+
+  // 矩阵主视图
   const evaluated = jobs.filter(j => j.result?.job_grade != null);
   const high = anomalies.filter(a => a.severity === 'high').length;
 

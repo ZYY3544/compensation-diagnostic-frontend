@@ -20,6 +20,9 @@ import {
 import GradeMatrix from './GradeMatrix';
 import BatchUpload from './BatchUpload';
 import PersonJobMatch from './PersonJobMatch';
+import JeSparkyChat from './JeSparkyChat';
+import CandidateBoard from './CandidateBoard';
+import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 
 // ---- 8 因子合法档位（前端校验 & 下拉用，需与后端 enums.py 完全一致）----
@@ -157,20 +160,21 @@ export default function JeApp() {
             onPersonJobMatch={() => setView('match')}
           />
         ) : selectedJob ? (
-          <div style={{ height: '100%', overflowY: 'auto', padding: 24 }}>
-            <button onClick={() => setView('matrix')} style={{
-              padding: '6px 12px', fontSize: 12, marginBottom: 16,
-              background: 'transparent', border: '1px solid #E2E8F0', borderRadius: 6,
-              cursor: 'pointer', color: '#64748B',
-            }}>
-              ← 返回职级图谱
-            </button>
-            <JobDetail
-              job={selectedJob}
-              onUpdated={handleJobUpdated}
-              onDelete={() => handleDelete(selectedJob.id)}
-            />
-          </div>
+          <DetailLayout
+            job={selectedJob}
+            jobs={jobs}
+            anomalies={anomalies}
+            onUpdated={handleJobUpdated}
+            onDelete={() => handleDelete(selectedJob.id)}
+            onBack={() => setView('matrix')}
+            onBatchUpload={() => setShowBatchModal(true)}
+            onSingleEval={() => setShowNewModal(true)}
+            onPersonJobMatch={() => setView('match')}
+            onJobByTitle={(title) => {
+              const j = jobs.find(x => x.title === title);
+              if (j) handleSelectJob(j.id);
+            }}
+          />
         ) : (
           <CenterMsg>岗位已删除或不存在</CenterMsg>
         )}
@@ -281,6 +285,126 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, c
 }
 
 // ============================================================================
+// 岗位详情页布局：左 Sparky 对话 + 右 Workspace（wide 模式，黄金比例可拖拽）
+// ============================================================================
+function DetailLayout({
+  job, jobs, anomalies, onUpdated, onDelete, onBack,
+  onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle,
+}: {
+  job: JeJob;
+  jobs: JeJob[];
+  anomalies: JeAnomaly[];
+  onUpdated: (j: JeJob) => void;
+  onDelete: () => void;
+  onBack: () => void;
+  onBatchUpload: () => void;
+  onSingleEval: () => void;
+  onPersonJobMatch: () => void;
+  onJobByTitle: (title: string) => void;
+}) {
+  const [showJdEditor, setShowJdEditor] = useState(false);
+
+  return (
+    <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
+      {/* 左：Sparky 对话 — 进入 detail 后开场用该岗位的 pk_reasoning */}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', background: '#fff', borderRight: '1px solid var(--border, #E2E8F0)' }}>
+        <JeSparkyChat
+          jobs={jobs}
+          anomalies={anomalies}
+          currentJob={job}
+          onBatchUpload={onBatchUpload}
+          onSingleEval={onSingleEval}
+          onPersonJobMatch={onPersonJobMatch}
+          onJobByTitle={onJobByTitle}
+        />
+      </div>
+
+      {/* 右：Workspace 工作台（wide 模式默认 0.618 黄金比例，可拖拽分隔条） */}
+      <Workspace mode="wide" title={job.title} subtitle={`${job.department || '未分组'} · ${job.function}`}>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button onClick={onBack} style={{
+            padding: '4px 10px', fontSize: 11,
+            background: 'transparent', border: '1px solid #E2E8F0', borderRadius: 6,
+            cursor: 'pointer', color: '#64748B',
+          }}>
+            ← 返回职级图谱
+          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setShowJdEditor(true)} style={ghostBtnStyle}>编辑 JD</button>
+            <button onClick={onDelete} style={ghostBtnStyle}>删除岗位</button>
+          </div>
+        </div>
+
+        <CandidateBoard job={job} onUpdated={onUpdated} />
+
+        {showJdEditor && (
+          <JdEditorModal
+            job={job}
+            onClose={() => setShowJdEditor(false)}
+            onUpdated={(updated) => { onUpdated(updated); setShowJdEditor(false); }}
+          />
+        )}
+      </Workspace>
+    </div>
+  );
+}
+
+// JD 编辑 modal（替代原来的 JD 编辑 tab）
+function JdEditorModal({ job, onClose, onUpdated }: {
+  job: JeJob;
+  onClose: () => void;
+  onUpdated: (j: JeJob) => void;
+}) {
+  const [draft, setDraft] = useState(job.jd_text);
+  const [saving, setSaving] = useState(false);
+  const dirty = draft.trim() !== job.jd_text.trim();
+
+  const reEvaluate = async () => {
+    if (!confirm('修改 JD 会触发 LLM 重新评估，约需 5-15 秒。确认？')) return;
+    setSaving(true);
+    try {
+      const res = await jeUpdateJd(job.id, draft);
+      onUpdated(res.data.job);
+    } catch (e: any) {
+      alert(`评估失败：${e?.response?.data?.error || e.message}`);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <div style={{ ...modalStyle, maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>
+          编辑 JD —— {job.title}
+        </div>
+        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+          修改 JD 后点「重新评估」会让 LLM 重新抽取 PK 因子并刷新 8 因子和职级。
+        </div>
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={18}
+          style={{
+            width: '100%', padding: 12, fontSize: 13, lineHeight: 1.7,
+            border: '1px solid #E2E8F0', borderRadius: 8, outline: 'none',
+            fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={ghostBtnStyle}>关闭</button>
+          {dirty && (
+            <button onClick={reEvaluate} disabled={saving} style={primaryBtnStyle}>
+              {saving ? '评估中…' : '重新评估'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // 空状态 / 引导新增第一个岗位
 // 注：JE 主视图改成职级图谱后，空态由 GradeMatrix 自己的 EmptyState 接管。
 // 此函数保留供未来可能的弹窗引导复用，TypeScript 看到没引用会报 noUnusedLocals。
@@ -307,8 +431,11 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 }
 
 // ============================================================================
-// 岗位详情：顶部岗位卡 + 2 tabs（因子明细 / JD 编辑）
+// 岗位详情（旧版）：顶部岗位卡 + 3 tabs。已被 DetailLayout + CandidateBoard 取代。
+// 函数保留作占位（_useJobDetail holder）。
 // ============================================================================
+const _useJobDetail = () => JobDetail;
+void _useJobDetail;
 function JobDetail({ job, onUpdated, onDelete }: {
   job: JeJob;
   onUpdated: (j: JeJob) => void;

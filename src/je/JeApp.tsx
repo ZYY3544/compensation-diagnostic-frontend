@@ -23,6 +23,7 @@ import PersonJobMatch from './PersonJobMatch';
 import JeSparkyChat from './JeSparkyChat';
 import JeOnboarding from './JeOnboarding';
 import JeEntryView, { type EntryPath } from './JeEntryView';
+import CompareLegacyModal from './CompareLegacyModal';
 import CandidateBoard from './CandidateBoard';
 import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
@@ -74,6 +75,7 @@ export default function JeApp() {
   const [view, setView] = useState<ViewMode>('entry');
   const [showNewModal, setShowNewModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
   // Sparky 辅助校准：保存岗位后比对前后 anomalies，新增的告警通过这个 prop 推到 chat
   const [sparkyAlert, setSparkyAlert] = useState<{ id: string; text: string } | null>(null);
@@ -234,6 +236,7 @@ export default function JeApp() {
             onBatchUpload={() => setShowBatchModal(true)}
             onSingleEval={() => setShowNewModal(true)}
             onPersonJobMatch={() => setView('match')}
+            onCompareLegacy={() => setShowCompareModal(true)}
             sparkyAlert={sparkyAlert}
           />
         ) : selectedJob ? (
@@ -269,6 +272,12 @@ export default function JeApp() {
         <BatchUpload
           onClose={() => setShowBatchModal(false)}
           onComplete={handleBatchComplete}
+        />
+      )}
+      {showCompareModal && (
+        <CompareLegacyModal
+          onClose={() => setShowCompareModal(false)}
+          onJobSelect={handleSelectJob}
         />
       )}
     </div>
@@ -422,6 +431,8 @@ function DetailLayout({
           </div>
         </div>
 
+        <ConfidenceBanner job={job} onUploadJd={() => setShowJdEditor(true)} />
+
         <CandidateBoard job={job} onUpdated={onUpdated} />
 
         {showJdEditor && (
@@ -435,6 +446,52 @@ function DetailLayout({
     </div>
   );
 }
+
+// 详情页顶部的"评估深度"提示条 — 让用户一眼看到这个岗位的评估来源和置信度。
+// 三种来源：library (从 AI 库选)、list (批量上传)、single (单评 JD)
+// 置信度：仅 list 来源时才有 confidence 字段；library/single 默认置信度都高
+function ConfidenceBanner({ job, onUploadJd }: { job: JeJob; onUploadJd: () => void }) {
+  const result = (job.result || {}) as any;
+  const source = result.source as 'library' | 'list' | 'single' | undefined;
+  const confidence = result.confidence as 'high' | 'low' | undefined;
+
+  // 路径 B 没 JD（lite 评估）→ 黄色提示，鼓励补 JD
+  if (source === 'list' && confidence === 'low') {
+    return (
+      <div style={{
+        padding: '10px 14px', marginBottom: 16,
+        background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        fontSize: 12, color: '#92400E',
+      }}>
+        <div>
+          <strong>AI 推断结果</strong> — 这个岗位你只给了名称，没有 JD。结果是基于岗位名 + 职能推断的，置信度偏低。
+        </div>
+        <button onClick={onUploadJd} style={{
+          padding: '5px 12px', fontSize: 11, borderRadius: 4,
+          border: '1px solid #F59E0B', background: '#fff', color: '#92400E',
+          cursor: 'pointer', fontWeight: 500, flexShrink: 0,
+        }}>
+          补 JD 重评
+        </button>
+      </div>
+    );
+  }
+  // 从库选未改 → 灰色提示"待校准"
+  if (source === 'library' && !result.verified) {
+    return (
+      <div style={{
+        padding: '10px 14px', marginBottom: 16,
+        background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8,
+        fontSize: 12, color: '#475569',
+      }}>
+        <strong>AI 库推荐方案</strong> — 还未经你校准。看一遍下面的因子档位是否符合实际，调整任一档位即标"已校准"。
+      </div>
+    );
+  }
+  return null;
+}
+
 
 // JD 编辑 modal（替代原来的 JD 编辑 tab）
 function JdEditorModal({ job, onClose, onUpdated }: {

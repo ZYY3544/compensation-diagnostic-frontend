@@ -120,10 +120,9 @@ export default function JeEntryView({ onChoose }: Props) {
             label="我有岗位清单要批量评"
             duration="10–30 分钟"
             scenes="年度调薪 / 组织诊断 / 并购整合"
-            description="上传 Excel（岗位名 + 部门 + JD 可选），系统按字段完备度自动评估 — 有 JD 走深度分析，没 JD 也能根据岗位名推断 PK 档位。一键得到全公司职级图谱。"
+            description="上传 Excel — 只有岗位名是必填的。有 JD 的走深度分析，只有岗位名的 AI 自动推断 PK 档位（标'AI 推断'徽章）。一键得到全公司职级图谱。"
             cta="上传清单"
             onClick={() => onChoose('list')}
-            beta
           />
           <PathCard
             label="从零建立职级体系"

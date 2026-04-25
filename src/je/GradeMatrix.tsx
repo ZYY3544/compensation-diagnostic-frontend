@@ -38,6 +38,7 @@ interface Props {
   onBatchUpload: () => void;
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
+  onCompareLegacy: () => void;
   selectedJobId?: string | null;
   sparkyAlert?: { id: string; text: string } | null;
 }
@@ -45,7 +46,7 @@ interface Props {
 type AxisMode = 'department' | 'function';
 
 export default function GradeMatrix({
-  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, selectedJobId, sparkyAlert,
+  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, onCompareLegacy, selectedJobId, sparkyAlert,
 }: Props) {
   const [axisMode, setAxisMode] = useState<AxisMode>('department');
 
@@ -105,15 +106,14 @@ export default function GradeMatrix({
             {anomalies.length > 0 && <AnomalyBar anomalies={anomalies} onJobSelect={onJobSelect} />}
 
             {/* 主路径改成"从 AI 库选岗"后，矩阵右上不再出现"批量上传"主 CTA。
-                批量上传 / 单评 JD 等次要操作通过 Sparky chat 的 chip 触发（保留兜底）。
-                只留 X 轴切换给图谱本身。 */}
-            {useMatrix && (
-              <div style={{
-                display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12,
-              }}>
-                <AxisToggle mode={axisMode} onChange={setAxisMode} />
-              </div>
-            )}
+                只留：X 轴切换 + "对照现行体系"（评估完成后高频需求）。
+                批量上传 / 单评 JD 等次要操作通过 Sparky chat 的 chip 触发（保留兜底）。 */}
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12, gap: 8,
+            }}>
+              <button onClick={onCompareLegacy} style={ghostBtn}>对照现行体系</button>
+              {useMatrix && <AxisToggle mode={axisMode} onChange={setAxisMode} />}
+            </div>
 
             {useMatrix
               ? <Matrix evaluated={evaluated} axisMode={axisMode} selectedJobId={selectedJobId} onJobSelect={onJobSelect} />

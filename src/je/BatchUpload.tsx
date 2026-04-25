@@ -115,13 +115,14 @@ function IdleView({ onFileSelected, fileInputRef }: {
   return (
     <div>
       <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 16 }}>
-        Excel 表头需要包含以下列：<br />
+        只有<strong>岗位名</strong>是必填的，其他列按字段完备度自动决定评估深度：
         <ul style={{ margin: '8px 0', paddingLeft: 20 }}>
           <li><strong>岗位名 / 职位</strong>（必填）</li>
-          <li><strong>业务职能</strong>（必填，需在系统职能字典内）</li>
-          <li><strong>部门</strong>（可选）</li>
-          <li><strong>JD / 岗位说明书 / 岗位描述</strong>（可选，缺失会用职位名+职能给低置信度评估）</li>
+          <li><strong>JD / 岗位说明书</strong>（推荐）— 给了走深度分析，结果置信度高</li>
+          <li>业务职能（可选）— 没给会回落到"通用职能"，岗位名清晰时影响不大</li>
+          <li>部门（可选）</li>
         </ul>
+        没 JD 的岗位结果会标"AI 推断"，建议后续单独点进去补 JD 重评。
       </div>
 
       <div
@@ -200,8 +201,10 @@ function RunningView({ batch, parseErrors }: { batch: JeBatch; parseErrors: stri
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>当前评估中：</div>
           {inProgress.map(item => (
-            <div key={item.index} style={{ fontSize: 12, color: '#475569', padding: '4px 0' }}>
-              · {item.title} <span style={{ color: '#94A3B8' }}>({item.function})</span>
+            <div key={item.index} style={{ fontSize: 12, color: '#475569', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              · {item.title}
+              <span style={{ color: '#94A3B8', fontSize: 11 }}>({item.function})</span>
+              {item.has_jd === false && <DepthBadge depth="lite" />}
             </div>
           ))}
         </div>
@@ -212,15 +215,25 @@ function RunningView({ batch, parseErrors }: { batch: JeBatch; parseErrors: stri
 
 function DoneView({ batch, parseErrors, onClose }: { batch: JeBatch; parseErrors: string[]; onClose: () => void }) {
   const failed = batch.items.filter(i => i.status === 'failed');
+  const succeeded = batch.items.filter(i => i.status === 'done');
+  const liteCount = succeeded.filter(i => i.has_jd === false).length;
+  const deepCount = succeeded.length - liteCount;
+
   return (
     <div>
       <div style={{ fontSize: 14, color: '#0F172A', fontWeight: 600, marginBottom: 8 }}>
         评估完成
       </div>
-      <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.7 }}>
+      <div style={{ fontSize: 13, color: '#64748B', marginBottom: 12, lineHeight: 1.7 }}>
         共 {batch.total} 个岗位 · 成功 <strong style={{ color: '#059669' }}>{batch.completed}</strong>
         {batch.failed > 0 && <> · 失败 <strong style={{ color: '#DC2626' }}>{batch.failed}</strong></>}
       </div>
+      {liteCount > 0 && (
+        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 16, padding: '8px 12px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 6 }}>
+          <strong>{liteCount}</strong> 个岗位是 AI 根据岗位名推断的（标"AI 推断"徽章），<strong>{deepCount}</strong> 个走了 JD 深度分析。
+          建议进入图谱后，对置信度低的岗位补 JD 重新评估。
+        </div>
+      )}
 
       {failed.length > 0 && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: 12, marginBottom: 16, maxHeight: 240, overflowY: 'auto' }}>
@@ -276,6 +289,19 @@ function ErrorView({ message, parseErrors, onRetry }: { message: string | null; 
         background: '#fff', color: '#475569', fontSize: 13, cursor: 'pointer',
       }}>重新上传</button>
     </div>
+  );
+}
+
+function DepthBadge({ depth }: { depth: 'deep' | 'lite' }) {
+  const isLite = depth === 'lite';
+  return (
+    <span style={{
+      padding: '1px 6px', fontSize: 10, fontWeight: 500, borderRadius: 3,
+      background: isLite ? '#FEF3C7' : '#DBEAFE',
+      color: isLite ? '#92400E' : '#1E40AF',
+    }}>
+      {isLite ? 'AI 推断' : '深度分析'}
+    </span>
   );
 }
 

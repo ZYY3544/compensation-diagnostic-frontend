@@ -171,6 +171,8 @@ export interface JeBatchItem {
   title: string;
   function: string;
   department: string | null;
+  has_jd?: boolean;
+  function_inferred?: boolean;
   status: 'pending' | 'running' | 'done' | 'failed';
   job_id: string | null;
   model_used: string | null;
@@ -307,6 +309,45 @@ export const jeGetLibrary = () =>
 // 从库 entry 创建 Job（不调 LLM，毫秒级）
 export const jeCreateJobFromLibrary = (params: { lib_id: string; title?: string; department?: string }) =>
   api.post<{ job: JeJob }>('/je/jobs/from-library', params);
+
+// ----- 现行体系对比 -----
+export interface JeCompareMatched {
+  title: string;
+  current_grade: number | null;
+  raw_grade: string | null;
+  ai_grade: number | null;
+  gap: number | null;
+  status: 'aligned' | 'ai_higher' | 'ai_lower' | 'parse_failed';
+  match_strategy: 'dept+title' | 'title' | 'fuzzy' | '';
+  job_id: string;
+  job_title: string;
+  department: string | null;
+  function: string;
+}
+
+export interface JeCompareResult {
+  matched: JeCompareMatched[];
+  unmatched_legacy: Array<{ title: string; current_grade: number | null; raw_grade: string | null; department: string | null }>;
+  unmatched_ai: Array<{ job_id: string; title: string; department: string | null; ai_grade: number | null }>;
+  summary: {
+    total_legacy: number;
+    total_ai: number;
+    matched_count: number;
+    unmatched_legacy_count: number;
+    unmatched_ai_count: number;
+    aligned: number;
+    ai_higher: number;
+    ai_lower: number;
+    parse_failed: number;
+  };
+  parse_errors: string[];
+}
+
+export const jeCompare = (file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<JeCompareResult>('/je/compare', fd);
+};
 
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>

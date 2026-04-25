@@ -8,6 +8,13 @@ interface Props {
   subtitle?: string;
   children?: ReactNode;
   onModeChange?: (mode: WorkspaceMode) => void;
+  /**
+   * 可选：覆盖 mode 计算出的默认宽度。
+   * 使用场景：调用方有更明确的宽度期望（比如 JE 工具想让 chat 占视觉主导，
+   * 而不是主诊断 wide 黄金比例下 workspace 占主导）。
+   * 不传则按 mode 默认（wide=黄金, narrow=440）。
+   */
+  initialWidth?: number;
 }
 
 const MIN_WIDTH = 380;           // 最窄：保证卡片能渲染
@@ -26,26 +33,27 @@ function getDefaultWidth(mode: WorkspaceMode): number {
   return 440;  // narrow
 }
 
-export default function Workspace({ mode, title, subtitle, children, onModeChange }: Props) {
+export default function Workspace({ mode, title, subtitle, children, onModeChange, initialWidth }: Props) {
   // 可变宽度：用户拖过后记住；切 mode 时用默认值重置
-  const [width, setWidth] = useState<number>(() => getDefaultWidth(mode) || 440);
+  const [width, setWidth] = useState<number>(() => initialWidth ?? getDefaultWidth(mode) ?? 440);
   const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef(false);
 
-  // mode 切换时重置宽度
+  // mode / initialWidth 切换时重置宽度
   useEffect(() => {
     if (mode !== 'hidden' && mode !== 'fullscreen') {
-      setWidth(getDefaultWidth(mode));
+      setWidth(initialWidth ?? getDefaultWidth(mode));
     }
-  }, [mode]);
+  }, [mode, initialWidth]);
 
   // 窗口 resize 时，wide 模式按比例同步；narrow 保持固定值不动
+  // 注：传了 initialWidth 时不再随窗口同步（调用方已经决定具体宽度）
   useEffect(() => {
-    if (mode !== 'wide') return;
+    if (mode !== 'wide' || initialWidth != null) return;
     const onResize = () => setWidth(getDefaultWidth('wide'));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [mode]);
+  }, [mode, initialWidth]);
 
   // 拖拽监听
   useEffect(() => {

@@ -372,12 +372,11 @@ function JobDetail({ job, onUpdated, onDelete }: {
 }
 
 // ============================================================================
-// 评估解释：Sparky 风格的推理叙述 + 收敛过程 + 多解候选选择
+// 评估解释：Sparky 风格的推理叙述 + 多解候选选择
 // ============================================================================
 function ReasoningPanel({ job, onUpdated }: { job: JeJob; onUpdated: (j: JeJob) => void }) {
   const reasoning = job.result?.pk_reasoning || '';
   const candidates = job.result?.candidates || [];
-  const stats = job.result?.convergence_stats;
   const currentFactors = job.factors || {};
   const [applying, setApplying] = useState<number | null>(null);
 
@@ -418,31 +417,6 @@ function ReasoningPanel({ job, onUpdated }: { job: JeJob; onUpdated: (j: JeJob) 
             <div style={{ fontSize: 13, color: '#0F172A', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
               {reasoning}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 收敛过程 */}
-      {stats && Object.keys(stats).length > 0 && (
-        <div style={{
-          background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12,
-          padding: 16,
-        }}>
-          <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, fontWeight: 500 }}>
-            收敛过程
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#64748B', flexWrap: 'wrap' }}>
-            {stats.kh_combinations != null && <Pill label={`KH 收敛 ${stats.kh_combinations}`} />}
-            {stats.kh_combinations != null && stats.ps_kh_combinations != null && <Arrow />}
-            {stats.ps_kh_combinations != null && <Pill label={`PS+KH ${stats.ps_kh_combinations}`} />}
-            {stats.ps_kh_combinations != null && stats.candidates != null && <Arrow />}
-            {stats.candidates != null && <Pill label={`候选 ${stats.candidates}`} />}
-            {stats.candidates != null && stats.valid_solutions != null && <Arrow />}
-            {stats.valid_solutions != null && <Pill label={`合法解 ${stats.valid_solutions}`} active />}
-          </div>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8, lineHeight: 1.6 }}>
-            从 PK 锚定开始，按因素匹配规则一步步收敛 — 引擎只调一次 LLM 提取专业知识档位，
-            其余 7 个因子全部由规则推导得出。
           </div>
         </div>
       )}
@@ -568,24 +542,6 @@ function CandidateCard({ candidate, isCurrent, applying, onApply, index, totalCa
       )}
     </div>
   );
-}
-
-function Pill({ label, active }: { label: string; active?: boolean }) {
-  return (
-    <span style={{
-      padding: '3px 10px', borderRadius: 999,
-      background: active ? BRAND : '#fff',
-      color: active ? '#fff' : '#475569',
-      border: `1px solid ${active ? BRAND : '#E2E8F0'}`,
-      fontSize: 11, fontWeight: active ? 600 : 400,
-    }}>
-      {label}
-    </span>
-  );
-}
-
-function Arrow() {
-  return <span style={{ color: '#CBD5E1', fontSize: 11 }}>→</span>;
 }
 
 function factorsEqual(a: Record<string, string>, b: Record<string, string>): boolean {

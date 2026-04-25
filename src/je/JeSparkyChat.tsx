@@ -28,12 +28,29 @@ interface Props {
   onJobByTitle: (title: string) => void;
   /** detail 视图：开场 Sparky 解释这个岗位的评估 */
   currentJob?: JeJob | null;
+  /**
+   * 外部触发的告警消息（如保存岗位后检测到新异常）。每次值变化（即使文本相同，
+   * 用唯一 id 区分），都会让 Sparky 在 chat 里追加一条流式输出的提醒。
+   */
+  incomingAlert?: { id: string; text: string } | null;
 }
 
 export default function JeSparkyChat(props: Props) {
-  const { jobs, anomalies, currentJob } = props;
+  const { jobs, anomalies, currentJob, incomingAlert } = props;
   const [messages, setMessages] = useState<Message[]>([]);
   const lastSceneRef = useRef<string>('');
+  const lastAlertIdRef = useRef<string | null>(null);
+
+  // 外部告警注入：每次 incomingAlert.id 变化追加一条 Sparky 流式消息
+  useEffect(() => {
+    if (!incomingAlert || incomingAlert.id === lastAlertIdRef.current) return;
+    lastAlertIdRef.current = incomingAlert.id;
+    const replyId = nextMsgId();
+    setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
+    streamText(incomingAlert.text, (t) => {
+      setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
+    });
+  }, [incomingAlert?.id]);
 
   // 进入或切换"场景"时模拟用户首发 + Sparky 流式回复
   // 场景 key = currentJob.id || 'matrix'。切换场景时重置消息流（让 detail 重进
@@ -121,25 +138,25 @@ function buildOpeningForMatrix(jobs: JeJob[], anomalies: JeAnomaly[]): string {
 
   if (evaluated.length === 0) {
     return [
-      '你好，我是 Sparky，岗位价值评估的 AI 助手。',
+      '岗位库已经生成好了 —— 右边按部门分组的就是我推荐的标准岗位。',
       '',
-      '我可以帮你做这三件事：',
-      '• **单个评估** —— 粘贴一份 JD，~10 秒给出 8 因子档位 + Hay 标准职级',
-      '• **批量评估** —— 一次跑几十甚至几百个岗位，自动生成全公司职级图谱',
-      '• **人岗匹配** —— 看哪些员工越级在岗、哪些屈才待提（需要先有薪酬数据）',
+      '**接下来怎么做：**',
+      '• 从右边的库里勾选跟你们公司实际匹配的岗位，点"添加"建岗',
+      '• 库里找不到合适的，直接告诉我（比如"我们有一个管三个产品线的产品负责人"），我推荐最接近的基准',
+      '• 添加后想调因子或上传 JD 精细评估，点岗位卡进详情页',
       '',
-      '从哪一步开始？告诉我"批量上传"、"评一个销售经理"这种具体诉求，或者用右边的按钮。',
+      '建议先把主要岗位都添加上，再回头细调。',
     ].join('\n');
   }
   if (evaluated.length < 5) {
-    return `已经评估了 ${evaluated.length} 个岗位。建议达到 10 个以上才能看出整个组织的职级分布特征 — 想继续上传，还是对现有岗位做调整？`;
+    return `已添加 ${evaluated.length} 个岗位。继续从库里勾选，主要岗位都建完后我会给整体的图谱解读 + 一致性检查。`;
   }
   const grades = evaluated.map(j => j.result!.job_grade!);
   const range = `G${Math.min(...grades)}-G${Math.max(...grades)}`;
   if (high > 0) {
-    return `已评估 ${evaluated.length} 个岗位，分布在 ${range}。检测到 ${high} 个高危异常（多半是职级倒挂），需要先看一下。`;
+    return `已添加 ${evaluated.length} 个岗位，分布在 ${range}。检测到 ${high} 个高危异常（多半是职级倒挂），需要先看一下 — 调整哪个岗位的因子或者职级？`;
   }
-  return `已评估 ${evaluated.length} 个岗位，分布在 ${range}。当前没有高危异常 — 你可以继续上传新岗位、做人岗匹配，或点任一岗位看详情。`;
+  return `已添加 ${evaluated.length} 个岗位，分布在 ${range}。当前没有高危异常 — 可以继续从库选岗，或点任一岗位看详情、上传 JD 精细评估。`;
 }
 
 function buildJobIntro(job: JeJob): string {

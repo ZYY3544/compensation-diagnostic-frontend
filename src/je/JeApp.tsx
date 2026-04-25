@@ -15,7 +15,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
   jeListAnomalies,
-  type JeJob, type JeAnomaly, type JeCandidate,
+  type JeJob, type JeAnomaly, type JeCandidate, type JeLibrary,
 } from '../api/client';
 import GradeMatrix from './GradeMatrix';
 import BatchUpload from './BatchUpload';
@@ -25,6 +25,7 @@ import JeOnboarding from './JeOnboarding';
 import CandidateBoard from './CandidateBoard';
 import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
+import { nextMsgId } from '../lib/msgId';
 
 // ---- 8 因子合法档位（前端校验 & 下拉用，需与后端 enums.py 完全一致）----
 const FACTOR_OPTIONS: Record<string, string[]> = {
@@ -64,6 +65,7 @@ type ViewMode = 'onboarding' | 'matrix' | 'detail' | 'match';
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
   const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
+  const [library, setLibrary] = useState<JeLibrary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // 默认进 onboarding；如果用户已经访谈过且有岗位库就跳过（账户记忆功能开启时）。
   // 当前测试场景：每次刷新都从 onboarding 开始（不调 jeGetProfile）。
@@ -71,6 +73,8 @@ export default function JeApp() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
+  // Sparky 辅助校准：保存岗位后比对前后 anomalies，新增的告警通过这个 prop 推到 chat
+  const [sparkyAlert, setSparkyAlert] = useState<{ id: string; text: string } | null>(null);
 
   // 集中刷新：岗位列表 + 异常告警一起拉
   const refreshAll = useCallback(async () => {
@@ -95,13 +99,38 @@ export default function JeApp() {
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
+  // 通用岗位创建回调：把新岗位追加到 state，刷新异常告警，**不跳走视图**。
+  // 从库批量勾选添加时多次调用，用户应该留在 matrix 看着岗位逐个出现。
+  // 副作用：拉新 anomalies 后跟当前对比，新增的告警让 Sparky 在 chat 里主动提醒。
   const handleJobCreated = (job: JeJob) => {
     setJobs(prev => [job, ...prev]);
+    jeListAnomalies()
+      .then(r => {
+        const newAnomalies = r.data.anomalies;
+        setAnomalies(prev => {
+          const prevKeys = new Set(prev.map(a => `${a.type}|${a.message}`));
+          const added = newAnomalies.filter(a => !prevKeys.has(`${a.type}|${a.message}`));
+          if (added.length > 0) {
+            const list = added.slice(0, 3).map(a => `· ${a.message}`).join('\n');
+            const more = added.length > 3 ? `\n（还有 ${added.length - 3} 个，详见上方告警条）` : '';
+            setSparkyAlert({
+              id: nextMsgId(),
+              text: `刚添加的「${job.title}」让图谱新增 ${added.length} 个异常：\n\n${list}${more}\n\n如果觉得是误报，可以直接忽略；如果合理，建议调整对应岗位的因子或职级。`,
+            });
+          }
+          return newAnomalies;
+        });
+      })
+      .catch(() => {});
+  };
+
+  // NewJobModal（旧的 JD 单评流程）专用：建完岗自动跳详情页
+  // 阶段 3 把这个流程降级到岗位详情可选入口后，这个 handler 只剩一个调用方
+  const handleSingleJobCreated = (job: JeJob) => {
+    handleJobCreated(job);
     setSelectedId(job.id);
     setShowNewModal(false);
     setView('detail');
-    // 单评后异步刷新异常（新岗位可能引入倒挂等问题）
-    jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
   };
 
   const handleJobUpdated = (updated: JeJob) => {
@@ -142,9 +171,8 @@ export default function JeApp() {
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {view === 'onboarding' ? (
           <JeOnboarding
-            onComplete={(_profile, _library) => {
-              // 阶段 1 范围：访谈完 + 岗位库生成完即可跳到 matrix（库展示在阶段 2 做）
-              // _library 已经写入后端 DB，阶段 2 接入 jeGetLibrary 时会读出来
+            onComplete={(_profile, library) => {
+              setLibrary(library);          // 让 matrix 视图立刻能渲染岗位库面板
               setView('matrix');
             }}
           />
@@ -159,11 +187,14 @@ export default function JeApp() {
           <GradeMatrix
             jobs={jobs}
             anomalies={anomalies}
+            library={library}
             selectedJobId={selectedId}
             onJobSelect={handleSelectJob}
+            onJobCreated={handleJobCreated}
             onBatchUpload={() => setShowBatchModal(true)}
             onSingleEval={() => setShowNewModal(true)}
             onPersonJobMatch={() => setView('match')}
+            sparkyAlert={sparkyAlert}
           />
         ) : selectedJob ? (
           <DetailLayout
@@ -180,6 +211,7 @@ export default function JeApp() {
               const j = jobs.find(x => x.title === title);
               if (j) handleSelectJob(j.id);
             }}
+            sparkyAlert={sparkyAlert}
           />
         ) : (
           <CenterMsg>岗位已删除或不存在</CenterMsg>
@@ -190,7 +222,7 @@ export default function JeApp() {
         <NewJobModal
           functionCatalog={functionCatalog}
           onClose={() => setShowNewModal(false)}
-          onCreated={handleJobCreated}
+          onCreated={handleSingleJobCreated}
         />
       )}
       {showBatchModal && (
@@ -296,6 +328,7 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, c
 function DetailLayout({
   job, jobs, anomalies, onUpdated, onDelete, onBack,
   onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle,
+  sparkyAlert,
 }: {
   job: JeJob;
   jobs: JeJob[];
@@ -307,6 +340,7 @@ function DetailLayout({
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
   onJobByTitle: (title: string) => void;
+  sparkyAlert?: { id: string; text: string } | null;
 }) {
   const [showJdEditor, setShowJdEditor] = useState(false);
 
@@ -322,6 +356,7 @@ function DetailLayout({
           onSingleEval={onSingleEval}
           onPersonJobMatch={onPersonJobMatch}
           onJobByTitle={onJobByTitle}
+          incomingAlert={sparkyAlert}
         />
       </div>
 
@@ -342,7 +377,7 @@ function DetailLayout({
             ← 返回职级图谱
           </button>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setShowJdEditor(true)} style={ghostBtnStyle}>编辑 JD</button>
+            <button onClick={() => setShowJdEditor(true)} style={ghostBtnStyle}>上传 JD 精细评估</button>
             <button onClick={onDelete} style={ghostBtnStyle}>删除岗位</button>
           </div>
         </div>
@@ -387,10 +422,12 @@ function JdEditorModal({ job, onClose, onUpdated }: {
     <div style={modalOverlayStyle} onClick={onClose}>
       <div style={{ ...modalStyle, maxWidth: 720 }} onClick={e => e.stopPropagation()}>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>
-          编辑 JD —— {job.title}
+上传 JD 精细评估 —— {job.title}
         </div>
-        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-          修改 JD 后点「重新评估」会让 LLM 重新抽取 PK 因子并刷新 8 因子和职级。
+        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12, lineHeight: 1.6 }}>
+          粘贴或上传这个岗位的实际 JD，LLM 会基于 JD 重新抽取专业知识档位 + 收敛 8 因子。
+          适用于：库里找不到合适基准、新兴 / 跨界岗位、对当前 AI 推荐的因子档位不确定时。
+          评估结果会覆盖当前岗位档位（你之后还能在因子明细里手改）。
         </div>
         <textarea
           value={draft}

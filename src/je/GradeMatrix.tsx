@@ -13,8 +13,9 @@
  *  - ≥ 5 个岗位 → 右侧用矩阵（X 部门/职能、Y 职级）
  */
 import { useMemo, useState } from 'react';
-import type { JeJob, JeAnomaly } from '../api/client';
+import type { JeJob, JeAnomaly, JeLibrary } from '../api/client';
 import JeSparkyChat from './JeSparkyChat';
+import LibraryPanel from './LibraryPanel';
 import Workspace from '../components/layout/Workspace';
 
 const BRAND = '#D85A30';
@@ -31,17 +32,20 @@ const MATRIX_MIN_JOBS = 5;
 interface Props {
   jobs: JeJob[];
   anomalies: JeAnomaly[];
+  library: JeLibrary | null;
   onJobSelect: (jobId: string) => void;
+  onJobCreated: (job: JeJob) => void;
   onBatchUpload: () => void;
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
   selectedJobId?: string | null;
+  sparkyAlert?: { id: string; text: string } | null;
 }
 
 type AxisMode = 'department' | 'function';
 
 export default function GradeMatrix({
-  jobs, anomalies, onJobSelect, onBatchUpload, onSingleEval, onPersonJobMatch, selectedJobId,
+  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, selectedJobId, sparkyAlert,
 }: Props) {
   const [axisMode, setAxisMode] = useState<AxisMode>('department');
 
@@ -79,27 +83,37 @@ export default function GradeMatrix({
           onSingleEval={onSingleEval}
           onPersonJobMatch={onPersonJobMatch}
           onJobByTitle={handleJobByTitle}
+          incomingAlert={sparkyAlert}
         />
       </div>
 
       {/* ---- 右：Workspace（wide 黄金，可拖拽） ---- */}
       <Workspace mode="wide" title={wsTitle} subtitle={evaluated.length > 0 ? `${evaluated.length} 个岗位` : undefined}>
-        {jobs.length === 0 ? (
+        {/* AI 岗位库面板 — 叠加在矩阵上方，可折叠。访谈完成后 library 才有值 */}
+        {library && library.entries.length > 0 && (
+          <LibraryPanel library={library} jobs={jobs} onJobCreated={onJobCreated} defaultOpen={evaluated.length === 0} />
+        )}
+
+        {jobs.length === 0 && !library ? (
           <RightEmptyHint onBatchUpload={onBatchUpload} onSingleEval={onSingleEval} />
         ) : evaluated.length === 0 ? (
-          <div style={{ padding: '60px 0', textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
-            正在评估岗位…评估完成后这里会显示职级分布
+          <div style={{ padding: '40px 0', textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+            从上方 AI 岗位库勾选岗位添加，或者直接告诉 Sparky 你需要什么岗位
           </div>
         ) : (
           <>
             {anomalies.length > 0 && <AnomalyBar anomalies={anomalies} onJobSelect={onJobSelect} />}
 
-            <div style={{
-              display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12, gap: 8,
-            }}>
-              {useMatrix && <AxisToggle mode={axisMode} onChange={setAxisMode} />}
-              <button onClick={onBatchUpload} style={primaryBtn}>批量上传</button>
-            </div>
+            {/* 主路径改成"从 AI 库选岗"后，矩阵右上不再出现"批量上传"主 CTA。
+                批量上传 / 单评 JD 等次要操作通过 Sparky chat 的 chip 触发（保留兜底）。
+                只留 X 轴切换给图谱本身。 */}
+            {useMatrix && (
+              <div style={{
+                display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12,
+              }}>
+                <AxisToggle mode={axisMode} onChange={setAxisMode} />
+              </div>
+            )}
 
             {useMatrix
               ? <Matrix evaluated={evaluated} axisMode={axisMode} selectedJobId={selectedJobId} onJobSelect={onJobSelect} />

@@ -304,6 +304,10 @@ export const jeGenerateLibrary = () =>
 export const jeGetLibrary = () =>
   api.get<{ library: JeLibrary | null }>('/je/library');
 
+// 从库 entry 创建 Job（不调 LLM，毫秒级）
+export const jeCreateJobFromLibrary = (params: { lib_id: string; title?: string; department?: string }) =>
+  api.post<{ job: JeJob }>('/je/jobs/from-library', params);
+
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>
   api.get('/skill/registry', { params: mode ? { mode } : undefined });

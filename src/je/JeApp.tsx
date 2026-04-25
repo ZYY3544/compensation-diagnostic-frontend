@@ -11,7 +11,7 @@
  *
  * v2 待办：[对标] tab 同 workspace 内对比；[历史] tab 评估变更记录。
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
   jeListAnomalies,
@@ -22,6 +22,7 @@ import BatchUpload from './BatchUpload';
 import PersonJobMatch from './PersonJobMatch';
 import JeSparkyChat from './JeSparkyChat';
 import JeOnboarding from './JeOnboarding';
+import JeEntryView, { type EntryPath } from './JeEntryView';
 import CandidateBoard from './CandidateBoard';
 import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
@@ -60,21 +61,24 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type ViewMode = 'onboarding' | 'matrix' | 'detail' | 'match';
+type ViewMode = 'entry' | 'onboarding' | 'matrix' | 'detail' | 'match';
 
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
   const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
   const [library, setLibrary] = useState<JeLibrary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // 默认进 onboarding；如果用户已经访谈过且有岗位库就跳过（账户记忆功能开启时）。
-  // 当前测试场景：每次刷新都从 onboarding 开始（不调 jeGetProfile）。
-  const [view, setView] = useState<ViewMode>('onboarding');
+  // 默认进 entry 入口选择页 — 用户从三个高频场景里选一条路径
+  // (评一个 / 批量评 / 建立体系)。账户记忆功能开启时，已经走过流程的用户
+  // 直接跳到 matrix 视图。
+  const [view, setView] = useState<ViewMode>('entry');
   const [showNewModal, setShowNewModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
   // Sparky 辅助校准：保存岗位后比对前后 anomalies，新增的告警通过这个 prop 推到 chat
   const [sparkyAlert, setSparkyAlert] = useState<{ id: string; text: string } | null>(null);
+  // 升级提示触发标记：单评路径累积到 5 个时提一次"要不要看图谱"，整个 session 只提一次
+  const upgradeHintFiredRef = useRef(false);
 
   // 集中刷新：岗位列表 + 异常告警一起拉
   const refreshAll = useCallback(async () => {
@@ -101,9 +105,17 @@ export default function JeApp() {
 
   // 通用岗位创建回调：把新岗位追加到 state，刷新异常告警，**不跳走视图**。
   // 从库批量勾选添加时多次调用，用户应该留在 matrix 看着岗位逐个出现。
-  // 副作用：拉新 anomalies 后跟当前对比，新增的告警让 Sparky 在 chat 里主动提醒。
+  //
+  // 副作用 1：拉新 anomalies 后跟当前对比，新增的告警让 Sparky 在 chat 里主动提醒。
+  // 副作用 2：路径 A（单评）累积到 5 个岗位时触发一次"升级提示"
+  //   → 措辞展示价值（"我可以帮你看看职级关系"）而非推销升级版。
+  //   用 ref 标记只触发一次，避免每次评完都打扰。
   const handleJobCreated = (job: JeJob) => {
-    setJobs(prev => [job, ...prev]);
+    setJobs(prev => {
+      const next = [job, ...prev];
+      maybeFireUpgradeHint(next);
+      return next;
+    });
     jeListAnomalies()
       .then(r => {
         const newAnomalies = r.data.anomalies;
@@ -122,6 +134,32 @@ export default function JeApp() {
         });
       })
       .catch(() => {});
+  };
+
+  // 单评路径累积到 5 个岗位时主动提一次"看图谱"
+  const maybeFireUpgradeHint = (allJobs: JeJob[]) => {
+    if (upgradeHintFiredRef.current) return;
+    const singleCount = allJobs.filter(j => (j.result as any)?.source === 'single').length;
+    if (singleCount < 5) return;
+    upgradeHintFiredRef.current = true;
+    setSparkyAlert({
+      id: nextMsgId(),
+      text: `你已经评了 ${singleCount} 个岗位了，我可以帮你看看它们之间的职级关系有没有问题（比如同级倒挂、跨部门膨胀这类）— 切到职级图谱视图就能看到全局分布。如果想做得更系统，告诉我"建立体系"我从访谈开始陪你跑一遍。`,
+    });
+  };
+
+  // 入口路径分发：从 JeEntryView 的三个 chip 或 chat 关键词触发
+  const handleEntryChoice = (path: EntryPath) => {
+    if (path === 'single') {
+      // 路径 A：直接弹单评 modal，关闭 modal 后回到 entry / matrix
+      setShowNewModal(true);
+    } else if (path === 'list') {
+      // 路径 B：当前先复用 BatchUpload (要求有 JD 列)，下次迭代换成完整版
+      // (字段完备度自动决定走 LLM 推断或深度分析)
+      setShowBatchModal(true);
+    } else if (path === 'system') {
+      setView('onboarding');
+    }
   };
 
   // NewJobModal（旧的 JD 单评流程）专用：建完岗自动跳详情页
@@ -169,7 +207,9 @@ export default function JeApp() {
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {view === 'onboarding' ? (
+        {view === 'entry' ? (
+          <JeEntryView onChoose={handleEntryChoice} />
+        ) : view === 'onboarding' ? (
           <JeOnboarding
             onComplete={(_profile, library) => {
               setLibrary(library);          // 让 matrix 视图立刻能渲染岗位库面板

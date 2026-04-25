@@ -151,6 +151,56 @@ export const jeUpdateFactors = (jobId: string, factors: Record<string, string>) 
 export const jeDeleteJob = (jobId: string) =>
   api.delete<{ ok: boolean }>(`/je/jobs/${jobId}`);
 
+// ----- 批量评估 -----
+export interface JeBatchItem {
+  index: number;
+  title: string;
+  function: string;
+  department: string | null;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  job_id: string | null;
+  model_used: string | null;
+  error: string | null;
+}
+
+export interface JeBatch {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  total: number;
+  completed: number;
+  failed: number;
+  progress: number;
+  items: JeBatchItem[];
+  error: string | null;
+  created_at: string | null;
+  finished_at: string | null;
+}
+
+export const jeCreateBatch = (file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<{ batch_id: string; total: number; parse_errors: string[] }>('/je/batches', fd);
+};
+
+export const jeGetBatch = (batchId: string) =>
+  api.get<{ batch: JeBatch }>(`/je/batches/${batchId}`);
+
+export const jeListBatches = () =>
+  api.get<{ batches: Array<Pick<JeBatch, 'id' | 'status' | 'total' | 'completed' | 'failed' | 'created_at' | 'finished_at'>> }>('/je/batches');
+
+// ----- 异常检测 -----
+export interface JeAnomaly {
+  severity: 'high' | 'medium' | 'low';
+  type: 'inversion' | 'inflation' | 'missing_tier';
+  title: string;
+  message: string;
+  evidence: string[];     // 涉及岗位 id
+  department: string;
+}
+
+export const jeListAnomalies = () =>
+  api.get<{ anomalies: JeAnomaly[]; job_count: number }>('/je/anomalies');
+
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>
   api.get('/skill/registry', { params: mode ? { mode } : undefined });

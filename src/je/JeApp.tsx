@@ -11,11 +11,14 @@
  *
  * v2 待办：[对标] tab 同 workspace 内对比；[历史] tab 评估变更记录。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
-  type JeJob,
+  jeListAnomalies,
+  type JeJob, type JeAnomaly,
 } from '../api/client';
+import GradeMatrix from './GradeMatrix';
+import BatchUpload from './BatchUpload';
 
 // ---- 8 因子合法档位（前端校验 & 下拉用，需与后端 enums.py 完全一致）----
 const FACTOR_OPTIONS: Record<string, string[]> = {
@@ -50,22 +53,36 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
+type ViewMode = 'matrix' | 'detail';
+
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
+  const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>('matrix');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
 
-  // 加载岗位库 + 职能字典
+  // 集中刷新：岗位列表 + 异常告警一起拉
+  const refreshAll = useCallback(async () => {
+    try {
+      const [jobsRes, anomaliesRes] = await Promise.all([jeListJobs(), jeListAnomalies()]);
+      setJobs(jobsRes.data.jobs);
+      setAnomalies(anomaliesRes.data.anomalies);
+    } catch {
+      // 容错：留空
+    }
+  }, []);
+
+  // 加载岗位库 + 异常 + 职能字典
   useEffect(() => {
-    Promise.all([jeListJobs(), jeListFunctions()])
-      .then(([jobsRes, fnRes]) => {
+    Promise.all([jeListJobs(), jeListAnomalies(), jeListFunctions()])
+      .then(([jobsRes, anomaliesRes, fnRes]) => {
         setJobs(jobsRes.data.jobs);
+        setAnomalies(anomaliesRes.data.anomalies);
         setFunctionCatalog(fnRes.data.catalog);
-        if (jobsRes.data.jobs.length > 0 && !selectedId) {
-          setSelectedId(jobsRes.data.jobs[0].id);
-        }
       })
       .catch(() => { /* 容错：留空 */ })
       .finally(() => setLoading(false));
@@ -77,10 +94,14 @@ export default function JeApp() {
     setJobs(prev => [job, ...prev]);
     setSelectedId(job.id);
     setShowNewModal(false);
+    setView('detail');
+    // 单评后异步刷新异常（新岗位可能引入倒挂等问题）
+    jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
   };
 
   const handleJobUpdated = (updated: JeJob) => {
     setJobs(prev => prev.map(j => j.id === updated.id ? updated : j));
+    jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
   };
 
   const handleDelete = async (jobId: string) => {
@@ -89,12 +110,24 @@ export default function JeApp() {
       await jeDeleteJob(jobId);
       setJobs(prev => prev.filter(j => j.id !== jobId));
       if (selectedId === jobId) {
-        const remaining = jobs.filter(j => j.id !== jobId);
-        setSelectedId(remaining[0]?.id || null);
+        setSelectedId(null);
+        setView('matrix');
       }
+      jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
     } catch (e) {
       alert('删除失败');
     }
+  };
+
+  const handleSelectJob = (jobId: string) => {
+    setSelectedId(jobId);
+    setView('detail');
+  };
+
+  const handleBatchComplete = async () => {
+    // 批量评估完成 → 重新拉岗位 + 异常，留在矩阵视图
+    await refreshAll();
+    setView('matrix');
   };
 
   return (
@@ -104,22 +137,42 @@ export default function JeApp() {
         jobs={jobs}
         loading={loading}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={handleSelectJob}
         onNew={() => setShowNewModal(true)}
+        onBackToMatrix={() => { setSelectedId(null); setView('matrix'); }}
+        currentView={view}
       />
 
       {/* ---- 右主区 ---- */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div style={{ flex: 1, overflow: 'auto' }}>
         {loading ? (
           <CenterMsg>加载中...</CenterMsg>
-        ) : !selectedJob ? (
-          <EmptyState onNew={() => setShowNewModal(true)} />
-        ) : (
-          <JobDetail
-            job={selectedJob}
-            onUpdated={handleJobUpdated}
-            onDelete={() => handleDelete(selectedJob.id)}
+        ) : view === 'matrix' ? (
+          <GradeMatrix
+            jobs={jobs}
+            anomalies={anomalies}
+            selectedJobId={selectedId}
+            onJobSelect={handleSelectJob}
+            onBatchUpload={() => setShowBatchModal(true)}
+            onSingleEval={() => setShowNewModal(true)}
           />
+        ) : selectedJob ? (
+          <div style={{ padding: 24 }}>
+            <button onClick={() => setView('matrix')} style={{
+              padding: '6px 12px', fontSize: 12, marginBottom: 16,
+              background: 'transparent', border: '1px solid #E2E8F0', borderRadius: 6,
+              cursor: 'pointer', color: '#64748B',
+            }}>
+              ← 返回职级图谱
+            </button>
+            <JobDetail
+              job={selectedJob}
+              onUpdated={handleJobUpdated}
+              onDelete={() => handleDelete(selectedJob.id)}
+            />
+          </div>
+        ) : (
+          <CenterMsg>岗位已删除或不存在</CenterMsg>
         )}
       </div>
 
@@ -130,19 +183,27 @@ export default function JeApp() {
           onCreated={handleJobCreated}
         />
       )}
+      {showBatchModal && (
+        <BatchUpload
+          onClose={() => setShowBatchModal(false)}
+          onComplete={handleBatchComplete}
+        />
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// Sidebar：岗位库（按部门分组）
+// Sidebar：岗位库（按部门分组）+ 视图切换
 // ============================================================================
-function Sidebar({ jobs, loading, selectedId, onSelect, onNew }: {
+function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, currentView }: {
   jobs: JeJob[];
   loading: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onBackToMatrix: () => void;
+  currentView: 'matrix' | 'detail';
 }) {
   // 按部门分组
   const grouped: Record<string, JeJob[]> = {};
@@ -165,7 +226,19 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew }: {
             {jobs.length} 个岗位
           </span>
         </div>
-        <button onClick={onNew} style={primaryBtnStyle}>+ 新增岗位</button>
+        <button
+          onClick={onBackToMatrix}
+          style={{
+            ...primaryBtnStyle,
+            width: '100%', marginBottom: 8,
+            background: currentView === 'matrix' ? BRAND : '#fff',
+            color: currentView === 'matrix' ? '#fff' : BRAND,
+            border: `1px solid ${BRAND}`,
+          }}
+        >
+          职级图谱
+        </button>
+        <button onClick={onNew} style={{ ...primaryBtnStyle, width: '100%' }}>+ 新增岗位</button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 16px' }}>
@@ -205,7 +278,12 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew }: {
 
 // ============================================================================
 // 空状态 / 引导新增第一个岗位
+// 注：JE 主视图改成职级图谱后，空态由 GradeMatrix 自己的 EmptyState 接管。
+// 此函数保留供未来可能的弹窗引导复用，TypeScript 看到没引用会报 noUnusedLocals。
+// _useEmptyState 这一行只是把它显式标成"有引用"，不会出现在产物里。
 // ============================================================================
+const _useEmptyState = () => EmptyState;
+void _useEmptyState;
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div style={{ maxWidth: 480, margin: '80px auto', textAlign: 'center' }}>

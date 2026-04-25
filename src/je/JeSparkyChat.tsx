@@ -179,7 +179,16 @@ function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[], currentJob?: JeJob 
   const high = anomalies.filter(a => a.severity === 'high').length;
 
   if (evaluated.length === 0) {
-    return '你好，我是 Sparky。把岗位 JD 发给我，可以单个评，也可以批量上传 Excel 让我把整个组织的职级图谱跑出来。';
+    return [
+      '你好，我是 Sparky，岗位价值评估的 AI 助手。',
+      '',
+      '我可以帮你做这三件事：',
+      '• 单个评估 —— 粘贴一份 JD，~10 秒给出 8 因子档位 + Hay 标准职级',
+      '• 批量评估 —— 一次跑几十甚至几百个岗位，自动生成全公司职级图谱',
+      '• 人岗匹配 —— 看哪些员工越级在岗、哪些屈才待提（需要先有薪酬数据）',
+      '',
+      '从哪一步开始？点下面的 chip 直接开始，或者直接告诉我"评一个销售经理"这种具体诉求。',
+    ].join('\n');
   }
   if (evaluated.length < 5) {
     return `已经评估了 ${evaluated.length} 个岗位。建议达到 10 个以上才能看出整个组织的职级分布特征 — 想继续上传，还是对现有岗位做调整？`;

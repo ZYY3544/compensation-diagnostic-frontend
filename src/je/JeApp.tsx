@@ -80,11 +80,13 @@ export default function JeApp() {
     }
   }, []);
 
-  // 加载岗位库 + 异常 + 职能字典 — 不阻塞渲染，UI 用空数组兜底立即显示，
-  // 数据回来后自然刷新（跟主诊断进入即渲染 WelcomeView 的策略一致）
+  // 进入 JE 始终从空态开始 —— 历史记录功能（账户记忆）尚未启用。
+  //
+  // 设计原因：当前测试场景假设"用户第一次使用 JE"，每次刷新都展示完整的
+  // 第一次旅程（Sparky 欢迎 + 右侧引导卡）。后端 jobs 表的数据保留不丢，
+  // 后续做账户记忆功能时打开 jeListJobs / jeListAnomalies 调用即可恢复历史。
+  // 职能字典是给"+ 单个评估"模态的下拉用，没历史的概念，正常加载。
   useEffect(() => {
-    jeListJobs().then(r => setJobs(r.data.jobs)).catch(() => {});
-    jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
     jeListFunctions().then(r => setFunctionCatalog(r.data.catalog)).catch(() => {});
   }, []);
 

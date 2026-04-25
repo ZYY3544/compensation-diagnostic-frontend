@@ -121,23 +121,75 @@ export default function GradeMatrix({
 }
 
 // ============================================================================
-// 右侧空态引导（左侧 chat 已经够引导了，这里只是个简短补充）
+// 右侧空态引导：用户第一次进 JE 时看到的"开始页"
+// 三段：标题 + 流程示意 + 双 CTA。让用户在没有任何岗位数据时也能理解
+// 这个工具能干什么、第一步该做什么。
 // ============================================================================
 function RightEmptyHint({ onBatchUpload, onSingleEval }: {
   onBatchUpload: () => void;
   onSingleEval: () => void;
 }) {
   return (
-    <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-      <div style={{ fontSize: 14, color: '#475569', fontWeight: 500, marginBottom: 8 }}>
-        还没有岗位
+    <div style={{ padding: '24px 0', maxWidth: 520, margin: '0 auto' }}>
+      {/* 标题 */}
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>
+          开始你的第一次岗位评估
+        </div>
+        <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7 }}>
+          基于 Hay 方法论，输出 Know-How / Problem Solving / Accountability 三维评分 + 标准职级。
+          引擎只调一次 LLM 提取专业知识档位，其余 7 个因子全部由规则推导。
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 24, lineHeight: 1.7 }}>
-        在左边的 Sparky 那里说"批量上传"或"评一个岗位"开始
+
+      {/* 三步流程示意 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
+        marginBottom: 24,
+      }}>
+        <FlowStep n={1} title="单评 / 批量上传" desc="粘贴 JD 或上传 Excel" />
+        <FlowStep n={2} title="自动评估" desc="LLM + 规则收敛" />
+        <FlowStep n={3} title="职级图谱" desc="多解可调，异常告警" />
       </div>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-        <button onClick={onSingleEval} style={ghostBtn}>+ 单个评估</button>
-        <button onClick={onBatchUpload} style={primaryBtn}>批量上传</button>
+
+      {/* 双 CTA */}
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 16 }}>
+        <button onClick={onSingleEval} style={{ ...ghostBtn, padding: '10px 20px', fontSize: 13 }}>
+          评一个岗位
+        </button>
+        <button onClick={onBatchUpload} style={{ ...primaryBtn, padding: '10px 20px', fontSize: 13 }}>
+          批量上传 JD 表
+        </button>
+      </div>
+
+      {/* 提示 */}
+      <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', lineHeight: 1.7 }}>
+        建议至少评估 10 个岗位才能看到完整的职级分布特征。
+        <br />评估完成后还能切到"人岗匹配"视图看员工跟岗位的对应关系。
+      </div>
+    </div>
+  );
+}
+
+function FlowStep({ n, title, desc }: { n: number; title: string; desc: string }) {
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10,
+      padding: 14, textAlign: 'center',
+    }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: '50%',
+        background: BRAND_TINT, color: BRAND,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 13, fontWeight: 700, marginBottom: 8,
+      }}>
+        {n}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#0F172A', marginBottom: 4 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 11, color: '#64748B', lineHeight: 1.5 }}>
+        {desc}
       </div>
     </div>
   );

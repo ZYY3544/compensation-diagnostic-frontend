@@ -132,28 +132,20 @@ export default function JeApp() {
     setView('matrix');
   };
 
+  // 主视图：matrix 视图自带左右两栏（GradeMatrix 内部就是 chat + 工作台），
+  // detail / match 视图独立全宽展示，原来的"岗位库 sidebar"已被 chat 替代，删掉。
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
-      {/* ---- 左 Sidebar：岗位库 ---- */}
-      <Sidebar
-        jobs={jobs}
-        loading={loading}
-        selectedId={selectedId}
-        onSelect={handleSelectJob}
-        onNew={() => setShowNewModal(true)}
-        onBackToMatrix={() => { setSelectedId(null); setView('matrix'); }}
-        currentView={view}
-      />
-
-      {/* ---- 右主区 ---- */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         {loading ? (
           <CenterMsg>加载中...</CenterMsg>
         ) : view === 'match' ? (
-          <PersonJobMatch
-            onBack={() => setView('matrix')}
-            onJobSelect={handleSelectJob}
-          />
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <PersonJobMatch
+              onBack={() => setView('matrix')}
+              onJobSelect={handleSelectJob}
+            />
+          </div>
         ) : view === 'matrix' ? (
           <GradeMatrix
             jobs={jobs}
@@ -165,7 +157,7 @@ export default function JeApp() {
             onPersonJobMatch={() => setView('match')}
           />
         ) : selectedJob ? (
-          <div style={{ padding: 24 }}>
+          <div style={{ height: '100%', overflowY: 'auto', padding: 24 }}>
             <button onClick={() => setView('matrix')} style={{
               padding: '6px 12px', fontSize: 12, marginBottom: 16,
               background: 'transparent', border: '1px solid #E2E8F0', borderRadius: 6,
@@ -203,7 +195,11 @@ export default function JeApp() {
 
 // ============================================================================
 // Sidebar：岗位库（按部门分组）+ 视图切换
+// 当前主视图已改为左 chat + 右工作台两栏，原来的岗位库 sidebar 不再渲染。
+// 函数保留供后续可能的 detail 视图侧栏复用，TypeScript noUnusedLocals 用占位引用绕过。
 // ============================================================================
+const _useSidebar = () => Sidebar;
+void _useSidebar;
 function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, currentView }: {
   jobs: JeJob[];
   loading: boolean;

@@ -1,19 +1,23 @@
 /**
- * JE 主视图左栏的 Sparky 对话区。
+ * JE 工具的对话区。
  *
- * 设计取舍：
- *  - 不调 LLM。关键词匹配 → 触发 props 上的操作回调。这一版的目标是"让 JE 也是
- *    对话驱动的"，不是真正的智能对话；后续接 intent_router 升级。
- *  - 占满父容器高度，输入框 + chip 沉底，消息流向上滚。
- *  - 主动消息根据 jobs / anomalies 状态变化（详见 buildOpening）。
+ * 设计原则（v4 重做）：
+ *  - 直接复用主诊断的 SparkyPanel —— 同一个对话框组件，确保 PixelCat 头像、
+ *    气泡样式、流式输出、输入框、disclaimer 全部跟主诊断一模一样
+ *  - 用户进入时模拟"用户先发一条指令"，再 Sparky 流式回复（视觉上跟主诊断
+ *    点 chip 触发流程一致）
+ *  - 用户后续的输入通过 onNonChatSend 拦截，走 JE 自己的关键词分发
+ *    （不调主诊断的 chat 端点；后续接 JE chat agent 时改这里）
+ *
+ * SparkyPanel 在 onNonChatSend 返回 true 时不会自己 push 用户消息，由本组件
+ * 自行处理。返回 true 也阻止 SparkyPanel 创建主诊断 session（sessionId=null
+ * 时 SparkyPanel 会去拉 /api/sessions，我们不希望污染）。
  */
 import { useEffect, useRef, useState } from 'react';
+import SparkyPanel from '../components/layout/SparkyPanel';
+import { nextMsgId } from '../lib/msgId';
+import type { Message } from '../types';
 import type { JeJob, JeAnomaly } from '../api/client';
-
-const BRAND = '#D85A30';
-const BRAND_TINT = '#FEF7F4';
-
-type ChatMsg = { role: 'sparky' | 'user'; text: string };
 
 interface Props {
   jobs: JeJob[];
@@ -22,159 +26,96 @@ interface Props {
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
   onJobByTitle: (title: string) => void;
-  /**
-   * 指定当前正在 detail 视图查看的岗位。给了之后开场消息变成对该岗位的
-   * 评估解释（PK reasoning），代替矩阵主视图的整体提示。
-   */
+  /** detail 视图：开场 Sparky 解释这个岗位的评估 */
   currentJob?: JeJob | null;
 }
 
-export default function JeSparkyChat({ jobs, anomalies, onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle, currentJob }: Props) {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: 'sparky', text: buildOpening(jobs, anomalies, currentJob) },
-  ]);
-  const [input, setInput] = useState('');
-  const evaluated = jobs.filter(j => j.result?.job_grade != null);
-  const initRef = useRef(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+export default function JeSparkyChat(props: Props) {
+  const { jobs, anomalies, currentJob } = props;
+  const [messages, setMessages] = useState<Message[]>([]);
+  const lastSceneRef = useRef<string>('');
 
-  // jobs / anomalies / currentJob 变化时重写开场白（只覆盖第一条）
+  // 进入或切换"场景"时模拟用户首发 + Sparky 流式回复
+  // 场景 key = currentJob.id || 'matrix'。切换场景时重置消息流（让 detail 重进
+  // 显示对该岗位的解释；返回 matrix 显示通用引导）
   useEffect(() => {
-    if (!initRef.current) { initRef.current = true; return; }
-    setMessages(prev => [{ role: 'sparky', text: buildOpening(jobs, anomalies, currentJob) }, ...prev.slice(1)]);
-  }, [jobs.length, anomalies.length, currentJob?.id, currentJob?.result?.pk_reasoning]);
+    const sceneKey = currentJob?.id || 'matrix';
+    if (sceneKey === lastSceneRef.current) return;
+    lastSceneRef.current = sceneKey;
 
-  // 新消息进来自动滚到底
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages.length]);
+    const userText = currentJob
+      ? `打开「${currentJob.title}」的评估详情`
+      : '我要用 JE 评估岗位价值';
 
-  const send = (raw: string) => {
-    const text = raw.trim();
-    if (!text) return;
-    setInput('');
+    const introText = currentJob
+      ? buildJobIntro(currentJob)
+      : buildOpeningForMatrix(jobs, anomalies);
+
+    // 1. 立即 push 用户气泡
+    const userMsg: Message = { role: 'user', text: userText };
+    setMessages([userMsg]);
+
+    // 2. 略延迟（200ms）后出现 Sparky 空气泡 + 流式打字
+    const replyId = nextMsgId();
+    const timer = setTimeout(() => {
+      setMessages([userMsg, { id: replyId, role: 'bot', text: '' }]);
+      streamText(introText, (text) => {
+        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text } : m));
+      });
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [currentJob?.id]);
+
+  // 用户后续输入：自己 push + 关键词分发回复
+  const handleNonChatSend = (text: string): boolean => {
     setMessages(prev => [...prev, { role: 'user', text }]);
     const reply = handleIntent(text, jobs, anomalies, {
-      onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle,
+      onBatchUpload: props.onBatchUpload,
+      onSingleEval: props.onSingleEval,
+      onPersonJobMatch: props.onPersonJobMatch,
+      onJobByTitle: props.onJobByTitle,
     });
     if (reply) {
+      const replyId = nextMsgId();
       setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'sparky', text: reply }]);
-      }, 200);
+        setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
+        streamText(reply, (t) => {
+          setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
+        });
+      }, 100);
     }
+    return true;   // 阻止 SparkyPanel 走主诊断 chat 端点
   };
 
-  const highCount = anomalies.filter(a => a.severity === 'high').length;
-
   return (
-    <div style={containerStyle}>
-      {/* 标题栏 */}
-      <div style={headerStyle}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: BRAND_TINT, color: BRAND,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, fontWeight: 700,
-        }}>S</div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>Sparky</div>
-          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>JE 助手</div>
-        </div>
-      </div>
-
-      {/* 消息流：占满中间空间，向上滚 */}
-      <div ref={scrollRef} style={messagesStyle}>
-        {messages.map((m, i) => <Bubble key={i} role={m.role} text={m.text} />)}
-      </div>
-
-      {/* 底部：chip + 输入框 */}
-      <div style={footerStyle}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          <Chip label="批量上传" onClick={onBatchUpload} />
-          <Chip label="评一个岗位" onClick={onSingleEval} />
-          {evaluated.length > 0 && <Chip label="人岗匹配" onClick={onPersonJobMatch} />}
-          {highCount > 0 && (
-            <Chip label={`${highCount} 个高危异常`} onClick={() => send('查看异常')} highlight />
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') send(input); }}
-            placeholder="问 Sparky 一句话..."
-            style={inputStyle}
-          />
-          <button onClick={() => send(input)} disabled={!input.trim()} style={{
-            ...sendBtnStyle,
-            background: input.trim() ? BRAND : '#E2E8F0',
-            color: input.trim() ? '#fff' : '#94A3B8',
-            cursor: input.trim() ? 'pointer' : 'not-allowed',
-          }}>
-            发送
-          </button>
-        </div>
-      </div>
-    </div>
+    <SparkyPanel
+      messages={messages}
+      setMessages={setMessages}
+      sessionId={null}
+      visible={true}
+      onClose={() => {}}
+      onNonChatSend={handleNonChatSend}
+      embedded={true}
+    />
   );
 }
 
-// ---------- 子组件 ----------
+// ---------- 流式打字（前端模拟，跟 SparkyPanel 的 SSE 视觉一致） ----------
 
-function Bubble({ role, text }: { role: 'sparky' | 'user'; text: string }) {
-  const isSparky = role === 'sparky';
-  return (
-    <div style={{
-      display: 'flex', justifyContent: isSparky ? 'flex-start' : 'flex-end',
-      marginBottom: 8,
-    }}>
-      <div style={{
-        maxWidth: '85%',
-        padding: '8px 12px', borderRadius: 8,
-        background: isSparky ? '#F8FAFC' : BRAND_TINT,
-        border: isSparky ? '1px solid #F1F5F9' : `1px solid ${BRAND}33`,
-        fontSize: 12.5, color: '#0F172A', lineHeight: 1.6,
-        whiteSpace: 'pre-wrap',
-      }}>
-        {text}
-      </div>
-    </div>
-  );
+function streamText(text: string, onUpdate: (current: string) => void) {
+  let displayed = 0;
+  const RENDER_INTERVAL = 25;
+  const timer = setInterval(() => {
+    displayed = Math.min(displayed + 1, text.length);
+    onUpdate(text.slice(0, displayed));
+    if (displayed >= text.length) clearInterval(timer);
+  }, RENDER_INTERVAL);
 }
 
-function Chip({ label, onClick, highlight }: { label: string; onClick: () => void; highlight?: boolean }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '4px 10px', fontSize: 11, borderRadius: 999,
-      background: highlight ? BRAND : '#fff',
-      color: highlight ? '#fff' : '#475569',
-      border: `1px solid ${highlight ? BRAND : '#E2E8F0'}`,
-      cursor: 'pointer', fontWeight: highlight ? 600 : 400,
-      whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </button>
-  );
-}
+// ---------- 文案 ----------
 
-// ---------- 状态 → 开场白 ----------
-
-function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[], currentJob?: JeJob | null): string {
-  // detail 视图：开场用该岗位的评估推理，让用户在 chat 里直接看到"为什么是这个职级"
-  if (currentJob) {
-    const reasoning = (currentJob.result?.pk_reasoning || '').trim();
-    const grade = currentJob.result?.job_grade;
-    const total = currentJob.result?.total_score;
-    const head = `这是「${currentJob.title}」的评估解释${grade != null ? `（当前 G${grade} · ${total ?? '—'} 分）` : ''}：`;
-    if (reasoning) {
-      return `${head}\n\n${reasoning}\n\n右边是 3 套候选方案，可以直接调档位重算，或采用其他方案。`;
-    }
-    return `${head}\n\n这个岗位是 HR 手改因子算出来的，没有 LLM 推理记录。要重新生成 LLM 推理可以编辑 JD。`;
-  }
-
-  // 矩阵主视图
+function buildOpeningForMatrix(jobs: JeJob[], anomalies: JeAnomaly[]): string {
   const evaluated = jobs.filter(j => j.result?.job_grade != null);
   const high = anomalies.filter(a => a.severity === 'high').length;
 
@@ -183,11 +124,11 @@ function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[], currentJob?: JeJob 
       '你好，我是 Sparky，岗位价值评估的 AI 助手。',
       '',
       '我可以帮你做这三件事：',
-      '• 单个评估 —— 粘贴一份 JD，~10 秒给出 8 因子档位 + Hay 标准职级',
-      '• 批量评估 —— 一次跑几十甚至几百个岗位，自动生成全公司职级图谱',
-      '• 人岗匹配 —— 看哪些员工越级在岗、哪些屈才待提（需要先有薪酬数据）',
+      '• **单个评估** —— 粘贴一份 JD，~10 秒给出 8 因子档位 + Hay 标准职级',
+      '• **批量评估** —— 一次跑几十甚至几百个岗位，自动生成全公司职级图谱',
+      '• **人岗匹配** —— 看哪些员工越级在岗、哪些屈才待提（需要先有薪酬数据）',
       '',
-      '从哪一步开始？点下面的 chip 直接开始，或者直接告诉我"评一个销售经理"这种具体诉求。',
+      '从哪一步开始？告诉我"批量上传"、"评一个销售经理"这种具体诉求，或者用右边的按钮。',
     ].join('\n');
   }
   if (evaluated.length < 5) {
@@ -199,6 +140,17 @@ function buildOpening(jobs: JeJob[], anomalies: JeAnomaly[], currentJob?: JeJob 
     return `已评估 ${evaluated.length} 个岗位，分布在 ${range}。检测到 ${high} 个高危异常（多半是职级倒挂），需要先看一下。`;
   }
   return `已评估 ${evaluated.length} 个岗位，分布在 ${range}。当前没有高危异常 — 你可以继续上传新岗位、做人岗匹配，或点任一岗位看详情。`;
+}
+
+function buildJobIntro(job: JeJob): string {
+  const reasoning = (job.result?.pk_reasoning || '').trim();
+  const grade = job.result?.job_grade;
+  const total = job.result?.total_score;
+  const head = `这是「${job.title}」的评估解释${grade != null ? `（当前 G${grade} · ${total ?? '—'} 分）` : ''}：`;
+  if (reasoning) {
+    return `${head}\n\n${reasoning}\n\n右边是 3 套候选方案，可以直接调档位重算，或采用其他方案。`;
+  }
+  return `${head}\n\n这个岗位是 HR 手改因子算出来的，没有 LLM 推理记录。要重新生成 LLM 推理可以编辑 JD。`;
 }
 
 // ---------- 关键词意图分发 ----------
@@ -251,48 +203,10 @@ function handleIntent(
     const found = jobs.find(j => j.title.includes(target) || target.includes(j.title));
     if (found) {
       cb.onJobByTitle(found.title);
-      return `打开「${found.title}」详情。评估解释 tab 里能看到 PK 推理 + 多解候选。`;
+      return `打开「${found.title}」详情。评估解释里能看到 PK 推理 + 多解候选。`;
     }
     return `没找到包含「${target}」的岗位。可能拼写不一样，或者还没评估。`;
   }
 
   return '我能帮你：批量上传 / 单个评估 / 人岗匹配 / 查看异常。也可以说"解释 XXX 岗位"打开详情。';
 }
-
-// ---------- 样式 ----------
-
-const containerStyle: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column',
-  height: '100%', width: '100%',
-  background: '#fff',
-  overflow: 'hidden',
-};
-
-const headerStyle: React.CSSProperties = {
-  padding: '12px 16px', borderBottom: '1px solid #F1F5F9',
-  display: 'flex', alignItems: 'center', gap: 10,
-  flexShrink: 0,
-};
-
-const messagesStyle: React.CSSProperties = {
-  flex: 1, overflowY: 'auto', padding: '14px 16px',
-  display: 'flex', flexDirection: 'column',
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: 12, borderTop: '1px solid #F1F5F9',
-  flexShrink: 0,
-  background: '#fff',
-};
-
-const inputStyle: React.CSSProperties = {
-  flex: 1, padding: '8px 12px', fontSize: 12.5,
-  border: '1px solid #E2E8F0', borderRadius: 8, outline: 'none',
-  background: '#fff', fontFamily: 'inherit',
-};
-
-const sendBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', fontSize: 12, borderRadius: 8,
-  border: 'none', fontWeight: 500,
-  transition: 'background 0.12s',
-};

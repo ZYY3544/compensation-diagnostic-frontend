@@ -15,10 +15,12 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
   jeListAnomalies,
-  type JeJob, type JeAnomaly,
+  type JeJob, type JeAnomaly, type JeCandidate,
 } from '../api/client';
 import GradeMatrix from './GradeMatrix';
 import BatchUpload from './BatchUpload';
+import PersonJobMatch from './PersonJobMatch';
+import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 
 // ---- 8 因子合法档位（前端校验 & 下拉用，需与后端 enums.py 完全一致）----
 const FACTOR_OPTIONS: Record<string, string[]> = {
@@ -53,7 +55,7 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type ViewMode = 'matrix' | 'detail';
+type ViewMode = 'matrix' | 'detail' | 'match';
 
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
@@ -147,6 +149,11 @@ export default function JeApp() {
       <div style={{ flex: 1, overflow: 'auto' }}>
         {loading ? (
           <CenterMsg>加载中...</CenterMsg>
+        ) : view === 'match' ? (
+          <PersonJobMatch
+            onBack={() => setView('matrix')}
+            onJobSelect={handleSelectJob}
+          />
         ) : view === 'matrix' ? (
           <GradeMatrix
             jobs={jobs}
@@ -155,6 +162,7 @@ export default function JeApp() {
             onJobSelect={handleSelectJob}
             onBatchUpload={() => setShowBatchModal(true)}
             onSingleEval={() => setShowNewModal(true)}
+            onPersonJobMatch={() => setView('match')}
           />
         ) : selectedJob ? (
           <div style={{ padding: 24 }}>
@@ -203,7 +211,7 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, c
   onSelect: (id: string) => void;
   onNew: () => void;
   onBackToMatrix: () => void;
-  currentView: 'matrix' | 'detail';
+  currentView: ViewMode;
 }) {
   // 按部门分组
   const grouped: Record<string, JeJob[]> = {};
@@ -310,7 +318,15 @@ function JobDetail({ job, onUpdated, onDelete }: {
   onUpdated: (j: JeJob) => void;
   onDelete: () => void;
 }) {
-  const [tab, setTab] = useState<'factors' | 'jd'>('factors');
+  const candidates = job.result?.candidates || [];
+  const hasExplanation = !!job.result?.pk_reasoning || candidates.length > 0;
+  // 评估解释默认排第一，让 HR 先看推理再看因子
+  const [tab, setTab] = useState<'reasoning' | 'factors' | 'jd'>(hasExplanation ? 'reasoning' : 'factors');
+
+  // 切换岗位时重置 tab
+  useEffect(() => {
+    setTab(hasExplanation ? 'reasoning' : 'factors');
+  }, [job.id, hasExplanation]);
 
   const grade = job.result?.job_grade;
   const total = job.result?.total_score;
@@ -345,14 +361,242 @@ function JobDetail({ job, onUpdated, onDelete }: {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #E2E8F0', marginBottom: 16 }}>
+        {hasExplanation && (
+          <Tab active={tab === 'reasoning'} onClick={() => setTab('reasoning')}>评估解释</Tab>
+        )}
         <Tab active={tab === 'factors'} onClick={() => setTab('factors')}>因子明细</Tab>
         <Tab active={tab === 'jd'} onClick={() => setTab('jd')}>JD 编辑</Tab>
       </div>
 
+      {tab === 'reasoning' && <ReasoningPanel job={job} onUpdated={onUpdated} />}
       {tab === 'factors' && <FactorTable job={job} onUpdated={onUpdated} />}
       {tab === 'jd' && <JdEditor job={job} onUpdated={onUpdated} />}
     </div>
   );
+}
+
+// ============================================================================
+// 评估解释：Sparky 风格的推理叙述 + 收敛过程 + 多解候选选择
+// ============================================================================
+function ReasoningPanel({ job, onUpdated }: { job: JeJob; onUpdated: (j: JeJob) => void }) {
+  const reasoning = job.result?.pk_reasoning || '';
+  const candidates = job.result?.candidates || [];
+  const stats = job.result?.convergence_stats;
+  const currentFactors = job.factors || {};
+  const [applying, setApplying] = useState<number | null>(null);
+
+  const applyCandidate = async (candidate: JeCandidate, idx: number) => {
+    if (!confirm('采用这套候选方案？8 因子会被覆盖为该方案。')) return;
+    setApplying(idx);
+    try {
+      const res = await jeUpdateFactors(job.id, candidate.factors);
+      onUpdated(res.data.job);
+    } catch (e: any) {
+      alert(`应用失败：${e?.response?.data?.error || e.message}`);
+    } finally {
+      setApplying(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Sparky 推理气泡 */}
+      {reasoning && (
+        <div style={{
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+          padding: 20, display: 'flex', gap: 12,
+        }}>
+          <div style={{
+            width: 36, height: 36, flexShrink: 0,
+            borderRadius: 8, background: BRAND_TINT,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, fontWeight: 700, color: BRAND,
+          }}>
+            S
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 6 }}>
+              Sparky · 评估推理
+            </div>
+            <div style={{ fontSize: 13, color: '#0F172A', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {reasoning}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 收敛过程 */}
+      {stats && Object.keys(stats).length > 0 && (
+        <div style={{
+          background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12,
+          padding: 16,
+        }}>
+          <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, fontWeight: 500 }}>
+            收敛过程
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#64748B', flexWrap: 'wrap' }}>
+            {stats.kh_combinations != null && <Pill label={`KH 收敛 ${stats.kh_combinations}`} />}
+            {stats.kh_combinations != null && stats.ps_kh_combinations != null && <Arrow />}
+            {stats.ps_kh_combinations != null && <Pill label={`PS+KH ${stats.ps_kh_combinations}`} />}
+            {stats.ps_kh_combinations != null && stats.candidates != null && <Arrow />}
+            {stats.candidates != null && <Pill label={`候选 ${stats.candidates}`} />}
+            {stats.candidates != null && stats.valid_solutions != null && <Arrow />}
+            {stats.valid_solutions != null && <Pill label={`合法解 ${stats.valid_solutions}`} active />}
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8, lineHeight: 1.6 }}>
+            从 PK 锚定开始，按因素匹配规则一步步收敛 — 引擎只调一次 LLM 提取专业知识档位，
+            其余 7 个因子全部由规则推导得出。
+          </div>
+        </div>
+      )}
+
+      {/* 多解候选 */}
+      {candidates.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 8 }}>
+            候选方案（{candidates.length} 套）
+          </div>
+          <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12, lineHeight: 1.6 }}>
+            按职级和岗位倾向去重后挑选。当前选用：第一套（最高匹配度）。点"采用此方案"切换到其他候选。
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(candidates.length, 3)}, 1fr)`, gap: 12 }}>
+            {candidates.map((c, i) => {
+              const isCurrent = factorsEqual(c.factors, currentFactors);
+              return (
+                <CandidateCard
+                  key={i}
+                  candidate={c}
+                  isCurrent={isCurrent}
+                  applying={applying === i}
+                  onApply={() => applyCandidate(c, i)}
+                  index={i}
+                  totalCandidates={candidates.length}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CandidateCard({ candidate, isCurrent, applying, onApply, index, totalCandidates }: {
+  candidate: JeCandidate;
+  isCurrent: boolean;
+  applying: boolean;
+  onApply: () => void;
+  index: number;
+  totalCandidates: number;
+}) {
+  const dominantColor = candidate.dominant === 'KH' ? '#4F46E5'
+    : candidate.dominant === 'PS' ? '#0EA5E9'
+    : candidate.dominant === 'ACC' ? '#F59E0B'
+    : '#94A3B8';
+  const recommended = index === 0;
+
+  return (
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${isCurrent ? BRAND : '#E2E8F0'}`,
+      borderTop: `3px solid ${dominantColor}`,
+      borderRadius: 10, padding: 16,
+      position: 'relative',
+      boxShadow: isCurrent ? `0 0 0 2px ${BRAND_TINT}` : 'none',
+    }}>
+      {recommended && (
+        <div style={{
+          position: 'absolute', top: -10, right: 12,
+          padding: '2px 10px', background: BRAND, color: '#fff',
+          fontSize: 10, fontWeight: 600, borderRadius: 4,
+        }}>
+          Sparky 推荐
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>
+        方案 {String.fromCharCode(65 + index)} {totalCandidates > 1 && `/ 共 ${totalCandidates} 套`}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: '#0F172A' }}>
+          G{candidate.job_grade}
+        </span>
+        <span style={{ fontSize: 13, color: '#64748B' }}>
+          {candidate.total_score} 分
+        </span>
+      </div>
+
+      <div style={{ fontSize: 11, color: dominantColor, fontWeight: 500, marginBottom: 12 }}>
+        {candidate.dominant} 主导{candidate.orientation && ` · ${candidate.orientation}`}
+        {candidate.profile && ` · ${candidate.profile}`}
+      </div>
+
+      <div style={{ fontSize: 11, color: '#64748B', display: 'flex', justifyContent: 'space-between', marginBottom: 12, lineHeight: 1.6 }}>
+        <span>KH {candidate.kh_score}</span>
+        <span>PS {candidate.ps_score}</span>
+        <span>ACC {candidate.acc_score}</span>
+      </div>
+
+      <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 10, marginBottom: 12 }}>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 4 }}>8 因子档位</div>
+        <div style={{ fontSize: 11, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+          <span>PK <strong style={{ color: '#0F172A' }}>{candidate.factors.practical_knowledge}</strong></span>
+          <span>MK <strong style={{ color: '#0F172A' }}>{candidate.factors.managerial_knowledge}</strong></span>
+          <span>Comm <strong style={{ color: '#0F172A' }}>{candidate.factors.communication}</strong></span>
+          <span>TC <strong style={{ color: '#0F172A' }}>{candidate.factors.thinking_challenge}</strong></span>
+          <span>TE <strong style={{ color: '#0F172A' }}>{candidate.factors.thinking_environment}</strong></span>
+          <span>FTA <strong style={{ color: '#0F172A' }}>{candidate.factors.freedom_to_act}</strong></span>
+          <span>Mag <strong style={{ color: '#0F172A' }}>{candidate.factors.magnitude}</strong></span>
+          <span>NoI <strong style={{ color: '#0F172A' }}>{candidate.factors.nature_of_impact}</strong></span>
+        </div>
+      </div>
+
+      {isCurrent ? (
+        <div style={{
+          padding: '6px 0', textAlign: 'center', fontSize: 12, color: BRAND, fontWeight: 600,
+        }}>
+          ✓ 当前采用
+        </div>
+      ) : (
+        <button onClick={onApply} disabled={applying} style={{
+          width: '100%', padding: '6px 0', borderRadius: 6,
+          background: applying ? '#E2E8F0' : '#fff',
+          color: applying ? '#94A3B8' : BRAND,
+          border: `1px solid ${BRAND}`,
+          fontSize: 12, fontWeight: 500, cursor: applying ? 'wait' : 'pointer',
+        }}>
+          {applying ? '应用中...' : '采用此方案'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Pill({ label, active }: { label: string; active?: boolean }) {
+  return (
+    <span style={{
+      padding: '3px 10px', borderRadius: 999,
+      background: active ? BRAND : '#fff',
+      color: active ? '#fff' : '#475569',
+      border: `1px solid ${active ? BRAND : '#E2E8F0'}`,
+      fontSize: 11, fontWeight: active ? 600 : 400,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+function Arrow() {
+  return <span style={{ color: '#CBD5E1', fontSize: 11 }}>→</span>;
+}
+
+function factorsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = ['practical_knowledge', 'managerial_knowledge', 'communication',
+    'thinking_challenge', 'thinking_environment',
+    'freedom_to_act', 'magnitude', 'nature_of_impact'];
+  return keys.every(k => a[k] === b[k]);
 }
 
 function Stat({ label, value, accent }: { label: string; value: any; accent?: boolean }) {
@@ -433,26 +677,14 @@ function FactorTable({ job, onUpdated }: { job: JeJob; onUpdated: (j: JeJob) => 
                'Accountability（职责）'}
             </div>
             {FACTOR_ORDER.filter(k => FACTOR_LABELS[k].group === group).map(k => (
-              <div key={k} style={{
-                padding: '12px 20px', borderBottom: '1px solid #F1F5F9',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}>
-                <div style={{ flex: 1, fontSize: 13, color: '#0F172A' }}>
-                  {FACTOR_LABELS[k].name}
-                </div>
-                <select
-                  value={draft[k] || ''}
-                  onChange={e => setDraft({ ...draft, [k]: e.target.value })}
-                  style={selectStyle}
-                >
-                  {(FACTOR_OPTIONS[k] || []).map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-                {draft[k] !== (job.factors || {})[k] && (
-                  <span style={{ fontSize: 10, color: BRAND, fontWeight: 600 }}>已改</span>
-                )}
-              </div>
+              <FactorRow
+                key={k}
+                factorKey={k}
+                label={FACTOR_LABELS[k].name}
+                value={draft[k] || ''}
+                originalValue={(job.factors || {})[k]}
+                onChange={v => setDraft({ ...draft, [k]: v })}
+              />
             ))}
           </div>
         ))}
@@ -460,6 +692,95 @@ function FactorTable({ job, onUpdated }: { job: JeJob; onUpdated: (j: JeJob) => 
     </div>
   );
 }
+
+// ============================================================================
+// 单个因子行：当前档+上下相邻档默认展开 Hay 定义；下拉项 hover 浮出该档定义
+// ============================================================================
+function FactorRow({ factorKey, label, value, originalValue, onChange }: {
+  factorKey: string;
+  label: string;
+  value: string;
+  originalValue: string | undefined;
+  onChange: (v: string) => void;
+}) {
+  const [hoverLevel, setHoverLevel] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const adjacent = getAdjacentDefinitions(factorKey, value);
+  const hoverDef = hoverLevel ? getLevelDefinition(factorKey, hoverLevel) : null;
+  const dirty = value !== originalValue;
+
+  return (
+    <div style={{ borderBottom: '1px solid #F1F5F9' }}>
+      <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, fontSize: 13, color: '#0F172A' }}>
+          {label}
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{
+              marginLeft: 8, fontSize: 11, color: '#64748B',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              padding: 0,
+            }}
+            title="展开 / 收起 Hay 标准定义"
+          >
+            {expanded ? '收起说明' : '查看说明'}
+          </button>
+        </div>
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onMouseOver={e => setHoverLevel((e.target as HTMLSelectElement).value)}
+          onMouseLeave={() => setHoverLevel(null)}
+          style={selectStyle}
+        >
+          {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+        {dirty && <span style={{ fontSize: 10, color: BRAND, fontWeight: 600 }}>已改</span>}
+      </div>
+
+      {/* hover 浮层：显示当前 select 元素鼠标悬停档位的完整定义 */}
+      {hoverDef && hoverDef.level !== value.replace(/[+-]$/, '') && (
+        <div style={{
+          margin: '0 20px 12px', padding: '10px 12px',
+          background: '#F8FAFC', borderLeft: `3px solid ${BRAND}`, borderRadius: 6,
+          fontSize: 12, color: '#475569', lineHeight: 1.6,
+        }}>
+          <strong style={{ color: '#0F172A' }}>{hoverDef.level} · {hoverDef.label}</strong>
+          <div style={{ marginTop: 4 }}>{hoverDef.description}</div>
+        </div>
+      )}
+
+      {/* 展开态：显示当前档 + 上下相邻档对比 */}
+      {expanded && (
+        <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {(['prev', 'current', 'next'] as const).map(slot => {
+            const def = adjacent[slot];
+            if (!def) return null;
+            const isCurrent = slot === 'current';
+            return (
+              <div key={slot} style={{
+                padding: '10px 12px',
+                background: isCurrent ? '#FEF7F4' : '#F8FAFC',
+                borderLeft: `3px solid ${isCurrent ? BRAND : '#CBD5E1'}`,
+                borderRadius: 6,
+                fontSize: 12, color: '#475569', lineHeight: 1.6,
+              }}>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 2 }}>
+                  {slot === 'prev' ? '上一档' : slot === 'current' ? '当前档' : '下一档'}
+                </div>
+                <strong style={{ color: '#0F172A' }}>{def.level} · {def.label}</strong>
+                <div style={{ marginTop: 4 }}>{def.description}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ============================================================================
 // JD 编辑：改 JD 文本 → 重新走 LLM 评估

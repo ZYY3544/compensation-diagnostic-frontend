@@ -108,6 +108,19 @@ export const getReportPdfUrl = (sessionId: string) => {
 };
 
 // ===== JE (Job Evaluation) API =====
+export interface JeCandidate {
+  factors: Record<string, string>;
+  kh_score: number;
+  ps_score: number;
+  acc_score: number;
+  total_score: number;
+  job_grade: number;
+  profile: string | null;
+  match_score: number | null;
+  dominant: 'KH' | 'PS' | 'ACC' | 'unknown';
+  orientation: string;       // '偏专业 / 操作型' / '偏管理 / 战略型' / '平衡型' / ''
+}
+
 export interface JeJob {
   id: string;
   title: string;
@@ -125,6 +138,7 @@ export interface JeJob {
     pk_reasoning?: string;
     convergence_stats?: any;
     match_score?: number | null;
+    candidates?: JeCandidate[];   // 多解候选（top-N，按 profile/grade 多样性挑出）
   } | null;
   created_at: string;
   updated_at: string;
@@ -200,6 +214,51 @@ export interface JeAnomaly {
 
 export const jeListAnomalies = () =>
   api.get<{ anomalies: JeAnomaly[]; job_count: number }>('/je/anomalies');
+
+// ----- 人岗匹配 -----
+export interface JeMatchEmployee {
+  job_title: string;
+  department: string | null;
+  company_grade: string | null;
+  hay_grade: number | null;
+  name: string;
+  row_number?: number;
+}
+
+export interface JeMatchEntry {
+  employee: JeMatchEmployee;
+  job: {
+    id: string;
+    title: string;
+    department: string | null;
+    function: string;
+    job_grade: number | null;
+  };
+  gap: number | null;        // hay_grade(员工) - hay_grade(岗位)
+  match_strategy: 'dept+title' | 'title' | 'fuzzy' | '';
+}
+
+export interface JeMatchResult {
+  matched: JeMatchEntry[];
+  unmatched: JeMatchEmployee[];
+  by_cell: Record<string, any[]>;
+  summary: {
+    total_employees: number;
+    matched_count: number;
+    unmatched_count: number;
+    match_rate: number;
+    over_leveled: number;
+    under_leveled: number;
+    aligned: number;
+    jobs_with_grade: number;
+  };
+  session_id: string;
+}
+
+export const jeMatch = (sessionId?: string) =>
+  api.get<JeMatchResult>('/je/match', {
+    params: sessionId ? { session_id: sessionId } : undefined,
+  });
 
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>

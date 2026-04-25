@@ -154,6 +154,8 @@ function AppInner() {
     welcomeSent.current = true;
     createSession().then(res => {
       setSessionId(res.data.id);
+      // 写到 localStorage 让 JE 工具的人岗匹配能预填这个 session_id（跨路由共享）
+      try { localStorage.setItem('mx_last_session_id', res.data.id); } catch {}
     }).catch(() => {});
     // 拉 chip
     getSkillRegistry().then(res => {
@@ -191,6 +193,7 @@ function AppInner() {
         const sessionRes = await createSession();
         sid = sessionRes.data.id;
         setSessionId(sid);
+        try { localStorage.setItem('mx_last_session_id', sid!); } catch {}
       }
       appendProcessingStep(setMessages, '正在解析表头和数据');
       const uploadRes = await uploadFile(sid!, file);

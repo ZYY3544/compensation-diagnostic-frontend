@@ -33,13 +33,14 @@ interface Props {
   onJobSelect: (jobId: string) => void;
   onBatchUpload: () => void;
   onSingleEval: () => void;
+  onPersonJobMatch: () => void;
   selectedJobId?: string | null;
 }
 
 type AxisMode = 'department' | 'function';
 
 export default function GradeMatrix({
-  jobs, anomalies, onJobSelect, onBatchUpload, onSingleEval, selectedJobId,
+  jobs, anomalies, onJobSelect, onBatchUpload, onSingleEval, onPersonJobMatch, selectedJobId,
 }: Props) {
   const [axisMode, setAxisMode] = useState<AxisMode>('department');
   const [hoveredCell, setHoveredCell] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export default function GradeMatrix({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <AxisToggle mode={axisMode} onChange={setAxisMode} />
+          <button onClick={onPersonJobMatch} style={ghostBtn}>人岗匹配</button>
           <button onClick={onSingleEval} style={ghostBtn}>+ 单个评估</button>
           <button onClick={onBatchUpload} style={primaryBtn}>批量上传</button>
         </div>

@@ -63,7 +63,6 @@ type ViewMode = 'matrix' | 'detail' | 'match';
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
   const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('matrix');
   const [showNewModal, setShowNewModal] = useState(false);
@@ -81,16 +80,12 @@ export default function JeApp() {
     }
   }, []);
 
-  // 加载岗位库 + 异常 + 职能字典
+  // 加载岗位库 + 异常 + 职能字典 — 不阻塞渲染，UI 用空数组兜底立即显示，
+  // 数据回来后自然刷新（跟主诊断进入即渲染 WelcomeView 的策略一致）
   useEffect(() => {
-    Promise.all([jeListJobs(), jeListAnomalies(), jeListFunctions()])
-      .then(([jobsRes, anomaliesRes, fnRes]) => {
-        setJobs(jobsRes.data.jobs);
-        setAnomalies(anomaliesRes.data.anomalies);
-        setFunctionCatalog(fnRes.data.catalog);
-      })
-      .catch(() => { /* 容错：留空 */ })
-      .finally(() => setLoading(false));
+    jeListJobs().then(r => setJobs(r.data.jobs)).catch(() => {});
+    jeListAnomalies().then(r => setAnomalies(r.data.anomalies)).catch(() => {});
+    jeListFunctions().then(r => setFunctionCatalog(r.data.catalog)).catch(() => {});
   }, []);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
@@ -140,9 +135,7 @@ export default function JeApp() {
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {loading ? (
-          <CenterMsg>加载中...</CenterMsg>
-        ) : view === 'match' ? (
+        {view === 'match' ? (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <PersonJobMatch
               onBack={() => setView('matrix')}

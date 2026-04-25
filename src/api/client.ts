@@ -260,6 +260,50 @@ export const jeMatch = (sessionId?: string) =>
     params: sessionId ? { session_id: sessionId } : undefined,
   });
 
+// ----- 组织画像 + AI 岗位库 -----
+export interface JeOrgProfile {
+  industry: string | null;
+  headcount: number | null;
+  departments: string[];
+  layers: string[];
+  department_layers?: Record<string, string[]>;
+  existing_grade_system: string | null;
+}
+
+export interface JeLibraryEntry {
+  id: string;
+  name: string;
+  department: string | null;
+  function: string;
+  factors: Record<string, string>;
+  hay_grade: number | null;
+  total_score: number;
+  kh_score: number;
+  ps_score: number;
+  acc_score: number;
+  profile: string | null;
+  responsibilities: string[];
+  invalid_factors?: boolean;
+}
+
+export interface JeLibrary {
+  entries: JeLibraryEntry[];
+  generated_at: string;
+  model_used: string;
+}
+
+export const jeGetProfile = () =>
+  api.get<{ profile: JeOrgProfile | null; library: JeLibrary | null; created_at?: string; updated_at?: string }>('/je/profile');
+
+export const jeSaveProfile = (profile: JeOrgProfile) =>
+  api.put<{ profile: JeOrgProfile; library: JeLibrary | null }>('/je/profile', profile);
+
+export const jeGenerateLibrary = () =>
+  api.post<{ library: JeLibrary }>('/je/library/generate');
+
+export const jeGetLibrary = () =>
+  api.get<{ library: JeLibrary | null }>('/je/library');
+
 // ===== Skill API =====
 export const getSkillRegistry = (mode?: string) =>
   api.get('/skill/registry', { params: mode ? { mode } : undefined });

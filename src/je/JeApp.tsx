@@ -21,6 +21,7 @@ import GradeMatrix from './GradeMatrix';
 import BatchUpload from './BatchUpload';
 import PersonJobMatch from './PersonJobMatch';
 import JeSparkyChat from './JeSparkyChat';
+import JeOnboarding from './JeOnboarding';
 import CandidateBoard from './CandidateBoard';
 import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
@@ -58,13 +59,15 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type ViewMode = 'matrix' | 'detail' | 'match';
+type ViewMode = 'onboarding' | 'matrix' | 'detail' | 'match';
 
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
   const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>('matrix');
+  // 默认进 onboarding；如果用户已经访谈过且有岗位库就跳过（账户记忆功能开启时）。
+  // 当前测试场景：每次刷新都从 onboarding 开始（不调 jeGetProfile）。
+  const [view, setView] = useState<ViewMode>('onboarding');
   const [showNewModal, setShowNewModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
@@ -137,7 +140,15 @@ export default function JeApp() {
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {view === 'match' ? (
+        {view === 'onboarding' ? (
+          <JeOnboarding
+            onComplete={(_profile, _library) => {
+              // 阶段 1 范围：访谈完 + 岗位库生成完即可跳到 matrix（库展示在阶段 2 做）
+              // _library 已经写入后端 DB，阶段 2 接入 jeGetLibrary 时会读出来
+              setView('matrix');
+            }}
+          />
+        ) : view === 'match' ? (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <PersonJobMatch
               onBack={() => setView('matrix')}

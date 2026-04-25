@@ -14,7 +14,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
-  jeListAnomalies,
+  jeListAnomalies, jeAdjustGrade,
   type JeJob, type JeAnomaly, type JeCandidate, type JeLibrary,
 } from '../api/client';
 import GradeMatrix from './GradeMatrix';
@@ -150,6 +150,46 @@ export default function JeApp() {
     });
   };
 
+  // 矩阵拖拽：用户把岗位卡释放到另一个 cell → confirm + 调 PATCH /grade
+  const handleDropToCell = useCallback(async (jobId: string, targetGrade: number, targetDepartment: string) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job) return;
+    const currentGrade = job.result?.job_grade;
+    const currentDept = job.department || '';
+    if (currentGrade === targetGrade && currentDept === targetDepartment) {
+      return;     // 拖回原 cell，noop
+    }
+
+    const gradeChanged = currentGrade !== targetGrade;
+    const deptChanged = currentDept !== targetDepartment;
+    const summary = [
+      `准备调整「${job.title}」：`,
+      gradeChanged ? `· 职级 G${currentGrade} → G${targetGrade}` : null,
+      deptChanged ? `· 部门 ${currentDept || '未分组'} → ${targetDepartment}` : null,
+      '',
+      gradeChanged
+        ? '系统会自动反推新的因子档位让职级匹配（一般调整 PK 或 MK）。结果跟拖到的位置可能差 1 级（取决于 Hay 档位的离散性）。'
+        : '只调整部门归属，因子档位不变。',
+      '',
+      '确认调整吗？',
+    ].filter(Boolean).join('\n');
+    if (!confirm(summary)) return;
+
+    try {
+      const res = await jeAdjustGrade(jobId, targetGrade, deptChanged ? targetDepartment : undefined);
+      handleJobUpdated(res.data.job);
+      // 命中提示放到 chat 里：精确命中 / 偏差告知
+      if (res.data.achieved === false && res.data.diff != null) {
+        setSparkyAlert({
+          id: nextMsgId(),
+          text: `已经把「${job.title}」往 G${targetGrade} 方向调整了，但因为 Hay 档位是离散的，最终落在 G${(res.data.job.result || {}).job_grade}（差 ${res.data.diff > 0 ? '+' : ''}${res.data.diff} 级）。如果想精确控制可以进岗位详情页手改因子。`,
+        });
+      }
+    } catch (e: any) {
+      alert(`调整失败：${e?.response?.data?.error || e?.message || '未知错误'}`);
+    }
+  }, [jobs]);
+
   // 入口路径分发：从 JeEntryView 的三个 chip 或 chat 关键词触发
   const handleEntryChoice = (path: EntryPath) => {
     if (path === 'single') {
@@ -237,6 +277,7 @@ export default function JeApp() {
             onSingleEval={() => setShowNewModal(true)}
             onPersonJobMatch={() => setView('match')}
             onCompareLegacy={() => setShowCompareModal(true)}
+            onDropToCell={handleDropToCell}
             sparkyAlert={sparkyAlert}
           />
         ) : selectedJob ? (

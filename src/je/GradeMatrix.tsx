@@ -39,6 +39,8 @@ interface Props {
   onSingleEval: () => void;
   onPersonJobMatch: () => void;
   onCompareLegacy: () => void;
+  /** 拖拽职级调整：父组件实现 confirm dialog + 调端点 + 更新 jobs state */
+  onDropToCell?: (jobId: string, targetGrade: number, targetDepartment: string) => void;
   selectedJobId?: string | null;
   sparkyAlert?: { id: string; text: string } | null;
 }
@@ -46,7 +48,7 @@ interface Props {
 type AxisMode = 'department' | 'function';
 
 export default function GradeMatrix({
-  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, onCompareLegacy, selectedJobId, sparkyAlert,
+  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, onCompareLegacy, onDropToCell, selectedJobId, sparkyAlert,
 }: Props) {
   const [axisMode, setAxisMode] = useState<AxisMode>('department');
 
@@ -116,7 +118,7 @@ export default function GradeMatrix({
             </div>
 
             {useMatrix
-              ? <Matrix evaluated={evaluated} axisMode={axisMode} selectedJobId={selectedJobId} onJobSelect={onJobSelect} />
+              ? <Matrix evaluated={evaluated} axisMode={axisMode} selectedJobId={selectedJobId} onJobSelect={onJobSelect} onDropToCell={onDropToCell} />
               : <CardList evaluated={evaluated} selectedJobId={selectedJobId} onJobSelect={onJobSelect} />
             }
 
@@ -276,11 +278,16 @@ function JobCard({ job, selected, onClick }: { job: JeJob; selected: boolean; on
 // ============================================================================
 // 矩阵（岗位 ≥ 5 时用）
 // ============================================================================
-function Matrix({ evaluated, axisMode, selectedJobId, onJobSelect }: {
+function Matrix({ evaluated, axisMode, selectedJobId, onJobSelect, onDropToCell }: {
   evaluated: JeJob[];
   axisMode: AxisMode;
   selectedJobId?: string | null;
   onJobSelect: (id: string) => void;
+  /**
+   * 拖拽回调：用户把岗位卡释放在另一个 cell 上时触发。
+   * 仅 axisMode='department' 模式下启用 — 跨职能列拖拽改 function 没语义。
+   */
+  onDropToCell?: (jobId: string, targetGrade: number, targetDepartment: string) => void;
 }) {
   const labelKey = axisMode === 'department'
     ? (j: JeJob) => j.department || '未分组'
@@ -303,6 +310,9 @@ function Matrix({ evaluated, axisMode, selectedJobId, onJobSelect }: {
   const axisLabels = Array.from(labels).sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const grades: number[] = [];
   for (let g = maxG; g >= minG; g--) grades.push(g);
+
+  const dragEnabled = axisMode === 'department' && !!onDropToCell;
+  const [hoverCell, setHoverCell] = useState<string | null>(null);
 
   return (
     <div style={{
@@ -328,12 +338,34 @@ function Matrix({ evaluated, axisMode, selectedJobId, onJobSelect }: {
               {axisLabels.map(lab => {
                 const k = `${lab}::${g}`;
                 const cellJobs = cells[k] || [];
+                const isHover = hoverCell === k;
                 return (
-                  <td key={lab} style={cellTdStyle}>
+                  <td
+                    key={lab}
+                    style={{
+                      ...cellTdStyle,
+                      background: isHover ? BRAND_TINT : 'transparent',
+                      transition: 'background 0.15s',
+                    }}
+                    onDragOver={dragEnabled ? (e) => { e.preventDefault(); setHoverCell(k); } : undefined}
+                    onDragLeave={dragEnabled ? () => setHoverCell(prev => prev === k ? null : prev) : undefined}
+                    onDrop={dragEnabled ? (e) => {
+                      e.preventDefault();
+                      setHoverCell(null);
+                      const jobId = e.dataTransfer.getData('text/plain');
+                      if (jobId) onDropToCell!(jobId, g, lab);
+                    } : undefined}
+                  >
                     {cellJobs.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {cellJobs.map(j => (
-                          <CellCard key={j.id} job={j} selected={j.id === selectedJobId} onClick={() => onJobSelect(j.id)} />
+                          <CellCard
+                            key={j.id}
+                            job={j}
+                            selected={j.id === selectedJobId}
+                            draggable={dragEnabled}
+                            onClick={() => onJobSelect(j.id)}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -346,24 +378,36 @@ function Matrix({ evaluated, axisMode, selectedJobId, onJobSelect }: {
           ))}
         </tbody>
       </table>
+
+      {dragEnabled && (
+        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 10, textAlign: 'center' }}>
+          提示：拖拽岗位卡到其他职级行可以快速调整 — 系统会自动反推因子档位
+        </div>
+      )}
     </div>
   );
 }
 
-function CellCard({ job, selected, onClick }: { job: JeJob; selected: boolean; onClick: () => void }) {
+function CellCard({ job, selected, onClick, draggable }: { job: JeJob; selected: boolean; onClick: () => void; draggable?: boolean }) {
   const dom = pickDominant(job);
   const total = job.result?.total_score;
 
   return (
-    <div onClick={onClick}
-      title={`${job.title} · ${dom.label} 主导 · ${total ?? '—'} 分`}
+    <div
+      onClick={onClick}
+      draggable={draggable}
+      onDragStart={draggable ? (e) => {
+        e.dataTransfer.setData('text/plain', job.id);
+        e.dataTransfer.effectAllowed = 'move';
+      } : undefined}
+      title={`${job.title} · ${dom.label} 主导 · ${total ?? '—'} 分${draggable ? '（可拖拽）' : ''}`}
       style={{
         padding: '6px 8px',
         background: selected ? BRAND_TINT : '#fff',
         border: `1px solid ${selected ? BRAND : '#E2E8F0'}`,
         borderLeft: `3px solid ${dom.color}`,
         borderRadius: 6,
-        cursor: 'pointer',
+        cursor: draggable ? 'grab' : 'pointer',
         fontSize: 12, color: '#0F172A',
         fontWeight: selected ? 600 : 400,
       }}

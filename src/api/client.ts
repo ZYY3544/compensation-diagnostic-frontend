@@ -310,6 +310,17 @@ export const jeGetLibrary = () =>
 export const jeCreateJobFromLibrary = (params: { lib_id: string; title?: string; department?: string }) =>
   api.post<{ job: JeJob }>('/je/jobs/from-library', params);
 
+// ----- 拖拽职级调整 -----
+export interface JeAdjustGradeResult {
+  job: JeJob;
+  achieved: boolean;            // 是否精确命中目标职级
+  diff: number | null;          // 实际职级 - target_grade
+  changed_factors: string[];    // 哪些因子被调整了
+}
+
+export const jeAdjustGrade = (jobId: string, target_grade: number, department?: string) =>
+  api.patch<JeAdjustGradeResult>(`/je/jobs/${jobId}/grade`, { target_grade, department });
+
 // ----- 现行体系对比 -----
 export interface JeCompareMatched {
   title: string;

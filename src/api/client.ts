@@ -215,6 +215,25 @@ export const jeGetBatch = (batchId: string) =>
 export const jeListBatches = () =>
   api.get<{ batches: Array<Pick<JeBatch, 'id' | 'status' | 'total' | 'completed' | 'failed' | 'created_at' | 'finished_at'>> }>('/je/batches');
 
+/**
+ * 下载批量评估 Excel 模板。
+ * 后端 (require_auth) 现场用 openpyxl 生成,带职能下拉 + 3 行示例。
+ * 用 axios + blob 拿到内容,再通过临时 <a> 触发浏览器下载,这样能保证
+ * Authorization 头被带上 (anchor 直链没法带 Bearer token)。
+ */
+export const jeDownloadBatchTemplate = async (): Promise<void> => {
+  const res = await api.get('/je/batch-template', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '岗位批量评估模板.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // 释放 blob URL 让浏览器回收内存
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 // ----- 异常检测 -----
 export interface JeAnomaly {
   severity: 'high' | 'medium' | 'low';

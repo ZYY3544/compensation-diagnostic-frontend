@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SparkyPanel from '../components/layout/SparkyPanel';
 import Workspace from '../components/layout/Workspace';
-import { jeCreateBatch, jeGetBatch, type JeBatch } from '../api/client';
+import { jeCreateBatch, jeGetBatch, jeDownloadBatchTemplate, type JeBatch } from '../api/client';
 import { nextMsgId } from '../lib/msgId';
 import type { Message } from '../types';
 
@@ -227,43 +227,75 @@ function UploadView({ onFileSelected, fileInputRef }: {
   onFileSelected: (f: File) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
-  // 列说明全部交给左侧 Sparky 的开场白讲,右边只留一个干净的拖拽区
-  // (避免左右重复"只有岗位名必填 / 推荐有 JD"等同样的话)
+  // 列说明全部交给左侧 Sparky 的开场白讲,右边只留拖拽区 + 下载模板
   const [dragOver, setDragOver] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadTemplate = async (e: React.MouseEvent) => {
+    e.stopPropagation();    // 防止冒泡触发拖拽区的 onClick (打开文件选择)
+    setDownloading(true);
+    try {
+      await jeDownloadBatchTemplate();
+    } catch (err) {
+      console.warn('[batch] template download failed', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
-    <div
-      onDrop={e => {
-        e.preventDefault();
-        setDragOver(false);
-        const f = e.dataTransfer.files[0];
-        if (f) onFileSelected(f);
-      }}
-      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onClick={() => fileInputRef.current?.click()}
-      style={{
-        border: `2px dashed ${dragOver ? BRAND : '#CBD5E1'}`,
-        background: dragOver ? '#FEF7F4' : '#fff',
-        borderRadius: 12, padding: '120px 24px', textAlign: 'center',
-        cursor: 'pointer', transition: 'all 0.15s',
-      }}
-    >
-      <div style={{ fontSize: 16, color: '#0F172A', marginBottom: 10, fontWeight: 500 }}>
-        点击选择文件,或拖拽 Excel 到这里
-      </div>
-      <div style={{ fontSize: 12, color: '#94A3B8' }}>
-        支持 .xlsx 格式,单批建议不超过 200 个岗位
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        style={{ display: 'none' }}
-        onChange={e => {
-          const f = e.target.files?.[0];
+    <div>
+      <div
+        onDrop={e => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files[0];
           if (f) onFileSelected(f);
         }}
-      />
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onClick={() => fileInputRef.current?.click()}
+        style={{
+          border: `2px dashed ${dragOver ? BRAND : '#CBD5E1'}`,
+          background: dragOver ? '#FEF7F4' : '#fff',
+          borderRadius: 12, padding: '120px 24px', textAlign: 'center',
+          cursor: 'pointer', transition: 'all 0.15s',
+        }}
+      >
+        <div style={{ fontSize: 16, color: '#0F172A', marginBottom: 10, fontWeight: 500 }}>
+          点击选择文件,或拖拽 Excel 到这里
+        </div>
+        <div style={{ fontSize: 12, color: '#94A3B8' }}>
+          支持 .xlsx 格式,单批建议不超过 200 个岗位
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          style={{ display: 'none' }}
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) onFileSelected(f);
+          }}
+        />
+      </div>
+
+      {/* 下载模板入口 — 表头跟解析器对齐,职能列内置下拉,避免列名歧义 */}
+      <div style={{ marginTop: 14, textAlign: 'center', fontSize: 12, color: '#64748B' }}>
+        没有现成的清单格式?
+        <button
+          onClick={handleDownloadTemplate}
+          disabled={downloading}
+          style={{
+            marginLeft: 4, padding: '4px 12px', fontSize: 12,
+            background: 'transparent', border: 'none',
+            color: BRAND, cursor: downloading ? 'wait' : 'pointer',
+            textDecoration: 'underline', fontFamily: 'inherit',
+          }}
+        >
+          {downloading ? '生成中…' : '下载 Excel 模板'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -467,6 +499,8 @@ function buildIntroText(): string {
     '· 只有"岗位名 / 职位"是必填的,其他列按完备度自动决定评估深度',
     '· 有 JD / 岗位说明书列的话,我会走深度分析,结果置信度更高',
     '· 没 JD 的岗位会标"AI 推断",建议后续单独点进去补 JD 重评',
+    '',
+    '没有现成的清单?可以点右边"下载 Excel 模板",里面表头我都帮你预设好,业务职能列还有内置下拉,直接填完上传回来就行。',
     '',
     '单批建议不超过 200 个岗位。开始评估后,我会实时报进度,完成后给你一份职级分布总结。',
   ].join('\n');

@@ -80,67 +80,91 @@ export default function SingleEvalView({ functionCatalog, onJobCreated, onGoToMa
     setSubmitting(true);
     setStage('evaluating');
 
-    // 启动过场动画 — 用 processing message 让 Sparky 在 chat 里逐步打勾
-    const stepTimers: number[] = [];
-    EVALUATING_STEPS.forEach((stepText, i) => {
-      const t = window.setTimeout(() => appendProcessingStep(setMessages, stepText), i * STEP_PACE);
-      stepTimers.push(t);
+    // 启动过场动画 — 5 步逐步出现，每步间隔 STEP_PACE。
+    // 用 Promise 跟踪"动画跑完"，保证最后一步出现后才让 result 阶段开始。
+    // 后端慢于动画时，最后一步会保持 doing 直到 API 返回；
+    // 后端快于动画时，结果阶段会等动画跑完才进，避免 setTimeout 在结果消息后面
+    // 继续 appendProcessingStep 污染对话流。
+    const animationDone = new Promise<void>(resolve => {
+      let i = 0;
+      const tick = () => {
+        if (i >= EVALUATING_STEPS.length) {
+          resolve();
+          return;
+        }
+        appendProcessingStep(setMessages, EVALUATING_STEPS[i]);
+        i++;
+        if (i < EVALUATING_STEPS.length) {
+          setTimeout(tick, STEP_PACE);
+        } else {
+          // 最后一步出现后再等一拍，让用户看到 doing 状态
+          setTimeout(resolve, STEP_PACE);
+        }
+      };
+      tick();
     });
 
+    // 后端调用与动画并行
+    const apiPromise = jeCreateJob({
+      title: title.trim(),
+      function: func,
+      department: department.trim() || undefined,
+      jd_text: jd.trim() || undefined,
+    });
+
+    let apiResult: Awaited<typeof apiPromise> | null = null;
+    let apiError: any = null;
     try {
-      const res = await jeCreateJob({
-        title: title.trim(),
-        function: func,
-        department: department.trim() || undefined,
-        jd_text: jd.trim() || undefined,
-      });
-      // 等过场动画走完最后一步再标记完成（视觉一致性 — 过早标完会感觉跳）
-      const minDuration = EVALUATING_STEPS.length * STEP_PACE;
-      const elapsed = Date.now();   // approximate; we don't track exact start, OK to delay slightly
-      void elapsed; void minDuration;
+      apiResult = await apiPromise;
+    } catch (e) {
+      apiError = e;
+    }
+    // 不管 API 成功失败，都要等动画跑完才进下一阶段
+    await animationDone;
 
-      finishProcessing(setMessages);
-
-      const newJob = res.data.job;
-      setJob(newJob);
-      setStage('result');
-
-      // 评估解读 + 7 因子收敛说明
-      const reading = buildReadingMessage(newJob);
-      const readingId = nextMsgId();
-      setTimeout(() => {
-        setMessages(prev => [...prev, { id: readingId, role: 'bot', text: '' }]);
-        streamText(reading, (t) => {
-          setMessages(prev => prev.map(m => m.id === readingId ? { ...m, text: t } : m));
-        }, () => {
-          // 多方案差异解释（如果有同职级或多个候选）
-          const candidates = newJob.result?.candidates || [];
-          const comparison = buildCandidateComparison(candidates);
-          if (comparison) {
-            const compId = nextMsgId();
-            setTimeout(() => {
-              setMessages(prev => [...prev, { id: compId, role: 'bot', text: '' }]);
-              streamText(comparison, (t) => {
-                setMessages(prev => prev.map(m => m.id === compId ? { ...m, text: t } : m));
-              });
-            }, 300);
-          }
-        });
-      }, 400);
-
-      onJobCreated(newJob);
-    } catch (e: any) {
-      stepTimers.forEach(t => clearTimeout(t));
+    if (apiError) {
       failProcessing(setMessages, '评估失败');
       const errId = nextMsgId();
       setMessages(prev => [...prev, { id: errId, role: 'bot', text: '' }]);
-      streamText(`评估时遇到了问题：${e?.response?.data?.reason || e?.message || '未知错误'}\n\n点"重新评估"再试一次，或者检查一下岗位信息。`, (t) => {
-        setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m));
-      });
+      streamText(
+        `评估时遇到了问题：${apiError?.response?.data?.reason || apiError?.message || '未知错误'}\n\n点"重新评估"再试一次，或者检查一下岗位信息。`,
+        (t) => setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m)),
+      );
       setStage('form');
-    } finally {
       setSubmitting(false);
+      return;
     }
+
+    finishProcessing(setMessages);
+    const newJob = apiResult!.data.job;
+    setJob(newJob);
+    setStage('result');
+
+    // 评估解读 + 7 因子收敛说明
+    const reading = buildReadingMessage(newJob);
+    const readingId = nextMsgId();
+    setTimeout(() => {
+      setMessages(prev => [...prev, { id: readingId, role: 'bot', text: '' }]);
+      streamText(reading, (t) => {
+        setMessages(prev => prev.map(m => m.id === readingId ? { ...m, text: t } : m));
+      }, () => {
+        // 多方案差异解释（如果有同职级或多个候选）
+        const candidates = newJob.result?.candidates || [];
+        const comparison = buildCandidateComparison(candidates);
+        if (comparison) {
+          const compId = nextMsgId();
+          setTimeout(() => {
+            setMessages(prev => [...prev, { id: compId, role: 'bot', text: '' }]);
+            streamText(comparison, (t) => {
+              setMessages(prev => prev.map(m => m.id === compId ? { ...m, text: t } : m));
+            });
+          }, 300);
+        }
+      });
+    }, 400);
+
+    onJobCreated(newJob);
+    setSubmitting(false);
   };
 
   const handleJobUpdated = (updated: JeJob) => {

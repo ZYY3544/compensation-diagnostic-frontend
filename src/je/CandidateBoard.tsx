@@ -234,9 +234,10 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexDirection: 'column', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {/* 不再显示"当前采用"徽章 — 用户必须主动点"采用此方案"才表达决定，
+              Sparky 只给推荐建议，最终决定权在用户。 */}
           {isRecommended && <Badge color={BRAND} bg={BRAND_TINT} label="Sparky 推荐方案" />}
-          {isCurrent && <Badge color="#fff" bg={BRAND} label="当前采用" inverted />}
         </div>
       </div>
 
@@ -261,34 +262,21 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
         ))}
       </div>
 
-      {/* 底部：每张卡都有"采用此方案"按钮 */}
+      {/* 底部：所有卡都有"采用此方案"按钮 — 用户主动决定哪个方案入库。
+          Sparky 只给推荐建议，不替用户做决定。 */}
       <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 11, color: '#94A3B8' }}>
           {editable
             ? '改任一档位会实时刷新分数（不调 LLM，毫秒级）'
             : '只读 — 点"采用此方案"切换到这个方案后即可编辑'}
         </span>
-        {isCurrent ? (
-          <button
-            disabled
-            style={{
-              ...primaryBtn,
-              padding: '8px 18px', fontSize: 13,
-              background: '#F1F5F9', color: '#94A3B8',
-              cursor: 'not-allowed', fontWeight: 500,
-            }}
-          >
-            ✓ 已采用
-          </button>
-        ) : (
-          <button
-            onClick={handleApply}
-            disabled={saving}
-            style={{ ...primaryBtn, padding: '8px 18px', fontSize: 13 }}
-          >
-            {saving ? '应用中…' : '采用此方案'}
-          </button>
-        )}
+        <button
+          onClick={handleApply}
+          disabled={saving}
+          style={{ ...primaryBtn, padding: '8px 18px', fontSize: 13 }}
+        >
+          {saving ? '应用中…' : '采用此方案'}
+        </button>
       </div>
     </div>
   );
@@ -632,25 +620,29 @@ function useMemo_buildCards(
     isRecommended: false,
   };
 
+  // 关键: isRecommended 用"在原 candidates 数组里的索引"判断，而不是 filter 之后的索引。
+  // 否则当 candidates[0]（真正的推荐）= currentFactors 被合到 currentCard，
+  // candidates[1] 就成了 otherCards 第一个，会被错误标记为推荐。
   const otherCards: CardData[] = candidates
-    .filter(c => !factorsEqual(c.factors, currentFactors))
-    .map((c, idx) => ({
+    .map((c, originalIdx) => ({ candidate: c, originalIdx }))
+    .filter(({ candidate }) => !factorsEqual(candidate.factors, currentFactors))
+    .map(({ candidate, originalIdx }, idx) => ({
       key: `cand-${idx}`,
-      factors: c.factors,
-      kh_score: c.kh_score,
-      ps_score: c.ps_score,
-      acc_score: c.acc_score,
-      total_score: c.total_score,
-      job_grade: c.job_grade,
-      profile: c.profile,
-      dominant: c.dominant === 'unknown' ? 'KH' : c.dominant,
-      orientation: c.orientation,
-      match_score: c.match_score,
+      factors: candidate.factors,
+      kh_score: candidate.kh_score,
+      ps_score: candidate.ps_score,
+      acc_score: candidate.acc_score,
+      total_score: candidate.total_score,
+      job_grade: candidate.job_grade,
+      profile: candidate.profile,
+      dominant: candidate.dominant === 'unknown' ? 'KH' : candidate.dominant,
+      orientation: candidate.orientation,
+      match_score: candidate.match_score,
       isCurrent: false,
-      isRecommended: idx === 0,
+      isRecommended: originalIdx === 0,
     }));
 
-  // 同时把 isRecommended 也标在 currentCard 上（如果 current factors 等于 LLM 给的最优）
+  // 同时把 isRecommended 标在 currentCard 上（如果 current factors 等于 LLM 给的最优）
   if (candidates.length > 0 && factorsEqual(candidates[0].factors, currentFactors)) {
     currentCard.isRecommended = true;
   }

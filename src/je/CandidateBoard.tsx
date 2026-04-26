@@ -370,9 +370,8 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
           )}
         </div>
         {def && (
-          <div style={{ flex: 1, fontSize: 11, lineHeight: 1.6, paddingTop: 4 }}>
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>{def.level} · {def.label}</span>
-            <span style={{ color: '#64748B', marginLeft: 6 }}>— {def.description}</span>
+          <div style={{ flex: 1, fontSize: 11, lineHeight: 1.6, paddingTop: 4, color: '#64748B' }}>
+            {def.description}
           </div>
         )}
       </div>
@@ -394,8 +393,7 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
                 <span style={{ fontSize: 10, color: '#94A3B8' }}>
                   {slot === 'prev' ? '上一档' : '下一档'}：
                 </span>
-                <span style={{ color: '#0F172A', fontWeight: 600 }}>{d.level} · {d.label}</span>
-                <span style={{ color: '#64748B', marginLeft: 6 }}>— {d.description}</span>
+                <span style={{ color: '#64748B', marginLeft: 4 }}>{d.description}</span>
               </div>
             );
           })}

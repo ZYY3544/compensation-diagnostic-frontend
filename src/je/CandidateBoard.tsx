@@ -15,6 +15,7 @@
 import { useRef, useState } from 'react';
 import { jeUpdateFactors, type JeJob, type JeCandidate } from '../api/client';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
+import { checkValidation, type ValidationIssue, type ValidationLevel } from './hayValidation';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
@@ -64,12 +65,8 @@ const FACTORS_BY_DIM = {
   ACC: ['freedom_to_act', 'magnitude', 'nature_of_impact'],
 };
 
-// PK / TE / FTA 用同一序列做约束链紧邻校验
-const ALL_LEVELS = [
-  'A-', 'A', 'A+', 'B-', 'B', 'B+', 'C-', 'C', 'C+',
-  'D-', 'D', 'D+', 'E-', 'E', 'E+', 'F-', 'F', 'F+',
-  'G-', 'G', 'G+', 'H-', 'H', 'H+', 'I-', 'I', 'I+',
-];
+// 严重程度优先级 — 同一因子被多条规则命中时取最高严重度
+const SEVERITY_RANK: Record<ValidationLevel, number> = { attention: 1, warn: 2, error: 3 };
 
 interface Props {
   job: JeJob;
@@ -139,6 +136,9 @@ interface CardData {
   match_score: number | null;
   isCurrent: boolean;
   isRecommended: boolean;     // 第一个候选 = Sparky 推荐
+  // PS×KH 关系校验需要 — 老数据可能为空,checkValidation 内部会跳过该校验
+  kh_level: number | null;
+  ps_percentage: number | null;
 }
 
 function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, onSparkyMessage, onApplied }: {
@@ -152,35 +152,42 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
   onApplied?: (cardLabel: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const [invalidFactors, setInvalidFactors] = useState<Set<string>>(new Set());
   const lastViolationKeyRef = useRef<string>('');
 
   const editable = isCurrent;
   const cardLabel = `方案 ${String.fromCharCode(65 + index)}`;
 
-  // 实时档位变化：约束链校验仅做提醒 — 不阻塞用户的修改。
-  // 违反约束链时: 标红 + Sparky 提示 + 仍然调后端更新分数（让用户看到改后的代价）
-  // 通过约束链时: 清掉红色提示 + 调后端更新分数
-  // 这样符合"Sparky 给建议，最终决定权在用户"的产品定位。
-  const handleFactorChange = async (factor: string, newValue: string) => {
-    const newFactors = { ...card.factors, [factor]: newValue };
-    const check = checkConstraintChain(newFactors);
-    setInvalidFactors(check.violations);
+  // 跑 Hay 校验 — 用 Excel 试算表 (T2.Validation) 里的全套规则
+  // (KH 内部 / PS 内部 / PS×KH 关系 / ACC 内部 / 跨维度上限)
+  // 每次 render 都跑,候选卡也展示自己的合规情况
+  const issues: ValidationIssue[] = checkValidation(
+    card.factors,
+    card.kh_level ?? null,
+    card.ps_percentage ?? null,
+  );
+  const factorSeverity = aggregateSeverityByFactor(issues);
 
-    if (check.violations.size > 0) {
-      // 同一种违反不重复发提醒
-      const key = Array.from(check.violations).sort().join('|') + ':' + check.message;
+  // 当前采用的卡 + 命中 warn/error 时,推送 Sparky 消息 (attention 太多,只染色不打扰)
+  // 同一组违反不重复发,避免 Sparky 刷屏
+  if (isCurrent && onSparkyMessage) {
+    const noisyIssues = issues.filter(i => i.level !== 'attention');
+    if (noisyIssues.length > 0) {
+      const key = noisyIssues.map(i => i.rule + ':' + i.message).sort().join('|');
       if (key !== lastViolationKeyRef.current) {
         lastViolationKeyRef.current = key;
-        onSparkyMessage?.(check.message || '档位组合违反 Hay 约束链');
+        const text = formatIssuesForSparky(noisyIssues);
+        // setTimeout 0 — 避免在 render 里直接调 setState
+        setTimeout(() => onSparkyMessage(text), 0);
       }
     } else {
       lastViolationKeyRef.current = '';
     }
+  }
 
-    // 不论是否违反约束链，都调后端更新 job.factors 让分数实时刷新。
-    // Sparky 只起提醒作用，最终选择权在用户。
-    // 网络抖动 / Render 冷启动会偶发 fetch 失败 → 自动重试一次再决定要不要打扰用户
+  // 实时档位变化:不论是否违反规则,都调后端更新 job.factors 让分数实时刷新
+  // (Sparky 只起提醒作用,最终选择权在用户)
+  const handleFactorChange = async (factor: string, newValue: string) => {
+    const newFactors = { ...card.factors, [factor]: newValue };
     setSaving(true);
     const updated = await tryUpdateFactorsWithRetry(job.id, newFactors);
     setSaving(false);
@@ -188,7 +195,7 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
       onUpdated(updated);
     } else {
       onSparkyMessage?.(
-        '刚才的档位调整没保存上 — 后端可能正在冷启动或网络抖动，已经自动重试一次仍然失败。等 30 秒后再改一次试试。'
+        '刚才的档位调整没保存上 — 后端可能正在冷启动或网络抖动,已经自动重试一次仍然失败。等 30 秒后再改一次试试。'
       );
     }
   };
@@ -263,7 +270,7 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
             score={dim === 'KH' ? card.kh_score : dim === 'PS' ? card.ps_score : card.acc_score}
             factorKeys={FACTORS_BY_DIM[dim]}
             originalFactors={card.factors}
-            invalidFactors={invalidFactors}
+            factorSeverity={factorSeverity}
             editable={editable}
             onChange={handleFactorChange}
             isFirst={idx === 0}
@@ -294,12 +301,12 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
 // ============================================================================
 // 维度行
 // ============================================================================
-function DimensionRow({ dim, score, factorKeys, originalFactors, invalidFactors, editable, onChange, isFirst }: {
+function DimensionRow({ dim, score, factorKeys, originalFactors, factorSeverity, editable, onChange, isFirst }: {
   dim: 'KH' | 'PS' | 'ACC';
   score: number;
   factorKeys: readonly string[];
   originalFactors: Record<string, string>;
-  invalidFactors: Set<string>;
+  factorSeverity: Map<string, ValidationLevel>;
   editable: boolean;
   onChange: (factor: string, value: string) => void;
   isFirst: boolean;
@@ -324,7 +331,7 @@ function DimensionRow({ dim, score, factorKeys, originalFactors, invalidFactors,
             key={k}
             factorKey={k}
             value={originalFactors[k] || ''}
-            invalid={invalidFactors.has(k)}
+            severity={factorSeverity.get(k) ?? null}
             editable={editable}
             onChange={v => onChange(k, v)}
           />
@@ -337,10 +344,10 @@ function DimensionRow({ dim, score, factorKeys, originalFactors, invalidFactors,
 // ============================================================================
 // 单个因子行
 // ============================================================================
-function FactorRow({ factorKey, value, invalid, editable, onChange }: {
+function FactorRow({ factorKey, value, severity, editable, onChange }: {
   factorKey: string;
   value: string;
-  invalid: boolean;
+  severity: ValidationLevel | null;
   editable: boolean;
   onChange: (v: string) => void;
 }) {
@@ -348,20 +355,21 @@ function FactorRow({ factorKey, value, invalid, editable, onChange }: {
   const adjacent = getAdjacentDefinitions(factorKey, value);
   const label = FACTOR_LABELS[factorKey] || factorKey;
   const [showAdjacent, setShowAdjacent] = useState(false);
+  const sty = severityStyle(severity);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ flex: 1, fontSize: 13, color: '#0F172A', lineHeight: 1.4 }} title={label}>
           {label}
-          {invalid && (
+          {severity && (
             <span style={{
               marginLeft: 6, padding: '1px 6px', borderRadius: 3,
-              background: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: 600,
+              background: sty.badgeBg, color: sty.badgeFg, fontSize: 10, fontWeight: 600,
             }}
-            title="跟 Hay 标准约束链不一致 — 分数仍按当前档位计算，仅作提醒"
+            title={sty.tip}
             >
-              不符 Hay 规则
+              {sty.badgeLabel}
             </span>
           )}
         </span>
@@ -389,11 +397,11 @@ function FactorRow({ factorKey, value, invalid, editable, onChange }: {
               onChange={e => onChange(e.target.value)}
               style={{
                 padding: '5px 12px', fontSize: 13,
-                border: `1px solid ${invalid ? '#F59E0B' : '#E2E8F0'}`, borderRadius: 4,
-                background: invalid ? '#FFFBEB' : '#fff',
-                color: invalid ? '#92400E' : '#0F172A',
+                border: `1px solid ${severity ? sty.borderColor : '#E2E8F0'}`, borderRadius: 4,
+                background: severity ? sty.bgColor : '#fff',
+                color: severity ? sty.fgColor : '#0F172A',
                 fontFamily: 'inherit', minWidth: 76, cursor: 'pointer',
-                outline: invalid ? '2px solid rgba(245,158,11,0.15)' : 'none',
+                outline: severity ? `2px solid ${sty.outlineColor}` : 'none',
               }}
             >
               {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
@@ -403,9 +411,11 @@ function FactorRow({ factorKey, value, invalid, editable, onChange }: {
           ) : (
             <span style={{
               display: 'inline-block', padding: '5px 12px', fontSize: 13,
-              background: '#F1F5F9', borderRadius: 4,
-              fontFamily: 'ui-monospace, monospace', color: '#475569',
+              background: severity ? sty.bgColor : '#F1F5F9', borderRadius: 4,
+              fontFamily: 'ui-monospace, monospace',
+              color: severity ? sty.fgColor : '#475569',
               minWidth: 56, textAlign: 'center',
+              border: severity ? `1px solid ${sty.borderColor}` : '1px solid transparent',
             }}>{value}</span>
           )}
         </div>
@@ -566,44 +576,64 @@ async function tryUpdateFactorsWithRetry(
 
 
 // ============================================================================
-// 约束链校验：PK ≥ TE ≥ FTA 上限关系（不要求紧邻）
+// Hay 校验工具:把 ValidationIssue[] 转成 (因子→严重度) Map + Sparky 文案
 // ============================================================================
-function checkConstraintChain(factors: Record<string, string>): {
-  violations: Set<string>;
-  message: string | null;
+
+/** 同一因子被多条规则命中时,取最高严重度 (error > warn > attention) */
+function aggregateSeverityByFactor(issues: ValidationIssue[]): Map<string, ValidationLevel> {
+  const out = new Map<string, ValidationLevel>();
+  for (const issue of issues) {
+    for (const f of issue.factors) {
+      const prev = out.get(f);
+      if (!prev || SEVERITY_RANK[issue.level] > SEVERITY_RANK[prev]) {
+        out.set(f, issue.level);
+      }
+    }
+  }
+  return out;
+}
+
+/** 把若干 issues 汇总成一段 Sparky 提醒文案 */
+function formatIssuesForSparky(issues: ValidationIssue[]): string {
+  // error 摆前面 (违反硬约束),warn 在后 (Hay 不推荐组合)
+  const sorted = [...issues].sort(
+    (a, b) => SEVERITY_RANK[b.level] - SEVERITY_RANK[a.level],
+  );
+  const lines = sorted.map(i => '· ' + i.message);
+  return lines.join('\n\n') + '\n\n这些只是规则提醒 — 分数仍按你选的档位计算,最终方案由你决定。';
+}
+
+/** ValidationLevel → 一组 UI 颜色配置 */
+function severityStyle(level: ValidationLevel | null): {
+  borderColor: string; bgColor: string; fgColor: string;
+  outlineColor: string; badgeBg: string; badgeFg: string;
+  badgeLabel: string; tip: string;
 } {
-  const pk = factors.practical_knowledge;
-  const te = factors.thinking_environment;
-  const fta = factors.freedom_to_act;
-
-  const pkIdx = ALL_LEVELS.indexOf(pk);
-  const teIdx = ALL_LEVELS.indexOf(te);
-  const ftaIdx = ALL_LEVELS.indexOf(fta);
-
-  if (pkIdx < 0 || teIdx < 0 || ftaIdx < 0) {
-    return { violations: new Set(), message: null };
+  if (level === 'error') {
+    return {
+      borderColor: '#EF4444', bgColor: '#FEF2F2', fgColor: '#B91C1C',
+      outlineColor: 'rgba(239,68,68,0.15)',
+      badgeBg: '#FEE2E2', badgeFg: '#B91C1C',
+      badgeLabel: '违反 Hay 上限',
+      tip: '违反 Hay 跨维度上限关系 (PK ≥ TE ≥ FTA) — 分数仍按当前档位计算,仅作提醒',
+    };
   }
-
-  const violations = new Set<string>();
-  const messages: string[] = [];
-
-  // PK ≥ TE — 只校验"上限"，不要求紧邻
-  if (teIdx > pkIdx) {
-    violations.add('thinking_environment');
-    messages.push(`提醒：按 Hay 规则，思维环境不应该高于专业知识。当前专业知识是 ${pk}，思维环境是 ${te}。`);
+  if (level === 'warn') {
+    return {
+      borderColor: '#F59E0B', bgColor: '#FFFBEB', fgColor: '#92400E',
+      outlineColor: 'rgba(245,158,11,0.15)',
+      badgeBg: '#FEF3C7', badgeFg: '#92400E',
+      badgeLabel: '不符 Hay 规则',
+      tip: '跟 Hay 标准矩阵的常见组合不一致 — 分数仍按当前档位计算,仅作提醒',
+    };
   }
-
-  // TE ≥ FTA — 只校验"上限"，不要求紧邻
-  if (ftaIdx > teIdx) {
-    violations.add('freedom_to_act');
-    messages.push(`提醒：按 Hay 规则，行动自由度不应该高于思维环境。当前思维环境是 ${te}，行动自由度是 ${fta}。`);
-  }
-
+  // attention = 轻提醒,只染色不打扰用户
   return {
-    violations,
-    message: messages.length > 0
-      ? messages.join('\n\n') + '\n\n这只是规则提醒 — 分数仍按你选的档位计算，最终方案由你决定。'
-      : null,
+    borderColor: '#0EA5E9', bgColor: '#F0F9FF', fgColor: '#0369A1',
+    outlineColor: 'rgba(14,165,233,0.15)',
+    badgeBg: '#E0F2FE', badgeFg: '#0369A1',
+    badgeLabel: '组合较少见',
+    tip: '这套档位组合在 Hay 实务中相对少见,但合规',
   };
 }
 
@@ -644,6 +674,8 @@ function useMemo_buildCards(
     match_score: job.result?.match_score ?? null,
     isCurrent: true,
     isRecommended: false,
+    kh_level: job.result?.kh_level ?? null,
+    ps_percentage: job.result?.ps_percentage ?? null,
   };
 
   // 关键: isRecommended 用"在原 candidates 数组里的索引"判断，而不是 filter 之后的索引。
@@ -666,6 +698,8 @@ function useMemo_buildCards(
       match_score: candidate.match_score,
       isCurrent: false,
       isRecommended: originalIdx === 0,
+      kh_level: candidate.kh_level ?? null,
+      ps_percentage: candidate.ps_percentage ?? null,
     }));
 
   // 同时把 isRecommended 标在 currentCard 上（如果 current factors 等于 LLM 给的最优）

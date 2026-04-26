@@ -18,7 +18,7 @@ import {
   type JeJob, type JeAnomaly, type JeCandidate, type JeLibrary,
 } from '../api/client';
 import GradeMatrix from './GradeMatrix';
-import BatchUpload from './BatchUpload';
+import BatchEvalView from './BatchEvalView';
 import PersonJobMatch from './PersonJobMatch';
 import JeSparkyChat from './JeSparkyChat';
 import JeOnboarding from './JeOnboarding';
@@ -63,7 +63,7 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type ViewMode = 'entry' | 'single' | 'onboarding' | 'matrix' | 'detail' | 'match';
+type ViewMode = 'entry' | 'single' | 'batch' | 'onboarding' | 'matrix' | 'detail' | 'match';
 
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
@@ -75,7 +75,6 @@ export default function JeApp() {
   // 直接跳到 matrix 视图。
   const [view, setView] = useState<ViewMode>('entry');
   const [showNewModal, setShowNewModal] = useState(false);
-  const [showBatchModal, setShowBatchModal] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [functionCatalog, setFunctionCatalog] = useState<Record<string, string[]>>({});
   // Sparky 辅助校准：保存岗位后比对前后 anomalies，新增的告警通过这个 prop 推到 chat
@@ -197,7 +196,8 @@ export default function JeApp() {
       // 路径 A：进 single view 全程左右分栏（替换之前的 modal 弹窗）
       setView('single');
     } else if (path === 'list') {
-      setShowBatchModal(true);
+      // 路径 B:进 batch view 全程左右分栏 (替换之前的 BatchUpload modal 弹窗)
+      setView('batch');
     } else if (path === 'system') {
       setView('onboarding');
     }
@@ -257,6 +257,11 @@ export default function JeApp() {
             onGoToMatrix={() => setView('matrix')}
             onBackToEntry={() => setView('entry')}
           />
+        ) : view === 'batch' ? (
+          <BatchEvalView
+            onComplete={handleBatchComplete}
+            onBackToEntry={() => setView('entry')}
+          />
         ) : view === 'onboarding' ? (
           <JeOnboarding
             onComplete={(_profile, library) => {
@@ -279,7 +284,7 @@ export default function JeApp() {
             selectedJobId={selectedId}
             onJobSelect={handleSelectJob}
             onJobCreated={handleJobCreated}
-            onBatchUpload={() => setShowBatchModal(true)}
+            onBatchUpload={() => setView('batch')}
             onSingleEval={() => setShowNewModal(true)}
             onPersonJobMatch={() => setView('match')}
             onCompareLegacy={() => setShowCompareModal(true)}
@@ -294,7 +299,7 @@ export default function JeApp() {
             onUpdated={handleJobUpdated}
             onDelete={() => handleDelete(selectedJob.id)}
             onBack={() => setView('matrix')}
-            onBatchUpload={() => setShowBatchModal(true)}
+            onBatchUpload={() => setView('batch')}
             onSingleEval={() => setShowNewModal(true)}
             onPersonJobMatch={() => setView('match')}
             onJobByTitle={(title) => {
@@ -315,12 +320,6 @@ export default function JeApp() {
           functionCatalog={functionCatalog}
           onClose={() => setShowNewModal(false)}
           onCreated={handleSingleJobCreated}
-        />
-      )}
-      {showBatchModal && (
-        <BatchUpload
-          onClose={() => setShowBatchModal(false)}
-          onComplete={handleBatchComplete}
         />
       )}
       {showCompareModal && (

@@ -23,6 +23,7 @@ import PersonJobMatch from './PersonJobMatch';
 import JeSparkyChat from './JeSparkyChat';
 import JeOnboarding from './JeOnboarding';
 import JeEntryView, { type EntryPath } from './JeEntryView';
+import SingleEvalView from './SingleEvalView';
 import CompareLegacyModal from './CompareLegacyModal';
 import CandidateBoard from './CandidateBoard';
 import Workspace from '../components/layout/Workspace';
@@ -62,7 +63,7 @@ const FACTOR_ORDER = [
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type ViewMode = 'entry' | 'onboarding' | 'matrix' | 'detail' | 'match';
+type ViewMode = 'entry' | 'single' | 'onboarding' | 'matrix' | 'detail' | 'match';
 
 export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
@@ -193,11 +194,9 @@ export default function JeApp() {
   // 入口路径分发：从 JeEntryView 的三个 chip 或 chat 关键词触发
   const handleEntryChoice = (path: EntryPath) => {
     if (path === 'single') {
-      // 路径 A：直接弹单评 modal，关闭 modal 后回到 entry / matrix
-      setShowNewModal(true);
+      // 路径 A：进 single view 全程左右分栏（替换之前的 modal 弹窗）
+      setView('single');
     } else if (path === 'list') {
-      // 路径 B：当前先复用 BatchUpload (要求有 JD 列)，下次迭代换成完整版
-      // (字段完备度自动决定走 LLM 推断或深度分析)
       setShowBatchModal(true);
     } else if (path === 'system') {
       setView('onboarding');
@@ -251,6 +250,13 @@ export default function JeApp() {
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {view === 'entry' ? (
           <JeEntryView onChoose={handleEntryChoice} />
+        ) : view === 'single' ? (
+          <SingleEvalView
+            functionCatalog={functionCatalog}
+            onJobCreated={handleJobCreated}
+            onGoToMatrix={() => setView('matrix')}
+            onBackToEntry={() => setView('entry')}
+          />
         ) : view === 'onboarding' ? (
           <JeOnboarding
             onComplete={(_profile, library) => {

@@ -150,7 +150,7 @@ export const jeListFunctions = () =>
 export const jeListJobs = () =>
   api.get<{ jobs: JeJob[] }>('/je/jobs');
 
-export const jeCreateJob = (data: { title: string; function: string; department?: string; jd_text: string }) =>
+export const jeCreateJob = (data: { title: string; function: string; department?: string; jd_text?: string }) =>
   api.post<{ job: JeJob }>('/je/jobs', data);
 
 export const jeGetJob = (jobId: string) =>

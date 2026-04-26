@@ -182,10 +182,9 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
             </span>
             {card.profile && <span style={{ fontSize: 11, color: '#94A3B8' }}>· {card.profile}</span>}
           </div>
-          <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
-            {card.dominant !== 'unknown' && <DominantPill dominant={card.dominant} />}
-            {card.orientation && <span style={{ marginLeft: 6 }}>{card.orientation}</span>}
-          </div>
+          {/* 之前这里有"KH 主导 · 偏管理 / 战略型"这一行（dominant + orientation 拼接），
+              语义上经常冲突 — KH 主导（暗示偏专业）跟"偏管理 / 战略型"看起来矛盾，
+              而且对用户来说理解成本高。删掉，让职级和分数自己说话。 */}
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {isRecommended && !isCurrent && <Badge color={BRAND} bg={BRAND_TINT} label="Sparky 推荐" />}
@@ -339,18 +338,8 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
 // ============================================================================
 // 小组件
 // ============================================================================
-function DominantPill({ dominant }: { dominant: 'KH' | 'PS' | 'ACC' }) {
-  const color = dominant === 'KH' ? KH_COLOR : dominant === 'PS' ? PS_COLOR : ACC_COLOR;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      fontSize: 11, color,
-    }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block' }} />
-      {dominant} 主导
-    </span>
-  );
-}
+// DominantPill (KH/PS/ACC 主导小标签) 已删除 — 跟 orientation 一起呈现时
+// 语义经常冲突 (KH 主导 + 偏管理 矛盾)，让用户困惑。
 
 function Badge({ color, bg, label, inverted }: { color: string; bg: string; label: string; inverted?: boolean }) {
   return (

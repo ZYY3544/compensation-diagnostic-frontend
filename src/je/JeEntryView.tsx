@@ -45,10 +45,7 @@ export default function JeEntryView({ onChoose }: Props) {
       setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
       const intro = [
         '你好，我是 Sparky，岗位价值评估助手。',
-        '',
-        '今天主要想做什么？右边有三个常见的入口，对应不同的工作场景。',
-        '',
-        '也可以直接告诉我你想做什么 — 比如"评一下销售经理"、"我有 30 个岗位的清单"、"从零建立职级体系"。',
+        '直接告诉我你想做什么，比如"评一下销售经理"、"我有 30 个岗位的清单"，或者用右边的入口开始。',
       ].join('\n');
       streamText(intro, (t) => {
         setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
@@ -112,23 +109,23 @@ export default function JeEntryView({ onChoose }: Props) {
             label="评一个岗位"
             duration="< 1 分钟"
             scenes="招聘定级 / 晋升评估 / 临时咨询"
-            description="粘贴一份 JD 或简短描述，立刻得到 8 因子档位 + Hay 标准职级 + AI 推理过程。适合 HRBP 日常使用。"
-            cta="开始单评"
+            description="粘贴一份 JD 或简短描述，立刻得到岗位职级和评估依据。适合 HRBP 日常使用。"
+            cta="粘贴 JD 开始"
             onClick={() => onChoose('single')}
           />
           <PathCard
             label="我有岗位清单要批量评"
             duration="10–30 分钟"
             scenes="年度调薪 / 组织诊断 / 并购整合"
-            description="上传 Excel — 只有岗位名是必填的。有 JD 的走深度分析，只有岗位名的 AI 自动推断 PK 档位（标'AI 推断'徽章）。一键得到全公司职级图谱。"
-            cta="上传清单"
+            description="只有岗位名也能评，AI 会自动判断专业知识等级。有 JD 的话结果更准。一键得到全公司职级图谱。"
+            cta="上传 Excel"
             onClick={() => onChoose('list')}
           />
           <PathCard
             label="从零建立职级体系"
             duration="30–60 分钟"
             scenes="新公司 / 转型期 / 全面重构"
-            description="先访谈了解你们公司基本面（4 个问题），AI 根据组织画像生成 20–40 个推荐岗位库，你从里面选岗 + 校准。Sparky 全程在旁边给建议、做一致性检查。"
+            description="先访谈了解你们公司基本面（4 个问题），AI 根据组织画像生成 20–40 个推荐岗位，你从里面选岗 + 校准。Sparky 全程在旁边给建议、做一致性检查。"
             cta="开始访谈"
             onClick={() => onChoose('system')}
           />

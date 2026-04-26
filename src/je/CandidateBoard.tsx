@@ -170,21 +170,35 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
       {/* 顶部：方案名 + 徽章 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 2 }}>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
             方案 {String.fromCharCode(65 + index)}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ fontSize: 24, fontWeight: 700, color: '#0F172A' }}>
-              G{card.job_grade}
-            </span>
-            <span style={{ fontSize: 13, color: '#64748B' }}>
-              {card.total_score} 分
-            </span>
-            {card.profile && <span style={{ fontSize: 11, color: '#94A3B8' }}>· {card.profile}</span>}
+          {/* 三个核心数据：每个都是"值 + 下方 label"双行结构，用户一眼能看到含义 */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+            <ValueWithLabel
+              value={`G${card.job_grade}`}
+              label="Hay 职级"
+              valueSize={24}
+              valueColor="#0F172A"
+              tooltip="Hay 体系的标准化岗位职级 (G1-G27)，数值越大代表岗位价值越高"
+            />
+            <ValueWithLabel
+              value={String(card.total_score)}
+              label="总分"
+              valueSize={20}
+              valueColor="#475569"
+              tooltip="Know-How + Problem Solving + Accountability 三维分数之和"
+            />
+            {card.profile && (
+              <ValueWithLabel
+                value={card.profile}
+                label="岗位倾向"
+                valueSize={20}
+                valueColor="#475569"
+                tooltip={profileTooltip(card.profile)}
+              />
+            )}
           </div>
-          {/* 之前这里有"KH 主导 · 偏管理 / 战略型"这一行（dominant + orientation 拼接），
-              语义上经常冲突 — KH 主导（暗示偏专业）跟"偏管理 / 战略型"看起来矛盾，
-              而且对用户来说理解成本高。删掉，让职级和分数自己说话。 */}
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {isRecommended && !isCurrent && <Badge color={BRAND} bg={BRAND_TINT} label="Sparky 推荐" />}
@@ -340,6 +354,51 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
 // ============================================================================
 // DominantPill (KH/PS/ACC 主导小标签) 已删除 — 跟 orientation 一起呈现时
 // 语义经常冲突 (KH 主导 + 偏管理 矛盾)，让用户困惑。
+
+// 双行数据展示：上方大字值 + 下方灰字标签，用户一眼能看到字段含义。
+// hover 显示 tooltip 解释字段细节。
+function ValueWithLabel({ value, label, valueSize, valueColor, tooltip }: {
+  value: string;
+  label: string;
+  valueSize: number;
+  valueColor: string;
+  tooltip?: string;
+}) {
+  return (
+    <div title={tooltip}>
+      <div style={{
+        fontSize: valueSize, fontWeight: 700, color: valueColor,
+        lineHeight: 1.1,
+      }}>
+        {value}
+      </div>
+      <div style={{
+        fontSize: 10, color: '#94A3B8', marginTop: 4,
+        cursor: tooltip ? 'help' : 'default',
+        borderBottom: tooltip ? '1px dotted #CBD5E1' : 'none',
+        display: 'inline-block',
+      }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+// Profile 含义说明（Hay 8 个 Profile 类型 + L 平衡型）
+function profileTooltip(profile: string): string {
+  const map: Record<string, string> = {
+    'P4': '极端专家型 — 几乎完全靠专业深度产出价值，几乎不涉及决策和管理',
+    'P3': '深度专家型 — 主要靠专业能力，少量协调',
+    'P2': '专家型 — 偏专业，但有一定决策影响',
+    'P1': '专家偏管理 — 专业能力为主，开始承担管理责任',
+    'L':  '平衡型 — 专业 / 管理 / 战略权重均衡，典型的中层骨干',
+    'A1': '管理偏专业 — 管理责任为主，仍依赖专业判断',
+    'A2': '管理型 — 主要靠管理决策产出价值',
+    'A3': '战略管理型 — 偏战略，决策范围更大',
+    'A4': '极端战略型 — 完全战略层，几乎不涉及具体业务执行',
+  };
+  return map[profile] || `Hay 岗位画像类型: ${profile}`;
+}
 
 function Badge({ color, bg, label, inverted }: { color: string; bg: string; label: string; inverted?: boolean }) {
   return (

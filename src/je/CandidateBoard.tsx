@@ -1,27 +1,18 @@
 /**
  * 岗位详情右侧工作台主内容：候选方案卡片（垂直堆叠）。
  *
- * 跟旧版的 ReasoningPanel + FactorTable 关系：
- *  - 旧版分两个 tab：评估解释（只读候选）+ 因子明细（可编辑下拉）
- *  - 新版合一：每张候选卡上方是 KH/PS/ACC 三维分数，下方是该方案的 8 因子下拉
- *  - 当前采用的卡可编辑，其他候选只读 + 提供"采用此方案"切换
- *  - LLM 推理（pk_reasoning）不在这里展示，由左侧 Sparky 对话栏接管
- *
- * 单张候选卡布局：
- *   ┌─ 方案 A · 当前采用 / Sparky 推荐 ──────────────────┐
- *   │ G12 · 213 分                                         │
- *   │ KH 主导 · 偏管理 · A1                                │
- *   │                                                       │
- *   │ ┌─ KH（128 分）─┬─ PS（38 分）─┬─ ACC（43 分）──┐    │
- *   │ │ PK [D ▼]      │ TC [3 ▼]    │ FTA [C+ ▼]    │    │
- *   │ │ MK [I ▼]      │ TE [D ▼]    │ Mag [N ▼]     │    │
- *   │ │ Comm [2 ▼]    │             │ NoI [III ▼]   │    │
- *   │ └───────────────┴─────────────┴───────────────┘    │
- *   │                                                       │
- *   │ [✓ 当前采用]    或    [采用此方案]    + (如 dirty) 重算 │
- *   └───────────────────────────────────────────────────────┘
+ * 设计要点：
+ *  - 每张候选卡：顶部三数据 (Hay 职级 / 总分 / Short Profile) 横排 +
+ *    下方三个维度上下堆叠，每个维度的因子带档位定义常驻显示
+ *  - 当前采用的卡可改下拉，改完立即调后端 → 实时刷新分数 / 职级 / Short Profile
+ *  - 前端约束链校验 (PK ≥ TE ≥ FTA 紧邻)：违反时标红下拉 + 通过 onSparkyMessage
+ *    通知父组件让 Sparky 在 chat 里发提示，不调后端
+ *  - 每张卡底部都有"采用此方案"按钮（当前采用的 disabled 显示"已采用"），
+ *    点击 → 弹 Modal 提示已录入岗位库
+ *  - 第一张卡 (engine 给的最优) 永远显示 "Sparky 推荐方案"徽章；
+ *    当前采用的卡显示"当前采用"徽章；两者可叠加
  */
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import { jeUpdateFactors, type JeJob, type JeCandidate } from '../api/client';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 
@@ -48,8 +39,7 @@ const FACTOR_OPTIONS: Record<string, string[]> = {
   nature_of_impact: ['I','II','III','IV','V','VI','R','C','S','P'],
 };
 
-// 标签格式："中文（英文原名）"  — 对外不再用 PK / MK / TC 这种缩写，
-// HR 用户大多看不懂英文缩写。需要查方法论的用户能看到英文原名作锚点。
+// 标签格式："中文（英文原名）"
 const FACTOR_LABELS: Record<string, string> = {
   practical_knowledge: '专业知识（Practical Knowledge）',
   managerial_knowledge: '管理知识（Managerial Knowledge）',
@@ -61,32 +51,46 @@ const FACTOR_LABELS: Record<string, string> = {
   nature_of_impact: '影响性质（Nature of Impact）',
 };
 
-// 三个维度的全称（候选卡每列顶部显示）
 const DIMENSION_LABELS: Record<'KH' | 'PS' | 'ACC', string> = {
   KH: '知识技能（Know How）',
   PS: '解决问题（Problem Solving）',
   ACC: '职责（Accountability）',
 };
 
-// 因子按 KH/PS/ACC 三维分组。
-// 列内顺序由用户确认: KH 用 PK→MK→Comm；PS 反过来 TE 在上、TC 在下；ACC 用 FTA→Mag→NoI
+// 列内顺序: KH 用 PK→MK→Comm；PS 反过来 TE 在上、TC 在下；ACC 用 FTA→Mag→NoI
 const FACTORS_BY_DIM = {
   KH: ['practical_knowledge', 'managerial_knowledge', 'communication'],
   PS: ['thinking_environment', 'thinking_challenge'],
   ACC: ['freedom_to_act', 'magnitude', 'nature_of_impact'],
 };
 
+// PK / TE / FTA 用同一序列做约束链紧邻校验
+const ALL_LEVELS = [
+  'A-', 'A', 'A+', 'B-', 'B', 'B+', 'C-', 'C', 'C+',
+  'D-', 'D', 'D+', 'E-', 'E', 'E+', 'F-', 'F', 'F+',
+  'G-', 'G', 'G+', 'H-', 'H', 'H+', 'I-', 'I', 'I+',
+];
+
 interface Props {
   job: JeJob;
   onUpdated: (j: JeJob) => void;
+  /** 约束链违反时通知父组件，让 Sparky 在 chat 里发提示 */
+  onSparkyMessage?: (text: string) => void;
+  /**
+   * 用户点"采用此方案"成功后回调。父组件可以用来跳转到图谱视图等。
+   * 默认行为：CandidateBoard 自己弹一个 Modal 提示"已录入岗位库"。
+   */
+  onApplied?: (cardLabel: string) => void;
+  /** 提供"看职级图谱"快捷动作 — 弹窗里点"看职级图谱"会调这个 */
+  onGoToMatrix?: () => void;
 }
 
-export default function CandidateBoard({ job, onUpdated }: Props) {
+export default function CandidateBoard({ job, onUpdated, onSparkyMessage, onApplied, onGoToMatrix }: Props) {
   const candidates = job.result?.candidates || [];
   const currentFactors = job.factors || {};
-
-  // 把当前采用方案 + 其他候选按 (是否当前) 排序，构造卡片列表
   const cards = useMemo_buildCards(currentFactors, candidates, job);
+
+  const [appliedModal, setAppliedModal] = useState<string | null>(null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -99,8 +103,21 @@ export default function CandidateBoard({ job, onUpdated }: Props) {
           isCurrent={card.isCurrent}
           isRecommended={card.isRecommended}
           onUpdated={onUpdated}
+          onSparkyMessage={onSparkyMessage}
+          onApplied={(label) => {
+            onApplied?.(label);
+            setAppliedModal(label);
+          }}
         />
       ))}
+
+      {appliedModal && (
+        <ApplySuccessModal
+          cardLabel={appliedModal}
+          onClose={() => setAppliedModal(null)}
+          onGoToMatrix={onGoToMatrix}
+        />
+      )}
     </div>
   );
 }
@@ -124,41 +141,43 @@ interface CardData {
   isRecommended: boolean;     // 第一个候选 = Sparky 推荐
 }
 
-function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }: {
+function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, onSparkyMessage, onApplied }: {
   job: JeJob;
   card: CardData;
   index: number;
   isCurrent: boolean;
   isRecommended: boolean;
   onUpdated: (j: JeJob) => void;
+  onSparkyMessage?: (text: string) => void;
+  onApplied?: (cardLabel: string) => void;
 }) {
-  // dirty 状态：用户修改下拉后跟原 card.factors 不一致
-  const [draft, setDraft] = useState<Record<string, string>>(card.factors);
   const [saving, setSaving] = useState(false);
+  const [invalidFactors, setInvalidFactors] = useState<Set<string>>(new Set());
+  const lastViolationKeyRef = useRef<string>('');
 
-  // card 变化时（比如父组件重新渲染了候选）同步 draft
-  useEffect(() => { setDraft(card.factors); }, [card.key, JSON.stringify(card.factors)]);
+  const editable = isCurrent;
+  const cardLabel = `方案 ${String.fromCharCode(65 + index)}`;
 
-  const dirty = FACTOR_KEYS.some(k => draft[k] !== card.factors[k]);
-  const editable = isCurrent;   // 只有当前采用的卡能改下拉；其他候选只能"采用"切换
+  // 实时档位变化：先做约束链校验 → 通过则调后端实时刷新分数
+  const handleFactorChange = async (factor: string, newValue: string) => {
+    const newFactors = { ...card.factors, [factor]: newValue };
+    const check = checkConstraintChain(newFactors);
+    setInvalidFactors(check.violations);
 
-  const handleApplyOther = async () => {
-    if (!confirm('采用这套候选方案？8 因子会被覆盖为该方案。')) return;
-    setSaving(true);
-    try {
-      const res = await jeUpdateFactors(job.id, card.factors);
-      onUpdated(res.data.job);
-    } catch (e: any) {
-      alert(`应用失败：${e?.response?.data?.error || e.message}`);
-    } finally {
-      setSaving(false);
+    if (check.violations.size > 0) {
+      // 违反约束链 — 不调后端，只让 Sparky 提示一次（同一种违反不重复发）
+      const key = Array.from(check.violations).sort().join('|') + ':' + check.message;
+      if (key !== lastViolationKeyRef.current) {
+        lastViolationKeyRef.current = key;
+        onSparkyMessage?.(check.message || '档位组合违反 Hay 约束链');
+      }
+      return;
     }
-  };
+    lastViolationKeyRef.current = '';
 
-  const handleRecompute = async () => {
     setSaving(true);
     try {
-      const res = await jeUpdateFactors(job.id, draft);
+      const res = await jeUpdateFactors(job.id, newFactors);
       onUpdated(res.data.job);
     } catch (e: any) {
       alert(`重算失败：${e?.response?.data?.error || e.message}`);
@@ -167,23 +186,35 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
     }
   };
 
-  const handleResetDraft = () => setDraft(card.factors);
+  // 采用此方案：调后端把 job 的 factors 切成本卡的 factors，弹成功 modal
+  const handleApply = async () => {
+    setSaving(true);
+    try {
+      const res = await jeUpdateFactors(job.id, card.factors);
+      onUpdated(res.data.job);
+      onApplied?.(cardLabel);
+    } catch (e: any) {
+      alert(`应用失败：${e?.response?.data?.error || e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div style={{
       background: '#fff',
       border: `1px solid ${isCurrent ? BRAND : '#E2E8F0'}`,
-      borderRadius: 12, padding: 20,
+      borderRadius: 12, padding: 22,
       boxShadow: isCurrent ? `0 0 0 2px ${BRAND_TINT}` : 'none',
       position: 'relative',
     }}>
-      {/* 顶部：方案名 + 三个核心数据（横排 inline "label：value" 格式） + 徽章 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+      {/* 顶部：方案名 + 三个核心数据 + 徽章 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
-            方案 {String.fromCharCode(65 + index)}
+          <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8 }}>
+            {cardLabel}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 28, flexWrap: 'wrap' }}>
             <InlineStat
               label="Hay 职级"
               value={String(card.job_grade)}
@@ -203,18 +234,17 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          {isRecommended && !isCurrent && <Badge color={BRAND} bg={BRAND_TINT} label="Sparky 推荐" />}
-          {isCurrent && <Badge color={BRAND} bg={BRAND} label="当前采用" inverted />}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexDirection: 'column', alignItems: 'flex-end' }}>
+          {isRecommended && <Badge color={BRAND} bg={BRAND_TINT} label="Sparky 推荐方案" />}
+          {isCurrent && <Badge color="#fff" bg={BRAND} label="当前采用" inverted />}
         </div>
       </div>
 
-      {/* 三个维度上下堆叠（不再三列横排）。每个维度顶部维度名 + 分数，
-          下方该维度因子列表，因子档位的解释直接展示在下拉旁。 */}
+      {/* 三个维度上下堆叠 */}
       <div style={{
-        display: 'flex', flexDirection: 'column', gap: 14,
+        display: 'flex', flexDirection: 'column', gap: 16,
         background: '#FAFBFC', border: '1px solid #F1F5F9', borderRadius: 8,
-        padding: 16,
+        padding: 18,
       }}>
         {(['KH', 'PS', 'ACC'] as const).map((dim, idx) => (
           <DimensionRow
@@ -222,32 +252,40 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
             dim={dim}
             score={dim === 'KH' ? card.kh_score : dim === 'PS' ? card.ps_score : card.acc_score}
             factorKeys={FACTORS_BY_DIM[dim]}
-            draft={draft}
             originalFactors={card.factors}
+            invalidFactors={invalidFactors}
             editable={editable}
-            onChange={(k, v) => setDraft(prev => ({ ...prev, [k]: v }))}
+            onChange={handleFactorChange}
             isFirst={idx === 0}
           />
         ))}
       </div>
 
-      {/* 底部操作栏 */}
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      {/* 底部：每张卡都有"采用此方案"按钮 */}
+      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, color: '#94A3B8' }}>
+          {editable
+            ? '改任一档位会实时刷新分数（不调 LLM，毫秒级）'
+            : '只读 — 点"采用此方案"切换到这个方案后即可编辑'}
+        </span>
         {isCurrent ? (
-          dirty ? (
-            <>
-              <button onClick={handleResetDraft} disabled={saving} style={ghostBtn}>取消修改</button>
-              <button onClick={handleRecompute} disabled={saving} style={primaryBtn}>
-                {saving ? '重算中…' : '重算并保存'}
-              </button>
-            </>
-          ) : (
-            <span style={{ fontSize: 11, color: '#94A3B8', alignSelf: 'center' }}>
-              修改任一档位下拉即可触发重算（不调 LLM，毫秒级）
-            </span>
-          )
+          <button
+            disabled
+            style={{
+              ...primaryBtn,
+              padding: '8px 18px', fontSize: 13,
+              background: '#F1F5F9', color: '#94A3B8',
+              cursor: 'not-allowed', fontWeight: 500,
+            }}
+          >
+            ✓ 已采用
+          </button>
         ) : (
-          <button onClick={handleApplyOther} disabled={saving} style={primaryBtn}>
+          <button
+            onClick={handleApply}
+            disabled={saving}
+            style={{ ...primaryBtn, padding: '8px 18px', fontSize: 13 }}
+          >
             {saving ? '应用中…' : '采用此方案'}
           </button>
         )}
@@ -257,14 +295,14 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
 }
 
 // ============================================================================
-// 维度行：顶部维度名 + 分数；下方该维度的因子列表（每个因子一行）
+// 维度行
 // ============================================================================
-function DimensionRow({ dim, score, factorKeys, draft, originalFactors, editable, onChange, isFirst }: {
+function DimensionRow({ dim, score, factorKeys, originalFactors, invalidFactors, editable, onChange, isFirst }: {
   dim: 'KH' | 'PS' | 'ACC';
   score: number;
   factorKeys: readonly string[];
-  draft: Record<string, string>;
   originalFactors: Record<string, string>;
+  invalidFactors: Set<string>;
   editable: boolean;
   onChange: (factor: string, value: string) => void;
   isFirst: boolean;
@@ -274,26 +312,22 @@ function DimensionRow({ dim, score, factorKeys, draft, originalFactors, editable
 
   return (
     <div style={{
-      paddingTop: isFirst ? 0 : 12,
+      paddingTop: isFirst ? 0 : 14,
       borderTop: isFirst ? 'none' : '1px dashed #E2E8F0',
     }}>
-      {/* 顶部：维度名 + 分数 */}
-      <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12,
-      }}>
-        <span style={{ fontSize: 12, color: '#94A3B8' }} title={fullName}>{fullName}</span>
-        <span style={{ fontSize: 18, fontWeight: 700, color }}>{score}</span>
-        <span style={{ fontSize: 11, color: '#94A3B8' }}>分</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, color: '#94A3B8' }} title={fullName}>{fullName}</span>
+        <span style={{ fontSize: 22, fontWeight: 700, color }}>{score}</span>
+        <span style={{ fontSize: 12, color: '#94A3B8' }}>分</span>
       </div>
 
-      {/* 因子列表 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {factorKeys.map(k => (
           <FactorRow
             key={k}
             factorKey={k}
-            value={draft[k] || ''}
-            originalValue={originalFactors[k]}
+            value={originalFactors[k] || ''}
+            invalid={invalidFactors.has(k)}
             editable={editable}
             onChange={v => onChange(k, v)}
           />
@@ -303,45 +337,51 @@ function DimensionRow({ dim, score, factorKeys, draft, originalFactors, editable
   );
 }
 
-// 因子行：label 在上、下方左侧下拉 + 右侧档位定义（直接常驻展示，不再 hover 触发）。
-// ⓘ 按钮点击切换"上一档 / 下一档"对比（相邻档定义跟当前档并列显示，方便横向对比）。
-function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
+// ============================================================================
+// 单个因子行
+// ============================================================================
+function FactorRow({ factorKey, value, invalid, editable, onChange }: {
   factorKey: string;
   value: string;
-  originalValue: string;
+  invalid: boolean;
   editable: boolean;
   onChange: (v: string) => void;
 }) {
   const def = getLevelDefinition(factorKey, value);
   const adjacent = getAdjacentDefinitions(factorKey, value);
-  const dirty = value !== originalValue;
   const label = FACTOR_LABELS[factorKey] || factorKey;
   const [showAdjacent, setShowAdjacent] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {/* label 行 + ⓘ 按钮 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ flex: 1, fontSize: 12, color: '#0F172A', lineHeight: 1.4 }} title={label}>
+        <span style={{ flex: 1, fontSize: 13, color: '#0F172A', lineHeight: 1.4 }} title={label}>
           {label}
+          {invalid && (
+            <span style={{
+              marginLeft: 6, padding: '1px 6px', borderRadius: 3,
+              background: '#FEE2E2', color: '#B91C1C', fontSize: 10, fontWeight: 600,
+            }}>
+              违反 Hay 约束
+            </span>
+          )}
         </span>
         <button
           onClick={() => setShowAdjacent(s => !s)}
           title={showAdjacent ? '收起相邻档对比' : '对比上下相邻档位'}
           style={{
             flexShrink: 0,
-            width: 18, height: 18, borderRadius: '50%',
+            width: 20, height: 20, borderRadius: '50%',
             border: showAdjacent ? `1px solid ${BRAND}` : '1px solid #E2E8F0',
             padding: 0,
             background: showAdjacent ? BRAND : '#fff',
             color: showAdjacent ? '#fff' : '#94A3B8',
-            fontSize: 10, fontFamily: 'serif', fontStyle: 'italic',
-            cursor: 'pointer', lineHeight: '16px',
+            fontSize: 11, fontFamily: 'serif', fontStyle: 'italic',
+            cursor: 'pointer', lineHeight: '18px',
           }}
         >i</button>
       </div>
 
-      {/* 下拉 + 当前档定义（同一行，左下拉右定义） */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ flexShrink: 0 }}>
           {editable ? (
@@ -349,11 +389,12 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
               value={value}
               onChange={e => onChange(e.target.value)}
               style={{
-                padding: '4px 10px', fontSize: 12,
-                border: `1px solid ${dirty ? BRAND : '#E2E8F0'}`, borderRadius: 4,
-                background: dirty ? BRAND_TINT : '#fff',
-                fontFamily: 'inherit', minWidth: 70, cursor: 'pointer',
-                color: '#0F172A',
+                padding: '5px 12px', fontSize: 13,
+                border: `1px solid ${invalid ? '#DC2626' : '#E2E8F0'}`, borderRadius: 4,
+                background: invalid ? '#FEF2F2' : '#fff',
+                color: invalid ? '#B91C1C' : '#0F172A',
+                fontFamily: 'inherit', minWidth: 76, cursor: 'pointer',
+                outline: invalid ? '2px solid rgba(220,38,38,0.15)' : 'none',
               }}
             >
               {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
@@ -362,23 +403,22 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
             </select>
           ) : (
             <span style={{
-              display: 'inline-block', padding: '4px 10px', fontSize: 12,
+              display: 'inline-block', padding: '5px 12px', fontSize: 13,
               background: '#F1F5F9', borderRadius: 4,
               fontFamily: 'ui-monospace, monospace', color: '#475569',
-              minWidth: 50, textAlign: 'center',
+              minWidth: 56, textAlign: 'center',
             }}>{value}</span>
           )}
         </div>
         {def && (
-          <div style={{ flex: 1, fontSize: 11, lineHeight: 1.6, paddingTop: 4, color: '#64748B' }}>
+          <div style={{ flex: 1, fontSize: 12, lineHeight: 1.65, paddingTop: 5, color: '#64748B' }}>
             {def.description}
           </div>
         )}
       </div>
 
-      {/* 相邻档对比（点 ⓘ 展开 — 只显示 prev / next，current 已经常驻） */}
       {showAdjacent && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 82, marginTop: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 88, marginTop: 2 }}>
           {(['prev', 'next'] as const).map(slot => {
             const d = adjacent[slot];
             if (!d) return null;
@@ -388,9 +428,9 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
                 background: '#F8FAFC',
                 borderLeft: '2px solid #CBD5E1',
                 borderRadius: 3,
-                fontSize: 11, lineHeight: 1.5,
+                fontSize: 12, lineHeight: 1.5,
               }}>
-                <span style={{ fontSize: 10, color: '#94A3B8' }}>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>
                   {slot === 'prev' ? '上一档' : '下一档'}：
                 </span>
                 <span style={{ color: '#64748B', marginLeft: 4 }}>{d.description}</span>
@@ -404,20 +444,15 @@ function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
 }
 
 // ============================================================================
-// 小组件
+// 顶部三数据：横排 inline "label：value"
 // ============================================================================
-// DominantPill (KH/PS/ACC 主导小标签) 已删除 — 跟 orientation 一起呈现时
-// 语义经常冲突 (KH 主导 + 偏管理 矛盾)，让用户困惑。
-
-// 横排 inline "label：value" 数据展示。鼠标悬停 label 显示 tooltip 解释字段含义。
-// 跟之前的双行 ValueWithLabel 相比更紧凑，三个数据并排不占多大空间。
 function InlineStat({ label, value, tooltip }: {
   label: string;
   value: string;
   tooltip?: string;
 }) {
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, fontSize: 13 }}>
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, fontSize: 14 }}>
       <span
         title={tooltip}
         style={{
@@ -433,7 +468,6 @@ function InlineStat({ label, value, tooltip }: {
   );
 }
 
-// Profile 含义说明（Hay 8 个 Profile 类型 + L 平衡型）
 function profileTooltip(profile: string): string {
   const map: Record<string, string> = {
     'P4': '极端专家型 — 几乎完全靠专业深度产出价值，几乎不涉及决策和管理',
@@ -452,15 +486,116 @@ function profileTooltip(profile: string): string {
 function Badge({ color, bg, label, inverted }: { color: string; bg: string; label: string; inverted?: boolean }) {
   return (
     <span style={{
-      padding: '3px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+      padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
       background: inverted ? bg : bg,
-      color: inverted ? '#fff' : color,
+      color: inverted ? color : color,
     }}>
       {label}
     </span>
   );
 }
 
+// ============================================================================
+// 采用成功 Modal
+// ============================================================================
+function ApplySuccessModal({ cardLabel, onClose, onGoToMatrix }: {
+  cardLabel: string;
+  onClose: () => void;
+  onGoToMatrix?: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }} onClick={onClose}>
+      <div style={{
+        background: '#fff', borderRadius: 12, padding: 28,
+        width: '100%', maxWidth: 440,
+        boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>
+          {cardLabel} 已采用
+        </div>
+        <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.7, marginBottom: 20 }}>
+          该岗位的因子档位、总分、Hay 职级和 Short Profile 都已经更新到岗位库。
+          {onGoToMatrix && (
+            <>
+              <br />
+              你可以点上方的「职级图谱」按钮，看这个岗位在矩阵图里的最新位置。
+            </>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={ghostBtn}>关闭</button>
+          {onGoToMatrix && (
+            <button
+              onClick={() => { onGoToMatrix(); onClose(); }}
+              style={primaryBtn}
+            >
+              看职级图谱 →
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 约束链校验：PK ≥ TE ≥ FTA 紧邻一档
+// ============================================================================
+function checkConstraintChain(factors: Record<string, string>): {
+  violations: Set<string>;
+  message: string | null;
+} {
+  const pk = factors.practical_knowledge;
+  const te = factors.thinking_environment;
+  const fta = factors.freedom_to_act;
+
+  const pkIdx = ALL_LEVELS.indexOf(pk);
+  const teIdx = ALL_LEVELS.indexOf(te);
+  const ftaIdx = ALL_LEVELS.indexOf(fta);
+
+  if (pkIdx < 0 || teIdx < 0 || ftaIdx < 0) {
+    return { violations: new Set(), message: null };
+  }
+
+  const violations = new Set<string>();
+  const messages: string[] = [];
+
+  // PK 必须紧邻 TE 上方一档（pkIdx - teIdx === 1）
+  if (pkIdx - teIdx !== 1) {
+    violations.add('thinking_environment');
+    const expected = pkIdx - 1 >= 0 ? ALL_LEVELS[pkIdx - 1] : null;
+    if (expected) {
+      messages.push(`专业知识档位是 ${pk}，按 Hay 约束链思维环境应该紧邻在它下方一档（${expected}），现在是 ${te} 不符合。`);
+    } else {
+      messages.push(`专业知识档位 ${pk} 已是最低档，思维环境无法找到紧邻档。`);
+    }
+  }
+
+  // TE 必须紧邻 FTA 上方一档（teIdx - ftaIdx === 1）
+  if (teIdx - ftaIdx !== 1) {
+    violations.add('freedom_to_act');
+    const expected = teIdx - 1 >= 0 ? ALL_LEVELS[teIdx - 1] : null;
+    if (expected) {
+      messages.push(`思维环境档位是 ${te}，按 Hay 约束链行动自由度应该紧邻在它下方一档（${expected}），现在是 ${fta} 不符合。`);
+    } else {
+      messages.push(`思维环境档位 ${te} 已是最低档，行动自由度无法找到紧邻档。`);
+    }
+  }
+
+  return {
+    violations,
+    message: messages.length > 0
+      ? messages.join('\n\n') + '\n\n红色高亮的因子档位调整到提示的预期值后，分数才会重算。'
+      : null,
+  };
+}
+
+// ============================================================================
+// 样式
+// ============================================================================
 const primaryBtn: React.CSSProperties = {
   padding: '6px 14px', fontSize: 12, borderRadius: 6,
   border: 'none', background: BRAND, color: '#fff',
@@ -474,14 +609,13 @@ const ghostBtn: React.CSSProperties = {
 };
 
 // ============================================================================
-// 候选卡片列表构造（不是 React hook，名字加 useMemo_ 前缀只是为了可读性 — 内部就是纯函数）
+// 候选卡片列表构造
 // ============================================================================
 function useMemo_buildCards(
   currentFactors: Record<string, string>,
   candidates: JeCandidate[],
   job: JeJob,
 ): CardData[] {
-  // 第一张卡：当前采用方案。用 job.result 拿分数，用 job.factors 拿档位
   const currentCard: CardData = {
     key: 'current',
     factors: { ...currentFactors },
@@ -498,7 +632,6 @@ function useMemo_buildCards(
     isRecommended: false,
   };
 
-  // 其他候选：跟当前 factors 不同的才显示
   const otherCards: CardData[] = candidates
     .filter(c => !factorsEqual(c.factors, currentFactors))
     .map((c, idx) => ({
@@ -514,8 +647,13 @@ function useMemo_buildCards(
       orientation: c.orientation,
       match_score: c.match_score,
       isCurrent: false,
-      isRecommended: idx === 0,    // candidates 数组首项 = 引擎给的 best
+      isRecommended: idx === 0,
     }));
+
+  // 同时把 isRecommended 也标在 currentCard 上（如果 current factors 等于 LLM 给的最优）
+  if (candidates.length > 0 && factorsEqual(candidates[0].factors, currentFactors)) {
+    currentCard.isRecommended = true;
+  }
 
   return [currentCard, ...otherCards];
 }

@@ -241,7 +241,22 @@ export default function SingleEvalView({ functionCatalog, onJobCreated, onGoToMa
           </FadeBlock>
 
           <FadeBlock visible={stage === 'result'}>
-            {job && <CandidateBoard job={job} onUpdated={handleJobUpdated} />}
+            {job && (
+              <CandidateBoard
+                job={job}
+                onUpdated={handleJobUpdated}
+                onSparkyMessage={(text) => {
+                  // CandidateBoard 检测到约束链违反时通知 — 让 Sparky 在左 chat
+                  // 流式发一条提示消息 (跟过场动画/评估解读用同一个机制)
+                  const id = nextMsgId();
+                  setMessages(prev => [...prev, { id, role: 'bot', text: '' }]);
+                  streamText(text, (t) => {
+                    setMessages(prev => prev.map(m => m.id === id ? { ...m, text: t } : m));
+                  });
+                }}
+                onGoToMatrix={onGoToMatrix}
+              />
+            )}
           </FadeBlock>
         </div>
       </Workspace>

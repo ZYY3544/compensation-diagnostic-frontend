@@ -302,6 +302,8 @@ export default function JeApp() {
               if (j) handleSelectJob(j.id);
             }}
             sparkyAlert={sparkyAlert}
+            onRequestSparkyMessage={(text) => setSparkyAlert({ id: nextMsgId(), text })}
+            onGoToMatrix={() => setView('matrix')}
           />
         ) : (
           <CenterMsg>岗位已删除或不存在</CenterMsg>
@@ -424,7 +426,7 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, c
 function DetailLayout({
   job, jobs, anomalies, onUpdated, onDelete, onBack,
   onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle,
-  sparkyAlert,
+  sparkyAlert, onRequestSparkyMessage, onGoToMatrix,
 }: {
   job: JeJob;
   jobs: JeJob[];
@@ -437,6 +439,8 @@ function DetailLayout({
   onPersonJobMatch: () => void;
   onJobByTitle: (title: string) => void;
   sparkyAlert?: { id: string; text: string } | null;
+  onRequestSparkyMessage?: (text: string) => void;   // CandidateBoard 约束链违反时调
+  onGoToMatrix?: () => void;                          // 采用方案后弹窗的"看图谱"用
 }) {
   const [showJdEditor, setShowJdEditor] = useState(false);
 
@@ -480,7 +484,12 @@ function DetailLayout({
 
         <ConfidenceBanner job={job} onUploadJd={() => setShowJdEditor(true)} />
 
-        <CandidateBoard job={job} onUpdated={onUpdated} />
+        <CandidateBoard
+          job={job}
+          onUpdated={onUpdated}
+          onSparkyMessage={onRequestSparkyMessage}
+          onGoToMatrix={onGoToMatrix}
+        />
 
         {showJdEditor && (
           <JdEditorModal

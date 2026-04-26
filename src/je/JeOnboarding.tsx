@@ -1,17 +1,17 @@
 /**
- * JE Step 0：组织画像访谈 + 实时构建组织骨架矩阵。
+ * 路径 C 组织访谈 (建立体系) — LLM 驱动的多轮访谈,镜像薪酬诊断的 InterviewView 模式。
  *
- * 用户旅程（v2 设计文档第三章）：
- *  Q1 → 行业 + 规模     → 顶部出现"公司概况"标签
- *  Q2 → 部门列表        → 右侧出现横向排列的部门列
- *  Q3 → 管理层级        → 部门 × 层级形成空白骨架矩阵
- *  Q4 → 现有职级体系    → 顶部补充"现有体系"标签
- *  → 提交画像 → LLM 生成 20-40 个推荐岗位库 → 进入 Step 1
+ * 跟之前硬编码 4 道死题 + 简单 regex 解析的版本不同,这个版本:
+ *   · 每轮都调后端 POST /je/onboarding/extract,LLM 出 reply + extracted + follow_up
+ *   · LLM 决定要不要追问 (follow_up=true 时同 step 增加 round_num,follow_up=false 进下一题)
+ *   · 用户问元问题 (能不能截图 / 你的问题啥意思) LLM 会正面回答而不是硬跳下一题
+ *   · 右侧"组织骨架"实时同步 extracted 字段:Q1 公司概况、Q2 部门、Q3 层级、Q4 现有体系
  *
- * 跟 JeSparkyChat 的关系：本组件**替换** JeSparkyChat 在访谈期间出现，
- * 同样用 SparkyPanel 渲染对话区，唯一区别是 onNonChatSend 走访谈状态机。
+ * 流程:
+ *   Opening (LLM 生成开场) → JE_Q1 (公司概况) → JE_Q2 (部门) → JE_Q3 (层级) → JE_Q4 (现有体系)
+ *   → 提交画像 → LLM 生成 20-40 个推荐岗位库 → onComplete → matrix 视图
  *
- * 访谈结束后 onComplete 回调 → JeApp 切到 matrix 视图，library 已存在 DB。
+ * 跟 JeEntryView / SingleEvalView 同款 SparkyPanel + Workspace 左右分栏。
  */
 import { useEffect, useRef, useState } from 'react';
 import SparkyPanel from '../components/layout/SparkyPanel';
@@ -19,129 +19,234 @@ import Workspace from '../components/layout/Workspace';
 import { nextMsgId } from '../lib/msgId';
 import type { Message } from '../types';
 import {
-  jeSaveProfile, jeGenerateLibrary,
+  jeSaveProfile, jeGenerateLibrary, jeOnboardingExtract,
   type JeOrgProfile, type JeLibrary,
 } from '../api/client';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type Step = 'q1_intro' | 'q1' | 'q2' | 'q3' | 'q4' | 'generating' | 'done' | 'error';
+type Stage = 'interview' | 'generating' | 'done' | 'error';
+type StepId = 'Opening' | 'JE_Q1' | 'JE_Q2' | 'JE_Q3' | 'JE_Q4';
+
+const STEP_ORDER: StepId[] = ['JE_Q1', 'JE_Q2', 'JE_Q3', 'JE_Q4'];
 
 interface Props {
   onComplete: (profile: JeOrgProfile, library: JeLibrary) => void;
 }
 
 export default function JeOnboarding({ onComplete }: Props) {
-  const [step, setStep] = useState<Step>('q1_intro');
+  const [stage, setStage] = useState<Stage>('interview');
   const [profile, setProfile] = useState<Partial<JeOrgProfile>>({
-    departments: [],
-    layers: [],
+    departments: [], layers: [],
   });
   const [messages, setMessages] = useState<Message[]>([]);
-  const initRef = useRef(false);
-  const errorRef = useRef<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
-  // 进入即触发：用户气泡 + Sparky 流式开场 + Q1
+  // 访谈状态机:用 ref 避免闭包陷阱 (handleUserAnswer 是回调,会被 SparkyPanel 持有)
+  const stepRef = useRef<StepId>('Opening');
+  const roundRef = useRef<number>(1);
+  const isFollowUpRef = useRef<boolean>(false);
+  const lastSparkyQuestionRef = useRef<string>('');
+  const profileRef = useRef<Partial<JeOrgProfile>>({ departments: [], layers: [] });
+  const initRef = useRef(false);
+
+  // 进入即让 LLM 生成开场白 (走 question_id='Opening')
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-
-    setMessages([{ role: 'user', text: '我要建职级体系，从头开始评估全公司岗位' }]);
-    setTimeout(() => askWithStream(buildIntro(), 'q1'), 200);
+    setMessages([{ role: 'user', text: '我要建职级体系,从头开始评估全公司岗位' }]);
+    setTimeout(() => callExtract('Opening', ''), 200);
   }, []);
 
-  const askWithStream = (text: string, nextStep: Step) => {
-    const replyId = nextMsgId();
-    setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
-    streamText(text, (t) => {
-      setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
-    }, () => {
-      setStep(nextStep);
+  /** 把 extracted 字段同步到 profile state (LLM 输出格式见 interview_je_extract.txt) */
+  const applyExtracted = (items: Array<{ field_name: string; value: string }>) => {
+    setProfile(prev => {
+      const next = { ...prev };
+      for (const item of items) {
+        const v = (item.value || '').trim();
+        if (!v) continue;
+        if (item.field_name === 'company_profile') {
+          // 解析 markdown 出 industry / headcount tag (其他字段在卡片上整体展示)
+          const ind = v.match(/\*\*行业\*\*[:：]\s*([^\n]+)/);
+          if (ind) next.industry = ind[1].trim();
+          const hc = v.match(/(\d{2,7})\s*人/);
+          if (hc) next.headcount = parseInt(hc[1], 10);
+          (next as any).company_profile_md = v;
+        } else if (item.field_name === 'departments') {
+          next.departments = parseListAnswer(v);
+        } else if (item.field_name === 'layers') {
+          next.layers = parseListAnswer(v);
+        } else if (item.field_name === 'existing_grade_system') {
+          next.existing_grade_system = /^(无|没有|暂无)$/.test(v) ? null : v;
+        }
+      }
+      profileRef.current = next;
+      return next;
     });
   };
 
-  // ---- 用户回答处理 ----
+  /** 把当前 profile 浓缩成一段上下文,给 LLM 复习用 */
+  const buildContext = (): string => {
+    const p = profileRef.current;
+    const parts: string[] = [];
+    if ((p as any).company_profile_md) parts.push(`【公司概况】${(p as any).company_profile_md}`);
+    if (p.departments && p.departments.length > 0) parts.push(`【部门】${p.departments.join('、')}`);
+    if (p.layers && p.layers.length > 0) parts.push(`【层级】${p.layers.join('、')}`);
+    if (p.existing_grade_system) parts.push(`【现有职级】${p.existing_grade_system}`);
+    return parts.join('\n');
+  };
+
+  const getPreviousValue = (step: StepId): string => {
+    const p = profileRef.current as any;
+    if (step === 'JE_Q1') return p.company_profile_md || '';
+    if (step === 'JE_Q2') return (p.departments || []).join('、');
+    if (step === 'JE_Q3') return (p.layers || []).join('、');
+    if (step === 'JE_Q4') return p.existing_grade_system || '';
+    return '';
+  };
+
+  /** 核心调用:打 extract endpoint → 更新 profile + 流式说 reply + 决定下一步 */
+  const callExtract = async (questionId: StepId, userAnswer: string) => {
+    // Loading 气泡
+    const loadingId = nextMsgId();
+    setMessages(prev => [...prev, { id: loadingId, role: 'bot', text: 'Sparky 正在思考...' }]);
+
+    try {
+      const res = await jeOnboardingExtract({
+        question_id: questionId,
+        answer: userAnswer,
+        previous_value: getPreviousValue(questionId),
+        is_follow_up: isFollowUpRef.current,
+        round: roundRef.current,
+        follow_up_question: isFollowUpRef.current ? lastSparkyQuestionRef.current : '',
+        context: buildContext(),
+      });
+
+      const { extracted, reply, follow_up } = res.data;
+
+      // 1. 同步右侧
+      if (Array.isArray(extracted)) applyExtracted(extracted);
+
+      // 2. 把 loading 替换成空 bot 气泡,流式打 reply
+      setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, text: '' } : m));
+      streamText(reply, (t) => {
+        setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, text: t } : m));
+      });
+
+      // 3. 提取 reply 里加粗的追问问题作为下一轮上下文 (LLM 把追问用 **包裹)
+      const boldMatch = reply.match(/\*\*([^*]+)\*\*/);
+      lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
+
+      // 4. 状态机推进
+      if (questionId === 'Opening') {
+        // 开场之后等用户答 JE_Q1
+        stepRef.current = 'JE_Q1';
+        roundRef.current = 1;
+        isFollowUpRef.current = true;     // Opening 永远 follow_up=true
+        return;
+      }
+
+      if (follow_up) {
+        // 留在当前题继续追问
+        roundRef.current += 1;
+        isFollowUpRef.current = true;
+      } else {
+        // 进下一题
+        const idx = STEP_ORDER.indexOf(questionId);
+        if (idx >= 0 && idx + 1 < STEP_ORDER.length) {
+          stepRef.current = STEP_ORDER[idx + 1];
+          roundRef.current = 1;
+          isFollowUpRef.current = false;
+          lastSparkyQuestionRef.current = '';
+        } else {
+          // 最后一题收束 → 提交画像 + 生成岗位库
+          // 等 reply 流式打完再触发 (大约 reply.length * 25ms)
+          setTimeout(() => submitProfile(), reply.length * 25 + 500);
+        }
+      }
+    } catch (err: any) {
+      console.error('[JeOnboarding] extract failed', err);
+      // 把 loading 改成错误提示
+      const msg = err?.response?.data?.error || err?.message || '网络抖动,刚才那条没收到';
+      setMessages(prev => prev.map(m => m.id === loadingId ? {
+        ...m,
+        text: `刚才有点小问题:${msg}。再说一遍试试,或者直接说"跳过"我们就用现有信息进入下一步。`,
+      } : m));
+    }
+  };
+
+  /** SparkyPanel 用户输入回调 — 阻止默认主诊断 chat,走我们的 extract */
   const handleUserAnswer = (text: string): boolean => {
     setMessages(prev => [...prev, { role: 'user', text }]);
 
-    // 状态机：根据当前 step 解析答案
-    if (step === 'q1') {
-      const { industry, headcount } = parseQ1(text);
-      setProfile(p => ({ ...p, industry: industry || p.industry, headcount: headcount ?? p.headcount }));
-      setTimeout(() => askWithStream(buildQ2Question(), 'q2'), 300);
-    } else if (step === 'q2') {
-      const departments = parseListAnswer(text);
-      setProfile(p => ({ ...p, departments }));
-      setTimeout(() => askWithStream(buildQ3Question(departments), 'q3'), 300);
-    } else if (step === 'q3') {
-      const layers = parseListAnswer(text);
-      setProfile(p => ({ ...p, layers }));
-      setTimeout(() => askWithStream(buildQ4Question(), 'q4'), 300);
-    } else if (step === 'q4') {
-      const existing = text.trim().match(/没|无|暂无|不/) ? null : text.trim();
-      const finalProfile: JeOrgProfile = {
-        industry: profile.industry || null,
-        headcount: profile.headcount ?? null,
-        departments: profile.departments || [],
-        layers: profile.layers || [],
-        existing_grade_system: existing,
-      };
-      setProfile(finalProfile);
-      submitProfile(finalProfile);
-    } else {
-      // 已完成访谈但用户还在输入 — 给个引导
-      const replyId = nextMsgId();
-      setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
-      streamText('画像信息我已经收集完了，你可以等岗位库生成完，或者刷新页面重新走一遍访谈。', (t) => {
-        setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
-      });
-    }
-    return true;     // 阻止 SparkyPanel 调主诊断 chat 端点
-  };
-
-  const submitProfile = async (p: JeOrgProfile) => {
-    setStep('generating');
-    askWithStream(buildGeneratingMessage(p), 'generating');
-
-    try {
-      // 先保存画像
-      await jeSaveProfile(p);
-      // 再触发 LLM 生成岗位库（30 秒级，期待用户耐心等）
-      const libRes = await jeGenerateLibrary();
-      const library = libRes.data.library;
-      // 流式说一句完成 → 触发 onComplete
+    // 用户在生成阶段或完成态还在输入,给个引导
+    if (stage !== 'interview') {
       const replyId = nextMsgId();
       setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
       streamText(
-        `生成完成 —— 我为你们公司推荐了 ${library.entries.length} 个岗位。\n\n` +
-        `右边可以看到按部门分组的列表，每个岗位都带了 Hay 职级和 8 因子建议。从里面挑跟你们实际匹配的，或者告诉我需要增减哪些。`,
-        (t) => {
-          setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
-        },
+        stage === 'generating'
+          ? '岗位库生成中,等几秒,完成后会自动进入选岗。'
+          : '访谈我都收完了,稍等会自动进入选岗界面。',
+        (t) => setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m)),
+      );
+      return true;
+    }
+
+    callExtract(stepRef.current, text);
+    return true;
+  };
+
+  const submitProfile = async () => {
+    setStage('generating');
+    const p = profileRef.current;
+    const finalProfile: JeOrgProfile = {
+      industry: p.industry || null,
+      headcount: p.headcount ?? null,
+      departments: p.departments || [],
+      layers: p.layers || [],
+      existing_grade_system: p.existing_grade_system || null,
+    };
+
+    // 先告诉用户在生成
+    const genId = nextMsgId();
+    setMessages(prev => [...prev, { id: genId, role: 'bot', text: '' }]);
+    streamText(
+      `画像信息我都收齐了 — ${finalProfile.industry || '未指定行业'} · ${finalProfile.headcount ?? '?'} 人 · ${finalProfile.departments.length} 个部门 · ${finalProfile.layers.length} 个管理层级。\n\n现在我用这些信息让 LLM 给你们生成一套推荐岗位库(大概 20-30 秒)...`,
+      (t) => setMessages(prev => prev.map(m => m.id === genId ? { ...m, text: t } : m)),
+    );
+
+    try {
+      await jeSaveProfile(finalProfile);
+      const libRes = await jeGenerateLibrary();
+      const library = libRes.data.library;
+
+      const doneId = nextMsgId();
+      setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
+      streamText(
+        `生成完成 — 我为你们公司推荐了 ${library.entries.length} 个岗位。\n\n右边可以看到按部门分组的列表,每个岗位都带了 Hay 职级和 8 因子建议。从里面挑跟你们实际匹配的,或者告诉我需要增减哪些。`,
+        (t) => setMessages(prev => prev.map(m => m.id === doneId ? { ...m, text: t } : m)),
         () => {
-          setStep('done');
-          setTimeout(() => onComplete(p, library), 800);
+          setStage('done');
+          setTimeout(() => onComplete(finalProfile, library), 800);
         },
       );
     } catch (err: any) {
-      errorRef.current = err?.response?.data?.reason || err?.message || '未知错误';
-      setStep('error');
-      const replyId = nextMsgId();
-      setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
+      const msg = err?.response?.data?.reason || err?.message || '未知错误';
+      setErrorText(msg);
+      setStage('error');
+      const errId = nextMsgId();
+      setMessages(prev => [...prev, { id: errId, role: 'bot', text: '' }]);
       streamText(
-        `生成岗位库时遇到问题：${errorRef.current}\n\n` +
-        `刷新页面重新走访谈，或者直接进入选岗界面（我会先用空岗位库让你手动建岗）。`,
-        (t) => {
-          setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m));
-        },
+        `生成岗位库时遇到问题:${msg}\n\n刷新页面重新走访谈,或者直接进入选岗界面(我会先用空岗位库让你手动建岗)。`,
+        (t) => setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m)),
       );
     }
   };
 
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
-      {/* 左：Sparky 对话区 */}
+      {/* 左:Sparky 对话区 */}
       <div style={{
         flex: 1, minWidth: 0, height: '100%',
         background: '#fff', borderRight: '1px solid #E2E8F0',
@@ -158,21 +263,26 @@ export default function JeOnboarding({ onComplete }: Props) {
         />
       </div>
 
-      {/* 右：组织骨架矩阵（实时构建） */}
+      {/* 右:组织骨架 (实时构建) */}
       <Workspace mode="wide" title="组织骨架" subtitle="访谈中实时构建">
-        <SkeletonView profile={profile} step={step} />
+        <SkeletonView profile={profile} stage={stage} errorText={errorText} />
       </Workspace>
     </div>
   );
 }
 
 // ============================================================================
-// 右侧骨架渲染：根据 profile 当前完成度展示不同形态
+// 右侧骨架视图 — 根据 profile 当前完成度展示不同形态
 // ============================================================================
-function SkeletonView({ profile, step }: { profile: Partial<JeOrgProfile>; step: Step }) {
+function SkeletonView({ profile, stage, errorText }: {
+  profile: Partial<JeOrgProfile>;
+  stage: Stage;
+  errorText: string | null;
+}) {
   const hasOrg = !!profile.industry || profile.headcount != null;
   const hasDept = (profile.departments?.length || 0) > 0;
   const hasLayers = (profile.layers?.length || 0) > 0;
+  const profileMd = (profile as any).company_profile_md as string | undefined;
 
   if (!hasOrg && !hasDept && !hasLayers) {
     return (
@@ -184,22 +294,26 @@ function SkeletonView({ profile, step }: { profile: Partial<JeOrgProfile>; step:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* 顶部：公司概况 + 现有体系标签 */}
+      {/* 公司概况 — 行业 / 规模 / (现有体系) tag + 完整 markdown */}
       {hasOrg && (
         <div style={{
-          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-          padding: 16,
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16,
         }}>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>公司概况</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13 }}>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>公司概况</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13, marginBottom: profileMd ? 12 : 0 }}>
             {profile.industry && <Tag>{profile.industry}</Tag>}
             {profile.headcount != null && <Tag>{profile.headcount} 人</Tag>}
             {profile.existing_grade_system && <Tag accent>{profile.existing_grade_system}</Tag>}
           </div>
+          {profileMd && (
+            <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {profileMd.replace(/\*\*([^*]+)\*\*/g, '$1')}
+            </div>
+          )}
         </div>
       )}
 
-      {/* 中部：部门 × 层级 骨架矩阵 */}
+      {/* 部门 × 层级 矩阵 */}
       {hasDept && (
         <div style={{
           background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16,
@@ -208,7 +322,6 @@ function SkeletonView({ profile, step }: { profile: Partial<JeOrgProfile>; step:
           <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>
             {hasLayers ? '部门 × 层级' : '部门列表'}
           </div>
-
           {hasLayers ? (
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
               <thead>
@@ -234,41 +347,38 @@ function SkeletonView({ profile, step }: { profile: Partial<JeOrgProfile>; step:
             </table>
           ) : (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {profile.departments!.map(d => (
-                <Tag key={d}>{d}</Tag>
-              ))}
+              {profile.departments!.map(d => <Tag key={d}>{d}</Tag>)}
             </div>
           )}
-
           <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8' }}>
-            · = 待填入岗位（访谈完成后会用 AI 推荐填进去）
+            · = 待填入岗位(访谈完成后会用 AI 推荐填进去)
           </div>
         </div>
       )}
 
-      {/* 生成态 / 完成态 */}
-      {step === 'generating' && (
+      {/* 状态条 */}
+      {stage === 'generating' && (
         <div style={{
           background: BRAND_TINT, border: `1px solid ${BRAND}33`, borderRadius: 12,
           padding: '20px 16px', textAlign: 'center', color: BRAND, fontSize: 13,
         }}>
-          正在根据组织画像生成推荐岗位库（约 20-30 秒）…
+          正在根据组织画像生成推荐岗位库(约 20-30 秒)...
         </div>
       )}
-      {step === 'done' && (
+      {stage === 'done' && (
         <div style={{
           background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 12,
           padding: '20px 16px', textAlign: 'center', color: '#059669', fontSize: 13,
         }}>
-          岗位库生成完成，进入选岗界面…
+          岗位库生成完成,进入选岗界面...
         </div>
       )}
-      {step === 'error' && (
+      {stage === 'error' && (
         <div style={{
           background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12,
           padding: '20px 16px', textAlign: 'center', color: '#B91C1C', fontSize: 13,
         }}>
-          岗位库生成失败，请刷新重试。
+          岗位库生成失败:{errorText || '未知错误'}
         </div>
       )}
     </div>
@@ -294,104 +404,34 @@ const thStyle: React.CSSProperties = {
   padding: '8px 6px', textAlign: 'left',
   borderBottom: '1px solid #E2E8F0',
 };
-
 const layerCellStyle: React.CSSProperties = {
   fontSize: 11, color: '#64748B', textAlign: 'right',
   paddingRight: 12, paddingTop: 8, paddingBottom: 8,
   borderRight: '1px solid #F1F5F9', verticalAlign: 'top',
   fontFamily: 'ui-monospace, monospace',
 };
-
 const cellStyle: React.CSSProperties = {
   padding: 6, verticalAlign: 'top', minWidth: 80,
   borderRight: '1px dashed #F1F5F9', borderBottom: '1px dashed #F1F5F9',
 };
-
 const cellPlaceholder: React.CSSProperties = {
   minHeight: 24, color: '#CBD5E1', fontSize: 14, textAlign: 'center', padding: 4,
 };
 
 // ============================================================================
-// Sparky 文案
+// 工具函数
 // ============================================================================
-
-function buildIntro(): string {
-  return [
-    '你好，我是 Sparky，岗位价值评估的 AI 助手。',
-    '',
-    '建职级体系前，我需要先了解一下你们公司的基本情况 — 4 个简单的问题，大概 2 分钟。访谈过程中右边会实时构建你们的"组织骨架"。',
-    '',
-    '**第 1 题：你们公司是什么行业？大概多少人？**',
-    '直接告诉我就行，比如"互联网，200 人"或者"制造业，1500 人"。',
-  ].join('\n');
-}
-
-function buildQ2Question(): string {
-  return [
-    '好的，记下来了。',
-    '',
-    '**第 2 题：你们公司有哪些部门？**',
-    '逗号分隔列出来就行，比如"产品部、技术部、市场部、HR、财务"。如果没有正式的部门划分，告诉我大致几个团队也可以。',
-  ].join('\n');
-}
-
-function buildQ3Question(departments: string[]): string {
-  return [
-    `好，${departments.length} 个部门记下来了。`,
-    '',
-    '**第 3 题：从最高层到最基层有几个管理层级？**',
-    '逗号分隔，从高到低列，比如"CEO、VP、总监、经理、专员"。如果不同部门层级不一样，先给一个最常见的就好，后面可以单独调。',
-  ].join('\n');
-}
-
-function buildQ4Question(): string {
-  return [
-    '骨架成型了，右边可以看到部门 × 层级的矩阵。',
-    '',
-    '**第 4 题（最后一题）：你们现在用什么职级体系？**',
-    '比如"P1-P10 序列"、"M1-M5 管理序列"、"E 级技术序列+M 级管理序列"。如果还没有正式职级，说"暂无"就行。',
-  ].join('\n');
-}
-
-function buildGeneratingMessage(p: JeOrgProfile): string {
-  return [
-    '画像信息我都收齐了 —— ',
-    `${p.industry || '未指定行业'} · ${p.headcount ?? '?'} 人 · ${p.departments.length} 个部门 · ${p.layers.length} 个管理层级。`,
-    '',
-    '现在我用这些信息让 LLM 给你们生成一套推荐岗位库（大概 20-30 秒）…',
-  ].join('\n');
-}
-
-// ============================================================================
-// 用户回答解析（轻量、不调 LLM）
-// ============================================================================
-
-function parseQ1(text: string): { industry?: string; headcount?: number } {
-  // 提取数字（可能带"人"、"位"等单位）
-  const numMatch = text.match(/(\d+(?:[,，]\d+)?)\s*(?:人|位|名|members|employees)?/i);
-  const headcount = numMatch ? parseInt(numMatch[1].replace(/[,，]/g, ''), 10) : undefined;
-
-  // 行业 = 去掉数字部分剩下的文字
-  let industry = text;
-  if (numMatch) industry = industry.replace(numMatch[0], '');
-  industry = industry.replace(/[，,。.；;\s]+/g, ' ').trim();
-  if (industry.length > 30) industry = industry.slice(0, 30);
-
-  return { industry: industry || undefined, headcount };
-}
 
 function parseListAnswer(text: string): string[] {
-  // 支持各种分隔符：逗号 / 顿号 / 空格 / 斜杠
+  // 顿号 / 逗号 / 中英文逗号 / 斜杠 / 分号 / 换行 / 多空白都当分隔符
   return text
-    .split(/[,，、\/\s\n]+/)
+    .split(/[、,，;；\/\n]+|\s{2,}/)
     .map(s => s.trim())
     .filter(s => s.length > 0 && s.length < 30);
 }
 
-// ============================================================================
-// 流式打字（跟 JeSparkyChat 一致，25ms / 字）
-// ============================================================================
-
+// 流式打字 (跟 SingleEvalView/BatchEvalView/JeEntryView 同款)
+// 后续应该提取到 src/lib/streamText.ts 共用
 function streamText(text: string, onUpdate: (t: string) => void, onDone?: () => void) {
   let displayed = 0;
   const timer = setInterval(() => {

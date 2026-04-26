@@ -330,6 +330,24 @@ export const jeGetProfile = () =>
 export const jeSaveProfile = (profile: JeOrgProfile) =>
   api.put<{ profile: JeOrgProfile; library: JeLibrary | null }>('/je/profile', profile);
 
+// ----- 路径 C 组织访谈 (LLM 驱动多轮) -----
+export interface JeOnboardingExtractRequest {
+  question_id: 'Opening' | 'JE_Q1' | 'JE_Q2' | 'JE_Q3' | 'JE_Q4';
+  answer: string;
+  previous_value?: string;
+  is_follow_up?: boolean;
+  round?: number;
+  follow_up_question?: string;
+  context?: string;
+}
+export interface JeOnboardingExtractResponse {
+  extracted: Array<{ field_name: string; value: string }>;
+  reply: string;
+  follow_up: boolean;
+}
+export const jeOnboardingExtract = (body: JeOnboardingExtractRequest) =>
+  api.post<JeOnboardingExtractResponse>('/je/onboarding/extract', body);
+
 export const jeGenerateLibrary = () =>
   api.post<{ library: JeLibrary }>('/je/library/generate');
 

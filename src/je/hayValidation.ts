@@ -194,8 +194,8 @@ export function checkValidation(
         level,
         factors: ['practical_knowledge', 'managerial_knowledge', 'communication'],
         message: level === 'warn'
-          ? `提醒: 专业知识 ${pk} + 管理知识 ${mk} + 沟通 ${comm} 这套组合按 Hay 规则不太常见 (严重)。`
-          : `提醒: 专业知识 ${pk} + 管理知识 ${mk} + 沟通 ${comm} 这套组合按 Hay 规则较少见。`,
+          ? `按照 Hay 的规则,专业知识 ${pk} + 管理知识 ${mk} + 沟通 ${comm} 这套组合不太常见。`
+          : `按照 Hay 的规则,专业知识 ${pk} + 管理知识 ${mk} + 沟通 ${comm} 这套组合较少见。`,
       });
     }
   }
@@ -217,8 +217,8 @@ export function checkValidation(
         level,
         factors: ['thinking_environment', 'thinking_challenge'],
         message: level === 'warn'
-          ? `提醒: 思维环境 ${te} + 思维挑战 ${tc} 这套组合按 Hay 规则不太常见 (严重)。`
-          : `提醒: 思维环境 ${te} + 思维挑战 ${tc} 这套组合按 Hay 规则较少见。`,
+          ? `按照 Hay 的规则,思维环境 ${te} + 思维挑战 ${tc} 这套组合不太常见。`
+          : `按照 Hay 的规则,思维环境 ${te} + 思维挑战 ${tc} 这套组合较少见。`,
       });
     }
   }
@@ -237,8 +237,8 @@ export function checkValidation(
           level,
           factors: ['thinking_environment', 'thinking_challenge', 'practical_knowledge', 'managerial_knowledge', 'communication'],
           message: level === 'warn'
-            ? `提醒: PS Level ${psLevel} 跟 KH Level ${khLevel} 这种比例按 Hay 规则不太常见 (严重)。可能解决问题分数相对知识技能过高或过低。`
-            : `提醒: PS Level ${psLevel} 跟 KH Level ${khLevel} 这种比例按 Hay 规则较少见。`,
+            ? `按照 Hay 的规则,问题解决跟知识技能的比例不太常见,这两块的分数差距偏大,可以再确认下。`
+            : `按照 Hay 的规则,问题解决跟知识技能的比例较少见。`,
         });
       }
     }
@@ -259,8 +259,8 @@ export function checkValidation(
           level,
           factors: ['freedom_to_act', 'nature_of_impact'],
           message: level === 'warn'
-            ? `提醒: 行动自由度 ${fta} + 影响性质 ${noi} 这套组合按 Hay 规则不太常见 (严重)。`
-            : `提醒: 行动自由度 ${fta} + 影响性质 ${noi} 这套组合按 Hay 规则较少见。`,
+            ? `按照 Hay 的规则,行动自由度 ${fta} + 影响性质 ${noi} 这套组合不太常见。`
+            : `按照 Hay 的规则,行动自由度 ${fta} + 影响性质 ${noi} 这套组合较少见。`,
         });
       }
     }
@@ -273,7 +273,7 @@ export function checkValidation(
       rule: 'te_above_pk',
       level: 'error',
       factors: ['thinking_environment'],
-      message: `按 Hay 规则，思维环境不应该高于专业知识。当前专业知识 ${pk}，思维环境 ${te}。`,
+      message: `按照 Hay 的规则,思维环境不应该高于专业知识。当前专业知识 ${pk},思维环境 ${te}。`,
     });
   }
   if (ftaPos > 0 && pkPos > 0 && ftaPos > pkPos) {
@@ -281,7 +281,7 @@ export function checkValidation(
       rule: 'fta_above_pk',
       level: 'error',
       factors: ['freedom_to_act'],
-      message: `按 Hay 规则，行动自由度不应该高于专业知识。当前专业知识 ${pk}，行动自由度 ${fta}。`,
+      message: `按照 Hay 的规则,行动自由度不应该高于专业知识。当前专业知识 ${pk},行动自由度 ${fta}。`,
     });
   }
   if (ftaPos > 0 && tePos > 0 && ftaPos > tePos) {
@@ -289,7 +289,7 @@ export function checkValidation(
       rule: 'fta_above_te',
       level: 'error',
       factors: ['freedom_to_act'],
-      message: `按 Hay 规则，行动自由度不应该高于思维环境。当前思维环境 ${te}，行动自由度 ${fta}。`,
+      message: `按照 Hay 的规则,行动自由度不应该高于思维环境。当前思维环境 ${te},行动自由度 ${fta}。`,
     });
   }
 

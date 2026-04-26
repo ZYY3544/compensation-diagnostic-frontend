@@ -140,26 +140,13 @@ export default function SingleEvalView({ functionCatalog, onJobCreated, onGoToMa
     setJob(newJob);
     setStage('result');
 
-    // 评估解读 + 7 因子收敛说明
+    // 评估解读 — 一段话讲完: 区间 + 推荐 + 原因(LLM) + JD 不够时如实说 + 主动邀请提问
     const reading = buildReadingMessage(newJob);
     const readingId = nextMsgId();
     setTimeout(() => {
       setMessages(prev => [...prev, { id: readingId, role: 'bot', text: '' }]);
       streamText(reading, (t) => {
         setMessages(prev => prev.map(m => m.id === readingId ? { ...m, text: t } : m));
-      }, () => {
-        // 多方案差异解释（如果有同职级或多个候选）
-        const candidates = newJob.result?.candidates || [];
-        const comparison = buildCandidateComparison(candidates);
-        if (comparison) {
-          const compId = nextMsgId();
-          setTimeout(() => {
-            setMessages(prev => [...prev, { id: compId, role: 'bot', text: '' }]);
-            streamText(comparison, (t) => {
-              setMessages(prev => prev.map(m => m.id === compId ? { ...m, text: t } : m));
-            });
-          }, 300);
-        }
       });
     }, 400);
 
@@ -396,57 +383,47 @@ function buildIntroText(): string {
 function buildReadingMessage(job: JeJob): string {
   const r = (job.result || {}) as any;
   const reasoning = (r.pk_reasoning || '').trim();
-  const grade = r.job_grade;
-  const confidence = r.confidence;
-  const head = grade != null ? `**评估完成 — Hay 职级 G${grade}**` : '评估完成。';
+  const grade: number | null | undefined = r.job_grade;
+  const confidence: string | undefined = r.confidence;
+  const candidates: JeCandidate[] = r.candidates || [];
 
-  const reasoningPart = reasoning
-    ? reasoning
-    : '（这次评估没有 LLM 推理记录，可能是因子直接计算的结果。）';
+  // 候选职级区间(包含当前推荐) — 给用户一个"评估范围"的语感
+  const allGrades: number[] = [];
+  if (grade != null) allGrades.push(grade);
+  for (const c of candidates) {
+    if (c.job_grade != null) allGrades.push(c.job_grade);
+  }
+  const gradeMin = allGrades.length ? Math.min(...allGrades) : null;
+  const gradeMax = allGrades.length ? Math.max(...allGrades) : null;
 
-  const tail = '其他 7 个因子是基于专业知识档位，按 Hay 因素匹配规则自动收敛出来的。你可以在右侧手动调整任何因子档位，分数会实时重算。';
+  // 标题: "推荐 Hay 职级 G12"
+  const head = grade != null
+    ? `**评估完成 — 推荐 Hay 职级 G${grade}**`
+    : '**评估完成**';
 
-  const confidenceTip = confidence === 'low'
-    ? '\n\n⚠️ 这次没给 JD，结果是 AI 根据岗位名 + 职能推断的，置信度偏低。可以点上方"上传 JD 精细评估"补 JD 重评。'
+  // 区间 + 推荐说明
+  let summaryLine: string;
+  if (grade == null) {
+    summaryLine = '';
+  } else if (gradeMin != null && gradeMax != null && gradeMin !== gradeMax) {
+    summaryLine = `按 Hay 方法论分析这个岗位,职级落在 G${gradeMin}–G${gradeMax} 区间,我推荐 G${grade} 这一档。`;
+  } else {
+    summaryLine = `按 Hay 方法论分析这个岗位,职级是 G${grade}。`;
+  }
+
+  // 推荐原因 — 用 LLM 真出的业务洞察 (不告诉用户这是 PK 推理,用户只关心"为什么是这个职级")
+  const reasonPart = reasoning ? `\n\n${reasoning}` : '';
+
+  // JD 信息不够时如实告知
+  const lowConfidenceTip = confidence === 'low'
+    ? '\n\n⚠️ 这次给的岗位信息有点少,我是基于岗位名 + 职能做的推断,置信度偏低。建议你补一份 JD 重评,结果会更准确 — 点上方"上传 JD 精细评估"即可。'
     : '';
 
-  return `${head}\n\n${reasoningPart}\n\n${tail}${confidenceTip}`;
-}
+  // Sparky 主动邀请提问 — 让用户知道随时可以问
+  const ask = '\n\n对评估结果或 Hay 方法论有疑问,直接问我就行,我可以解释每个档位的判定依据。';
 
-function buildCandidateComparison(candidates: JeCandidate[]): string | null {
-  if (!candidates || candidates.length < 2) return null;
-
-  // 按职级分组，看是否有同职级
-  const byGrade: Record<number, JeCandidate[]> = {};
-  for (const c of candidates) {
-    const g = c.job_grade;
-    if (g != null) (byGrade[g] ||= []).push(c);
-  }
-  const sameGradeGroups = Object.values(byGrade).filter(g => g.length >= 2);
-
-  const recommended = candidates[0];   // engine 把推荐方案放第一
-  const recoLabel = `方案 A（G${recommended.job_grade}，${recommended.dominant} 主导${recommended.orientation ? ` · ${recommended.orientation}` : ''}）`;
-
-  if (sameGradeGroups.length > 0 && candidates.length >= 2) {
-    // 有同职级，重点解释差异
-    const lines: string[] = ['几套候选方案的实质差异：', ''];
-    candidates.forEach((c, i) => {
-      const letter = String.fromCharCode(65 + i);
-      const tilt = `${c.dominant} 占比最高${c.orientation ? `，${c.orientation}` : ''}`;
-      const detail = `KH ${c.kh_score} · PS ${c.ps_score} · ACC ${c.acc_score}`;
-      lines.push(`· 方案 ${letter} (G${c.job_grade})：${tilt}（${detail}）`);
-    });
-    lines.push('');
-    lines.push(`推荐 ${recoLabel.split('（')[0]}，因为它跟你们这类岗位的"专业 / 管理 / 战略"权重最匹配。如果对岗位倾向有不同判断，可以直接采用其他方案。`);
-    return lines.join('\n');
-  }
-
-  if (candidates.length >= 2) {
-    // 不同职级，简单说明
-    const range = `G${Math.min(...candidates.map(c => c.job_grade))} – G${Math.max(...candidates.map(c => c.job_grade))}`;
-    return `给你准备了 ${candidates.length} 套候选方案，覆盖 ${range} 的职级范围。推荐 ${recoLabel.split('（')[0]}，是匹配度最高的那套。如果觉得这个岗位实际更高 / 更低一档，可以采用其他方案。`;
-  }
-  return null;
+  const summaryWithSep = summaryLine ? `\n\n${summaryLine}` : '';
+  return `${head}${summaryWithSep}${reasonPart}${lowConfidenceTip}${ask}`;
 }
 
 // ============================================================================

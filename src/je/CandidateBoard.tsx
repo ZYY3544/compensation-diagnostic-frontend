@@ -593,14 +593,23 @@ function aggregateSeverityByFactor(issues: ValidationIssue[]): Map<string, Valid
   return out;
 }
 
-/** 把若干 issues 汇总成一段 Sparky 提醒文案 */
+/**
+ * 把若干 issues 汇总成一段 Sparky 提醒文案。
+ *
+ * 用 SparkyPanel 的 **xxx** 块级 markdown 把"提醒"渲染成 brand-orange 色的标题块,
+ * 起到 highlight 作用。后面的具体规则不再加"分数仍按你选的档位计算..."的尾巴
+ * — 用户提过这句太啰嗦,提醒有 highlight 已经够明显。
+ */
 function formatIssuesForSparky(issues: ValidationIssue[]): string {
   // error 摆前面 (违反硬约束),warn 在后 (Hay 不推荐组合)
   const sorted = [...issues].sort(
     (a, b) => SEVERITY_RANK[b.level] - SEVERITY_RANK[a.level],
   );
+  if (sorted.length === 1) {
+    return `**提醒**\n${sorted[0].message}`;
+  }
   const lines = sorted.map(i => '· ' + i.message);
-  return lines.join('\n\n') + '\n\n这些只是规则提醒 — 分数仍按你选的档位计算,最终方案由你决定。';
+  return `**提醒**\n${lines.join('\n')}`;
 }
 
 /** ValidationLevel → 一组 UI 颜色配置 */

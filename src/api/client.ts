@@ -348,8 +348,10 @@ export interface JeOnboardingExtractResponse {
 export const jeOnboardingExtract = (body: JeOnboardingExtractRequest) =>
   api.post<JeOnboardingExtractResponse>('/je/onboarding/extract', body);
 
-export const jeGenerateLibrary = () =>
-  api.post<{ library: JeLibrary }>('/je/library/generate');
+export const jeGenerateLibrary = (config?: { timeout?: number }) =>
+  api.post<{ library: JeLibrary }>('/je/library/generate', undefined, {
+    timeout: config?.timeout ?? 0,    // 默认 0=无 timeout (axios 默认行为不变)
+  });
 
 export const jeGetLibrary = () =>
   api.get<{ library: JeLibrary | null }>('/je/library');

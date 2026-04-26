@@ -23,6 +23,9 @@ import {
   type JeOrgProfile, type JeLibrary,
 } from '../api/client';
 
+// 后端预热用 — JeOnboarding 进入即 ping /api/health 把 Render 免费档冷启动开掉
+const API_BASE = (import.meta.env as any).VITE_API_URL || '/api';
+
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
@@ -51,12 +54,17 @@ export default function JeOnboarding({ onComplete }: Props) {
   const profileRef = useRef<Partial<JeOrgProfile>>({ departments: [], layers: [] });
   const initRef = useRef(false);
 
-  // 进入即让 LLM 生成开场白 (走 question_id='Opening')
+  // 进入即让 LLM 生成开场白 (走 question_id='Opening') + 后端预热
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     setMessages([{ role: 'user', text: '我要建职级体系,从头开始评估全公司岗位' }]);
     setTimeout(() => callExtract('Opening', ''), 200);
+
+    // 进入访谈即预热后端 — Render 免费档冷启动 + 我们 LLM 库生成调用 30-60 秒,
+    // 趁用户答 4 道题的 2-3 分钟把后端搞热,等 submitProfile 时就不会被
+    // Render 边缘代理 / Cloudflare 切连接 (返回 502/504 + 没 CORS 头)
+    fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {});
   }, []);
 
   /** 把 extracted 字段同步到 profile state (LLM 输出格式见 interview_je_extract.txt) */
@@ -218,8 +226,15 @@ export default function JeOnboarding({ onComplete }: Props) {
 
     try {
       await jeSaveProfile(finalProfile);
-      const libRes = await jeGenerateLibrary();
-      const library = libRes.data.library;
+      const library = await tryGenerateLibraryWithRetry((retryNum) => {
+        // 重试时给用户一个反馈,知道我们在做什么
+        const noticeId = nextMsgId();
+        setMessages(prev => [...prev, { id: noticeId, role: 'bot', text: '' }]);
+        streamText(
+          `刚才那次没成功 (Render 免费档可能是冷启动了),自动重试中,第 ${retryNum + 1} 次...`,
+          (t) => setMessages(prev => prev.map(m => m.id === noticeId ? { ...m, text: t } : m)),
+        );
+      });
 
       const doneId = nextMsgId();
       setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
@@ -232,13 +247,17 @@ export default function JeOnboarding({ onComplete }: Props) {
         },
       );
     } catch (err: any) {
+      const isNetwork = !err?.response;
       const msg = err?.response?.data?.reason || err?.message || '未知错误';
       setErrorText(msg);
       setStage('error');
       const errId = nextMsgId();
       setMessages(prev => [...prev, { id: errId, role: 'bot', text: '' }]);
+      const detail = isNetwork
+        ? '是网络问题,可能是 Render 后端冷启动或 LLM 那边超时。重试 3 次都没成功。'
+        : `LLM 那边报错了:${msg}`;
       streamText(
-        `生成岗位库时遇到问题:${msg}\n\n刷新页面重新走访谈,或者直接进入选岗界面(我会先用空岗位库让你手动建岗)。`,
+        `生成岗位库失败 — ${detail}\n\n两个选择:\n· 刷新页面重走一次访谈(2 分钟,信息我会重新收集)\n· 直接进选岗界面手动建岗(画像信息已存,后续可以让我重新生成)`,
         (t) => setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m)),
       );
     }
@@ -428,6 +447,40 @@ function parseListAnswer(text: string): string[] {
     .split(/[、,，;；\/\n]+|\s{2,}/)
     .map(s => s.trim())
     .filter(s => s.length > 0 && s.length < 30);
+}
+
+/**
+ * jeGenerateLibrary 带 3 次重试 + 指数退避。
+ *
+ * 失败常见原因:
+ *  · Render 免费档冷启动 (前面 health ping 已经预热,但偶发还是会冷)
+ *  · LLM 那边超时 (生成 20-40 个岗位 + 8 因子的 JSON,慢的时候 60s+)
+ *  · 网络/Cloudflare 切连接 (502/504 没带 CORS 头,axios 报 Network Error)
+ *
+ * 策略:第一次失败等 4s,第二次等 8s,共 3 次。
+ * 期间在 Sparky 里告诉用户'重试中,第 N 次',不用让用户对着白屏猜。
+ */
+async function tryGenerateLibraryWithRetry(
+  onRetry: (retryNum: number) => void,
+): Promise<JeLibrary> {
+  let lastErr: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      onRetry(attempt);
+      await new Promise(r => setTimeout(r, 4000 * attempt));
+    }
+    try {
+      // 这个调用本来就慢 (LLM 生成 20-40 个岗位,30-90s),150s timeout 比较合理
+      // — 跟 Render gunicorn 300s 配置留余量
+      const res = await jeGenerateLibrary({ timeout: 150_000 });
+      return res.data.library;
+    } catch (e: any) {
+      lastErr = e;
+      console.warn(`[je-library] generate attempt ${attempt + 1} failed:`,
+        e?.message, e?.response?.status);
+    }
+  }
+  throw lastErr;
 }
 
 // 流式打字 (跟 SingleEvalView/BatchEvalView/JeEntryView 同款)

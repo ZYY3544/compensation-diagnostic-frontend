@@ -828,8 +828,7 @@ function CandidateCard({ candidate, isCurrent, applying, onApply, index, totalCa
       </div>
 
       <div style={{ fontSize: 11, color: dominantColor, fontWeight: 500, marginBottom: 12 }}>
-        {candidate.dominant} 主导{candidate.orientation && ` · ${candidate.orientation}`}
-        {candidate.profile && ` · ${candidate.profile}`}
+        {candidate.dominant} 主导{candidate.profile && ` · Profile ${candidate.profile}`}
       </div>
 
       <div style={{ fontSize: 11, color: '#64748B', display: 'flex', justifyContent: 'space-between', marginBottom: 12, lineHeight: 1.6 }}>

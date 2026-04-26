@@ -119,10 +119,12 @@ export interface JeCandidate {
   match_score: number | null;
   dominant: 'KH' | 'PS' | 'ACC' | 'unknown';
   orientation: string;       // '偏专业 / 操作型' / '偏管理 / 战略型' / '平衡型' / ''
-  // Hay 内部用的 Level 字段 — 给前端 PS×KH 关系校验用,可能为空(老数据)
+  // Hay 三个维度的 Level — 给前端在 KH/PS/ACC 分数旁展示 Lv X
+  // 也用于 PS×KH 关系校验,可能为空(老数据)
   kh_level?: number | null;
   ps_level?: number | null;
   ps_percentage?: number | null;   // 0.87 / 0.76 / ... 用于 PS×KH 矩阵 row 索引
+  acc_level?: number | null;
 }
 
 export interface JeJob {
@@ -143,10 +145,11 @@ export interface JeJob {
     convergence_stats?: any;
     match_score?: number | null;
     candidates?: JeCandidate[];   // 多解候选（top-N，按 profile/grade 多样性挑出）
-    // Hay 内部用的 Level 字段 — 给前端 PS×KH 关系校验用
+    // Hay 三个维度的 Level — 前端展示 + PS×KH 关系校验用
     kh_level?: number | null;
     ps_level?: number | null;
     ps_percentage?: number | null;
+    acc_level?: number | null;
   } | null;
   created_at: string;
   updated_at: string;

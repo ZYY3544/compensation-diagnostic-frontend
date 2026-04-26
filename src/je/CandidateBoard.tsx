@@ -132,13 +132,15 @@ interface CardData {
   job_grade: number;
   profile: string | null;
   dominant: 'KH' | 'PS' | 'ACC' | 'unknown';
-  orientation: string;
   match_score: number | null;
   isCurrent: boolean;
   isRecommended: boolean;     // 第一个候选 = Sparky 推荐
-  // PS×KH 关系校验需要 — 老数据可能为空,checkValidation 内部会跳过该校验
+  // 三个维度的 Hay Level — UI 在分数旁展示 + PS×KH 关系校验
+  // 老数据可能为空,checkValidation 内部会跳过该校验
   kh_level: number | null;
+  ps_level: number | null;
   ps_percentage: number | null;
+  acc_level: number | null;
 }
 
 function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, onSparkyMessage, onApplied }: {
@@ -268,6 +270,7 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
             key={dim}
             dim={dim}
             score={dim === 'KH' ? card.kh_score : dim === 'PS' ? card.ps_score : card.acc_score}
+            level={dim === 'KH' ? card.kh_level : dim === 'PS' ? card.ps_level : card.acc_level}
             factorKeys={FACTORS_BY_DIM[dim]}
             originalFactors={card.factors}
             factorSeverity={factorSeverity}
@@ -301,9 +304,10 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
 // ============================================================================
 // 维度行
 // ============================================================================
-function DimensionRow({ dim, score, factorKeys, originalFactors, factorSeverity, editable, onChange, isFirst }: {
+function DimensionRow({ dim, score, level, factorKeys, originalFactors, factorSeverity, editable, onChange, isFirst }: {
   dim: 'KH' | 'PS' | 'ACC';
   score: number;
+  level: number | null;
   factorKeys: readonly string[];
   originalFactors: Record<string, string>;
   factorSeverity: Map<string, ValidationLevel>;
@@ -313,6 +317,9 @@ function DimensionRow({ dim, score, factorKeys, originalFactors, factorSeverity,
 }) {
   const color = dim === 'KH' ? KH_COLOR : dim === 'PS' ? PS_COLOR : ACC_COLOR;
   const fullName = DIMENSION_LABELS[dim];
+  const levelTip = level != null
+    ? `Hay ${dim} Level ${level} — Short Profile (A1/A2/L/P3 等) 由 KH/PS/ACC 三个 Level 之间的差距决定,所以同一职级下不同 Level 组合会得到不同的画像。`
+    : '';
 
   return (
     <div style={{
@@ -323,6 +330,20 @@ function DimensionRow({ dim, score, factorKeys, originalFactors, factorSeverity,
         <span style={{ fontSize: 13, color: '#94A3B8' }} title={fullName}>{fullName}</span>
         <span style={{ fontSize: 22, fontWeight: 700, color }}>{score}</span>
         <span style={{ fontSize: 12, color: '#94A3B8' }}>分</span>
+        {level != null && (
+          <span
+            title={levelTip}
+            style={{
+              fontSize: 11, color: '#64748B',
+              padding: '2px 8px', borderRadius: 10,
+              background: '#F1F5F9', marginLeft: 4,
+              cursor: 'help', fontWeight: 500,
+              borderBottom: '1px dotted #CBD5E1',
+            }}
+          >
+            Lv {level}
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -477,19 +498,27 @@ function InlineStat({ label, value, tooltip }: {
   );
 }
 
+/**
+ * Hay Short Profile 的中文释义。
+ *
+ * Profile 由 KH/PS/ACC 三个 Level 的差距决定 — P 系列(KH 占主)/L 平衡 /
+ * A 系列(ACC 占主),数字越大代表偏离平衡越远。措辞围绕"专业判断 vs
+ * 承担责任"光谱,不再讲'管理 / 专业 / 战略 三权重'(那个分法不准)。
+ */
+const PROFILE_DESCRIPTIONS: Record<string, string> = {
+  P4: '极端专业型 — 价值几乎完全来自专业深度,基本不承担决策责任',
+  P3: '深度专业型 — 主要靠专业能力产出价值,少量协调',
+  P2: '专业型 — 以专业判断为主要价值来源,有少量决策影响',
+  P1: '偏专业型 — 专业能力为主,但已开始承担一些责任',
+  L:  '均衡型 — 专业判断和承担责任旗鼓相当',
+  A1: '偏承担责任型 — 责任为主,但仍有较强的专业判断成分',
+  A2: '承担责任型 — 以决策影响为主要价值,依赖经验判断',
+  A3: '高度承担责任型 — 偏战略决策,跨业务 / 跨职能影响',
+  A4: '极端责任型 — 几乎完全靠决策影响,不再依赖具体专业能力',
+};
+
 function profileTooltip(profile: string): string {
-  const map: Record<string, string> = {
-    'P4': '极端专家型 — 几乎完全靠专业深度产出价值，几乎不涉及决策和管理',
-    'P3': '深度专家型 — 主要靠专业能力，少量协调',
-    'P2': '专家型 — 偏专业，但有一定决策影响',
-    'P1': '专家偏管理 — 专业能力为主，开始承担管理责任',
-    'L':  '平衡型 — 专业 / 管理 / 战略权重均衡，典型的中层骨干',
-    'A1': '管理偏专业 — 管理责任为主，仍依赖专业判断',
-    'A2': '管理型 — 主要靠管理决策产出价值',
-    'A3': '战略管理型 — 偏战略，决策范围更大',
-    'A4': '极端战略型 — 完全战略层，几乎不涉及具体业务执行',
-  };
-  return map[profile] || `Hay 岗位画像类型: ${profile}`;
+  return PROFILE_DESCRIPTIONS[profile] || `Hay Short Profile: ${profile}`;
 }
 
 function Badge({ color, bg, label, inverted }: { color: string; bg: string; label: string; inverted?: boolean }) {
@@ -679,12 +708,13 @@ function useMemo_buildCards(
     job_grade: job.result?.job_grade ?? 0,
     profile: job.result?.profile ?? null,
     dominant: pickDominant(job.result?.kh_score ?? 0, job.result?.ps_score ?? 0, job.result?.acc_score ?? 0),
-    orientation: orientationFromProfile(job.result?.profile ?? null),
     match_score: job.result?.match_score ?? null,
     isCurrent: true,
     isRecommended: false,
     kh_level: job.result?.kh_level ?? null,
+    ps_level: job.result?.ps_level ?? null,
     ps_percentage: job.result?.ps_percentage ?? null,
+    acc_level: job.result?.acc_level ?? null,
   };
 
   // 关键: isRecommended 用"在原 candidates 数组里的索引"判断，而不是 filter 之后的索引。
@@ -703,12 +733,13 @@ function useMemo_buildCards(
       job_grade: candidate.job_grade,
       profile: candidate.profile,
       dominant: candidate.dominant === 'unknown' ? 'KH' : candidate.dominant,
-      orientation: candidate.orientation,
       match_score: candidate.match_score,
       isCurrent: false,
       isRecommended: originalIdx === 0,
       kh_level: candidate.kh_level ?? null,
+      ps_level: candidate.ps_level ?? null,
       ps_percentage: candidate.ps_percentage ?? null,
+      acc_level: candidate.acc_level ?? null,
     }));
 
   // 同时把 isRecommended 标在 currentCard 上（如果 current factors 等于 LLM 给的最优）
@@ -726,14 +757,6 @@ function pickDominant(kh: number, ps: number, acc: number): 'KH' | 'PS' | 'ACC' 
   if (m === kh) return 'KH';
   if (m === ps) return 'PS';
   return 'ACC';
-}
-
-function orientationFromProfile(profile: string | null): string {
-  if (!profile) return '';
-  if (profile.startsWith('P')) return '偏专业 / 操作型';
-  if (profile.startsWith('A')) return '偏管理 / 战略型';
-  if (profile === 'L') return '平衡型';
-  return profile;
 }
 
 function factorsEqual(a: Record<string, string>, b: Record<string, string>): boolean {

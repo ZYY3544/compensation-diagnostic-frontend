@@ -380,14 +380,37 @@ function buildIntroText(): string {
   ].join('\n');
 }
 
+/**
+ * Hay Short Profile 中文释义 — 跟 CandidateBoard.PROFILE_DESCRIPTIONS 同源,
+ * 围绕"专业判断 vs 承担责任"光谱措辞,不再讲'管理 / 专业 / 战略权重'。
+ */
+const PROFILE_DESC: Record<string, string> = {
+  P4: '极端专业型,价值几乎完全来自专业深度',
+  P3: '深度专业型,主要靠专业能力产出',
+  P2: '专业型,以专业判断为主要价值来源',
+  P1: '偏专业型,但已开始承担一些责任',
+  L:  '均衡型,专业判断和承担责任旗鼓相当',
+  A1: '偏承担责任,但仍有较强的专业判断成分',
+  A2: '承担责任型,以决策影响为主要价值',
+  A3: '高度承担责任型,偏战略决策',
+  A4: '极端责任型,几乎完全靠决策影响',
+};
+
 function buildReadingMessage(job: JeJob): string {
   const r = (job.result || {}) as any;
   const reasoning = (r.pk_reasoning || '').trim();
   const grade: number | null | undefined = r.job_grade;
+  const profile: string | null | undefined = r.profile;
   const confidence: string | undefined = r.confidence;
   const candidates: JeCandidate[] = r.candidates || [];
 
-  // 候选职级区间(包含当前推荐) — 给用户一个"评估范围"的语感
+  // 候选数量 — 包含推荐方案本身
+  // (CandidateBoard 把 currentCard 单独建,所以候选总数 = candidates 数 + 1
+  //  当 candidates[0] = 推荐 = currentFactors 时, board 把它合并到 currentCard,
+  //  实际显示数 = candidates.length)
+  const candCount = candidates.length;
+
+  // 候选职级区间(包含当前推荐)
   const allGrades: number[] = [];
   if (grade != null) allGrades.push(grade);
   for (const c of candidates) {
@@ -401,17 +424,26 @@ function buildReadingMessage(job: JeJob): string {
     ? `**评估完成 — 推荐 Hay 职级 G${grade}**`
     : '**评估完成**';
 
-  // 区间 + 推荐说明
+  // 区间 + 候选数量 + Profile 说明
+  // Profile 解释由"专业判断 vs 承担责任"光谱定位 — Hay 标准画像
+  // 同一职级下不同 candidates 出 A1/A2/L 等不同 profile,是 KH/PS/ACC 三个 Level
+  // 差距决定的(右侧每个维度旁边的 Lv X 标签会直接展示这个差距)
+  const profileBit = profile && PROFILE_DESC[profile]
+    ? `,Hay 标准画像 ${profile}(${PROFILE_DESC[profile]})`
+    : (profile ? `,Hay 标准画像 ${profile}` : '');
+
   let summaryLine: string;
   if (grade == null) {
     summaryLine = '';
-  } else if (gradeMin != null && gradeMax != null && gradeMin !== gradeMax) {
-    summaryLine = `按 Hay 方法论分析这个岗位,职级落在 G${gradeMin}–G${gradeMax} 区间,我推荐 G${grade} 这一档。`;
+  } else if (gradeMin != null && gradeMax != null && gradeMin !== gradeMax && candCount >= 2) {
+    summaryLine = `按 Hay 方法论分析,我给了你 ${candCount} 套候选方案,职级落在 G${gradeMin}–G${gradeMax} 区间。我推荐 G${grade}${profileBit},这套方案最贴合岗位实际侧重。`;
+  } else if (candCount >= 2) {
+    summaryLine = `按 Hay 方法论分析,我给了你 ${candCount} 套候选方案,职级都在 G${grade}。我推荐 G${grade}${profileBit}。`;
   } else {
-    summaryLine = `按 Hay 方法论分析这个岗位,职级是 G${grade}。`;
+    summaryLine = `按 Hay 方法论分析这个岗位,职级是 G${grade}${profileBit}。`;
   }
 
-  // 推荐原因 — 用 LLM 真出的业务洞察 (不告诉用户这是 PK 推理,用户只关心"为什么是这个职级")
+  // 推荐原因 — 用 LLM 真出的业务洞察 (用户只关心"为什么是这个职级")
   const reasonPart = reasoning ? `\n\n${reasoning}` : '';
 
   // JD 信息不够时如实告知
@@ -419,7 +451,7 @@ function buildReadingMessage(job: JeJob): string {
     ? '\n\n⚠️ 这次给的岗位信息有点少,我是基于岗位名 + 职能做的推断,置信度偏低。建议你补一份 JD 重评,结果会更准确 — 点上方"上传 JD 精细评估"即可。'
     : '';
 
-  // Sparky 主动邀请提问 — 让用户知道随时可以问
+  // Sparky 主动邀请提问
   const ask = '\n\n对评估结果或 Hay 方法论有疑问,直接问我就行,我可以解释每个档位的判定依据。';
 
   const summaryWithSep = summaryLine ? `\n\n${summaryLine}` : '';

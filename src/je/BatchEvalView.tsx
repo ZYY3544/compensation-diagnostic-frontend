@@ -227,54 +227,43 @@ function UploadView({ onFileSelected, fileInputRef }: {
   onFileSelected: (f: File) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  // 列说明全部交给左侧 Sparky 的开场白讲,右边只留一个干净的拖拽区
+  // (避免左右重复"只有岗位名必填 / 推荐有 JD"等同样的话)
   const [dragOver, setDragOver] = useState(false);
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 24 }}>
-      <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 18 }}>
-        只有 <strong style={{ color: '#0F172A' }}>岗位名</strong> 是必填的,其他列按字段完备度自动决定评估深度:
-        <ul style={{ margin: '10px 0', paddingLeft: 22 }}>
-          <li><strong>岗位名 / 职位</strong>(必填)</li>
-          <li><strong>JD / 岗位说明书</strong>(推荐)— 给了走深度分析,结果置信度高</li>
-          <li>业务职能(可选)— 没给会回落到"通用职能",岗位名清晰时影响不大</li>
-          <li>部门(可选)</li>
-        </ul>
-        没 JD 的岗位结果会标"AI 推断",建议后续单独点进去补 JD 重评。
+    <div
+      onDrop={e => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files[0];
+        if (f) onFileSelected(f);
+      }}
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onClick={() => fileInputRef.current?.click()}
+      style={{
+        border: `2px dashed ${dragOver ? BRAND : '#CBD5E1'}`,
+        background: dragOver ? '#FEF7F4' : '#fff',
+        borderRadius: 12, padding: '120px 24px', textAlign: 'center',
+        cursor: 'pointer', transition: 'all 0.15s',
+      }}
+    >
+      <div style={{ fontSize: 16, color: '#0F172A', marginBottom: 10, fontWeight: 500 }}>
+        点击选择文件,或拖拽 Excel 到这里
       </div>
-
-      <div
-        onDrop={e => {
-          e.preventDefault();
-          setDragOver(false);
-          const f = e.dataTransfer.files[0];
+      <div style={{ fontSize: 12, color: '#94A3B8' }}>
+        支持 .xlsx 格式,单批建议不超过 200 个岗位
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={e => {
+          const f = e.target.files?.[0];
           if (f) onFileSelected(f);
         }}
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onClick={() => fileInputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragOver ? BRAND : '#CBD5E1'}`,
-          background: dragOver ? '#FEF7F4' : '#FAFAFA',
-          borderRadius: 12, padding: '48px 24px', textAlign: 'center',
-          cursor: 'pointer', transition: 'all 0.15s',
-        }}
-      >
-        <div style={{ fontSize: 14, color: '#0F172A', marginBottom: 8 }}>
-          点击选择文件,或拖拽 Excel 到这里
-        </div>
-        <div style={{ fontSize: 12, color: '#94A3B8' }}>
-          支持 .xlsx 格式,单批建议不超过 200 个岗位
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          style={{ display: 'none' }}
-          onChange={e => {
-            const f = e.target.files?.[0];
-            if (f) onFileSelected(f);
-          }}
-        />
-      </div>
+      />
     </div>
   );
 }

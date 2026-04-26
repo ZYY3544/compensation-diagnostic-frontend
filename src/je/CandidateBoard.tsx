@@ -158,23 +158,28 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
   const editable = isCurrent;
   const cardLabel = `方案 ${String.fromCharCode(65 + index)}`;
 
-  // 实时档位变化：先做约束链校验 → 通过则调后端实时刷新分数
+  // 实时档位变化：约束链校验仅做提醒 — 不阻塞用户的修改。
+  // 违反约束链时: 标红 + Sparky 提示 + 仍然调后端更新分数（让用户看到改后的代价）
+  // 通过约束链时: 清掉红色提示 + 调后端更新分数
+  // 这样符合"Sparky 给建议，最终决定权在用户"的产品定位。
   const handleFactorChange = async (factor: string, newValue: string) => {
     const newFactors = { ...card.factors, [factor]: newValue };
     const check = checkConstraintChain(newFactors);
     setInvalidFactors(check.violations);
 
     if (check.violations.size > 0) {
-      // 违反约束链 — 不调后端，只让 Sparky 提示一次（同一种违反不重复发）
+      // 同一种违反不重复发提醒
       const key = Array.from(check.violations).sort().join('|') + ':' + check.message;
       if (key !== lastViolationKeyRef.current) {
         lastViolationKeyRef.current = key;
         onSparkyMessage?.(check.message || '档位组合违反 Hay 约束链');
       }
-      return;
+    } else {
+      lastViolationKeyRef.current = '';
     }
-    lastViolationKeyRef.current = '';
 
+    // 不论是否违反约束链，都调后端更新 job.factors 让分数实时刷新。
+    // Sparky 只起提醒作用，最终选择权在用户。
     setSaving(true);
     try {
       const res = await jeUpdateFactors(job.id, newFactors);
@@ -348,9 +353,11 @@ function FactorRow({ factorKey, value, invalid, editable, onChange }: {
           {invalid && (
             <span style={{
               marginLeft: 6, padding: '1px 6px', borderRadius: 3,
-              background: '#FEE2E2', color: '#B91C1C', fontSize: 10, fontWeight: 600,
-            }}>
-              违反 Hay 约束
+              background: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: 600,
+            }}
+            title="跟 Hay 标准约束链不一致 — 分数仍按当前档位计算，仅作提醒"
+            >
+              不符 Hay 规则
             </span>
           )}
         </span>
@@ -378,11 +385,11 @@ function FactorRow({ factorKey, value, invalid, editable, onChange }: {
               onChange={e => onChange(e.target.value)}
               style={{
                 padding: '5px 12px', fontSize: 13,
-                border: `1px solid ${invalid ? '#DC2626' : '#E2E8F0'}`, borderRadius: 4,
-                background: invalid ? '#FEF2F2' : '#fff',
-                color: invalid ? '#B91C1C' : '#0F172A',
+                border: `1px solid ${invalid ? '#F59E0B' : '#E2E8F0'}`, borderRadius: 4,
+                background: invalid ? '#FFFBEB' : '#fff',
+                color: invalid ? '#92400E' : '#0F172A',
                 fontFamily: 'inherit', minWidth: 76, cursor: 'pointer',
-                outline: invalid ? '2px solid rgba(220,38,38,0.15)' : 'none',
+                outline: invalid ? '2px solid rgba(245,158,11,0.15)' : 'none',
               }}
             >
               {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
@@ -556,9 +563,9 @@ function checkConstraintChain(factors: Record<string, string>): {
     violations.add('thinking_environment');
     const expected = pkIdx - 1 >= 0 ? ALL_LEVELS[pkIdx - 1] : null;
     if (expected) {
-      messages.push(`专业知识档位是 ${pk}，按 Hay 约束链思维环境应该紧邻在它下方一档（${expected}），现在是 ${te} 不符合。`);
+      messages.push(`提醒：按 Hay 约束链，专业知识档位是 ${pk} 时，思维环境通常紧邻在它下方一档（${expected}）。你现在选的是 ${te}。`);
     } else {
-      messages.push(`专业知识档位 ${pk} 已是最低档，思维环境无法找到紧邻档。`);
+      messages.push(`提醒：专业知识档位 ${pk} 已是最低档，思维环境难以找到紧邻档。`);
     }
   }
 
@@ -567,16 +574,16 @@ function checkConstraintChain(factors: Record<string, string>): {
     violations.add('freedom_to_act');
     const expected = teIdx - 1 >= 0 ? ALL_LEVELS[teIdx - 1] : null;
     if (expected) {
-      messages.push(`思维环境档位是 ${te}，按 Hay 约束链行动自由度应该紧邻在它下方一档（${expected}），现在是 ${fta} 不符合。`);
+      messages.push(`提醒：按 Hay 约束链，思维环境档位是 ${te} 时，行动自由度通常紧邻在它下方一档（${expected}）。你现在选的是 ${fta}。`);
     } else {
-      messages.push(`思维环境档位 ${te} 已是最低档，行动自由度无法找到紧邻档。`);
+      messages.push(`提醒：思维环境档位 ${te} 已是最低档，行动自由度难以找到紧邻档。`);
     }
   }
 
   return {
     violations,
     message: messages.length > 0
-      ? messages.join('\n\n') + '\n\n红色高亮的因子档位调整到提示的预期值后，分数才会重算。'
+      ? messages.join('\n\n') + '\n\n这只是规则提醒 — 分数仍按你选的档位计算，最终方案由你决定。'
       : null,
   };
 }

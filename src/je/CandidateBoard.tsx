@@ -48,21 +48,31 @@ const FACTOR_OPTIONS: Record<string, string[]> = {
   nature_of_impact: ['I','II','III','IV','V','VI','R','C','S','P'],
 };
 
+// 标签格式："中文（英文原名）"  — 对外不再用 PK / MK / TC 这种缩写，
+// HR 用户大多看不懂英文缩写。需要查方法论的用户能看到英文原名作锚点。
 const FACTOR_LABELS: Record<string, string> = {
-  practical_knowledge: 'PK 专业知识',
-  managerial_knowledge: 'MK 管理知识',
-  communication: 'Comm 沟通',
-  thinking_challenge: 'TC 思维挑战',
-  thinking_environment: 'TE 思维环境',
-  freedom_to_act: 'FTA 行动自由度',
-  magnitude: 'Mag 影响范围',
-  nature_of_impact: 'NoI 影响性质',
+  practical_knowledge: '专业知识（Practical Knowledge）',
+  managerial_knowledge: '管理知识（Managerial Knowledge）',
+  communication: '沟通（Communication）',
+  thinking_challenge: '思维挑战（Thinking Challenge）',
+  thinking_environment: '思维环境（Thinking Environment）',
+  freedom_to_act: '行动自由度（Freedom to Act）',
+  magnitude: '影响范围（Magnitude）',
+  nature_of_impact: '影响性质（Nature of Impact）',
 };
 
-// 因子按 KH/PS/ACC 三维分组
+// 三个维度的全称（候选卡每列顶部显示）
+const DIMENSION_LABELS: Record<'KH' | 'PS' | 'ACC', string> = {
+  KH: '知识技能（Know How）',
+  PS: '解决问题（Problem Solving）',
+  ACC: '职责（Accountability）',
+};
+
+// 因子按 KH/PS/ACC 三维分组。
+// 列内顺序由用户确认: KH 用 PK→MK→Comm；PS 反过来 TE 在上、TC 在下；ACC 用 FTA→Mag→NoI
 const FACTORS_BY_DIM = {
   KH: ['practical_knowledge', 'managerial_knowledge', 'communication'],
-  PS: ['thinking_challenge', 'thinking_environment'],
+  PS: ['thinking_environment', 'thinking_challenge'],
   ACC: ['freedom_to_act', 'magnitude', 'nature_of_impact'],
 };
 
@@ -266,7 +276,7 @@ function DimensionColumn({ dim, score, factorKeys, draft, originalFactors, edita
   isLast: boolean;
 }) {
   const color = dim === 'KH' ? KH_COLOR : dim === 'PS' ? PS_COLOR : ACC_COLOR;
-  const fullName = dim === 'KH' ? 'Know-How' : dim === 'PS' ? 'Problem Solving' : 'Accountability';
+  const fullName = DIMENSION_LABELS[dim];
 
   return (
     <div style={{
@@ -275,7 +285,7 @@ function DimensionColumn({ dim, score, factorKeys, draft, originalFactors, edita
     }}>
       {/* 分数（顶部） */}
       <div style={{ paddingBottom: 10, borderBottom: '1px dashed #F1F5F9', marginBottom: 10 }}>
-        <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 2 }}>{dim} · {fullName}</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 2 }} title={fullName}>{fullName}</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
           <span style={{ fontSize: 18, fontWeight: 700, color }}>{score}</span>
           <span style={{ fontSize: 10, color: '#94A3B8' }}>分</span>
@@ -311,12 +321,22 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
   const dirty = value !== originalValue;
   const label = FACTOR_LABELS[factorKey] || factorKey;
 
+  // label 改成"中文（英文）"全称后，水平 row 装不下，改成上下布局：
+  // 第一行 label 完整展示，第二行下拉右对齐。
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 11, color: '#475569', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {label}
-        </span>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span
+        style={{
+          fontSize: 11, color: '#475569',
+          lineHeight: 1.4,
+          // 中文 + 英文括号一起，宽度允许时单行显示，否则自动换行
+          wordBreak: 'break-word',
+        }}
+        title={label}
+      >
+        {label}
+      </span>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {editable ? (
           <select
             value={value}
@@ -325,10 +345,10 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
             onMouseLeave={() => setHoverLevel(null)}
             title={def ? `${def.level} · ${def.label}\n${def.description}` : ''}
             style={{
-              padding: '3px 6px', fontSize: 11,
+              padding: '3px 8px', fontSize: 11,
               border: `1px solid ${dirty ? BRAND : '#E2E8F0'}`, borderRadius: 4,
               background: dirty ? BRAND_TINT : '#fff',
-              fontFamily: 'inherit', minWidth: 56, cursor: 'pointer',
+              fontFamily: 'inherit', minWidth: 64, cursor: 'pointer',
               color: '#0F172A',
             }}
           >

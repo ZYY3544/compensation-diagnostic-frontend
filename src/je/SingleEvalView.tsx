@@ -389,9 +389,9 @@ function buildIntroText(): string {
   return [
     '准备好了。右边填一下岗位信息：',
     '',
-    '• **岗位名称** 必填（比如"高级产品经理"）',
-    '• **业务职能** 必填（从下拉里选最贴近的）',
-    '• **JD** 选填 — 没 JD 我也能基于岗位名做评估，但有 JD 结果会更准',
+    '· 岗位名称 — 必填，比如"高级产品经理"',
+    '· 业务职能 — 必填，从下拉里选最贴近的',
+    '· JD — 选填，没 JD 我也能基于岗位名做评估，但有 JD 结果会更准',
     '',
     '点"开始评估"，约 10-15 秒后出结果。',
   ].join('\n');
@@ -429,17 +429,16 @@ function buildCandidateComparison(candidates: JeCandidate[]): string | null {
   const sameGradeGroups = Object.values(byGrade).filter(g => g.length >= 2);
 
   const recommended = candidates[0];   // engine 把推荐方案放第一
-  const recoLabel = `**方案 A**（G${recommended.job_grade}，${recommended.dominant} 主导${recommended.orientation ? ` · ${recommended.orientation}` : ''}）`;
+  const recoLabel = `方案 A（G${recommended.job_grade}，${recommended.dominant} 主导${recommended.orientation ? ` · ${recommended.orientation}` : ''}）`;
 
   if (sameGradeGroups.length > 0 && candidates.length >= 2) {
     // 有同职级，重点解释差异
-    const lines: string[] = ['几套候选方案的实质差异：'];
+    const lines: string[] = ['几套候选方案的实质差异：', ''];
     candidates.forEach((c, i) => {
       const letter = String.fromCharCode(65 + i);
-      const tag = `**方案 ${letter}** (G${c.job_grade})`;
       const tilt = `${c.dominant} 占比最高${c.orientation ? `，${c.orientation}` : ''}`;
       const detail = `KH ${c.kh_score} · PS ${c.ps_score} · ACC ${c.acc_score}`;
-      lines.push(`• ${tag}：${tilt}（${detail}）`);
+      lines.push(`· 方案 ${letter} (G${c.job_grade})：${tilt}（${detail}）`);
     });
     lines.push('');
     lines.push(`推荐 ${recoLabel.split('（')[0]}，因为它跟你们这类岗位的"专业 / 管理 / 战略"权重最匹配。如果对岗位倾向有不同判断，可以直接采用其他方案。`);

@@ -180,38 +180,32 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
 
     // 不论是否违反约束链，都调后端更新 job.factors 让分数实时刷新。
     // Sparky 只起提醒作用，最终选择权在用户。
+    // 网络抖动 / Render 冷启动会偶发 fetch 失败 → 自动重试一次再决定要不要打扰用户
     setSaving(true);
-    try {
-      const res = await jeUpdateFactors(job.id, newFactors);
-      onUpdated(res.data.job);
-    } catch (e: any) {
-      // 网络异常或后端冷启动 — 不用 native alert 阻塞用户，让 Sparky 温和提示。
-      // 受控组件 value 维持原值（因为 onUpdated 没触发），视觉上下拉自动回弹到上次成功的档位。
-      const reason = e?.response?.data?.error || e?.message || '网络异常';
-      console.warn('[je] update_factors failed:', reason);
+    const updated = await tryUpdateFactorsWithRetry(job.id, newFactors);
+    setSaving(false);
+    if (updated) {
+      onUpdated(updated);
+    } else {
       onSparkyMessage?.(
-        `刚才的档位调整没保存上（${reason}）。可能是后端冷启动或网络抖动 — 等几秒再改一次试试。`
+        '刚才的档位调整没保存上 — 后端可能正在冷启动或网络抖动，已经自动重试一次仍然失败。等 30 秒后再改一次试试。'
       );
-    } finally {
-      setSaving(false);
     }
   };
 
   // 采用此方案：调后端把 job 的 factors 切成本卡的 factors，弹成功 modal
+  // 同样加自动重试（网络抖动时不打扰用户）
   const handleApply = async () => {
     setSaving(true);
-    try {
-      const res = await jeUpdateFactors(job.id, card.factors);
-      onUpdated(res.data.job);
+    const updated = await tryUpdateFactorsWithRetry(job.id, card.factors);
+    setSaving(false);
+    if (updated) {
+      onUpdated(updated);
       onApplied?.(cardLabel);
-    } catch (e: any) {
-      const reason = e?.response?.data?.error || e?.message || '网络异常';
-      console.warn('[je] apply candidate failed:', reason);
+    } else {
       onSparkyMessage?.(
-        `${cardLabel} 没采用上（${reason}）。可能是后端冷启动或网络抖动 — 等几秒再点一次。`
+        `${cardLabel} 没采用上 — 后端可能正在冷启动或网络抖动，已经自动重试一次仍然失败。等 30 秒后再点一次试试。`
       );
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -547,7 +541,32 @@ function ApplySuccessModal({ cardLabel, onClose, onGoToMatrix }: {
 }
 
 // ============================================================================
-// 约束链校验：PK ≥ TE ≥ FTA 紧邻一档
+// 后端调用带自动重试 — Render 免费档冷启动/网络抖动时会偶发 fetch 失败
+// 第一次失败静默等 1.5s 重试一次，仍失败返回 null 让调用方决定是否提示用户
+// ============================================================================
+async function tryUpdateFactorsWithRetry(
+  jobId: string,
+  factors: Record<string, string>,
+): Promise<JeJob | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await jeUpdateFactors(jobId, factors);
+      return res.data.job;
+    } catch (e: any) {
+      const reason = e?.response?.data?.error || e?.message || 'unknown';
+      console.warn(`[je] update_factors attempt ${attempt + 1} failed:`, reason);
+      if (attempt === 0) {
+        // 第一次失败，静默等 1.5s 重试
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+  }
+  return null;
+}
+
+
+// ============================================================================
+// 约束链校验：PK ≥ TE ≥ FTA 上限关系（不要求紧邻）
 // ============================================================================
 function checkConstraintChain(factors: Record<string, string>): {
   violations: Set<string>;

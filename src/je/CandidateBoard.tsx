@@ -21,9 +21,9 @@
  *   │ [✓ 当前采用]    或    [采用此方案]    + (如 dirty) 重算 │
  *   └───────────────────────────────────────────────────────┘
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { jeUpdateFactors, type JeJob, type JeCandidate } from '../api/client';
-import { getLevelDefinition } from './hayDefinitions';
+import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
@@ -316,34 +316,72 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
   editable: boolean;
   onChange: (v: string) => void;
 }) {
-  const [hoverLevel, setHoverLevel] = useState<string | null>(null);
-  const def = hoverLevel ? getLevelDefinition(factorKey, hoverLevel) : getLevelDefinition(factorKey, value);
+  const def = getLevelDefinition(factorKey, value);
+  const adjacent = getAdjacentDefinitions(factorKey, value);
   const dirty = value !== originalValue;
   const label = FACTOR_LABELS[factorKey] || factorKey;
 
-  // label 改成"中文（英文）"全称后，水平 row 装不下，改成上下布局：
-  // 第一行 label 完整展示，第二行下拉右对齐。
+  // A: 鼠标停在因子区 700ms → 下方淡入实时定义条（hover 0.7s 是"故意 hover"门槛
+  //    避免快速划过频繁闪烁；离开立即关闭）
+  const [showDef, setShowDef] = useState(false);
+  const hoverTimerRef = useRef<number | null>(null);
+  const handleMouseEnter = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = window.setTimeout(() => setShowDef(true), 700);
+  };
+  const handleMouseLeave = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setShowDef(false);
+  };
+  useEffect(() => () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+  }, []);
+
+  // B: ⓘ 图标点击切换 → 展开当前档 + 上下相邻档对比卡片
+  const [showAdjacent, setShowAdjacent] = useState(false);
+
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span
-        style={{
-          fontSize: 11, color: '#475569',
-          lineHeight: 1.4,
-          // 中文 + 英文括号一起，宽度允许时单行显示，否则自动换行
-          wordBreak: 'break-word',
-        }}
-        title={label}
-      >
-        {label}
-      </span>
+    <div
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+        <span
+          style={{
+            flex: 1,
+            fontSize: 11, color: '#475569',
+            lineHeight: 1.4,
+            wordBreak: 'break-word',
+          }}
+          title={label}
+        >
+          {label}
+        </span>
+        {/* B: ⓘ 图标，点击切换相邻档对比 */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowAdjacent(s => !s); }}
+          title="对比上下相邻档位"
+          style={{
+            flexShrink: 0,
+            width: 16, height: 16, borderRadius: '50%',
+            border: 'none', padding: 0,
+            background: showAdjacent ? BRAND : 'transparent',
+            color: showAdjacent ? '#fff' : '#94A3B8',
+            fontSize: 10, fontFamily: 'serif', fontStyle: 'italic',
+            cursor: 'pointer', lineHeight: '14px',
+          }}
+        >i</button>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {editable ? (
           <select
             value={value}
             onChange={e => onChange(e.target.value)}
-            onMouseOver={e => setHoverLevel((e.target as HTMLSelectElement).value)}
-            onMouseLeave={() => setHoverLevel(null)}
-            title={def ? `${def.level} · ${def.label}\n${def.description}` : ''}
             style={{
               padding: '3px 8px', fontSize: 11,
               border: `1px solid ${dirty ? BRAND : '#E2E8F0'}`, borderRadius: 4,
@@ -357,7 +395,7 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
             ))}
           </select>
         ) : (
-          <span title={def ? `${def.level} · ${def.label}\n${def.description}` : ''} style={{
+          <span style={{
             padding: '3px 8px', fontSize: 11,
             background: '#F8FAFC', borderRadius: 4,
             fontFamily: 'ui-monospace, monospace',
@@ -365,6 +403,46 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
           }}>{value}</span>
         )}
       </div>
+
+      {/* A: 实时定义条（hover 700ms 后淡入显示当前选中档位的定义） */}
+      {showDef && def && !showAdjacent && (
+        <div style={{
+          marginTop: 2, padding: '6px 8px',
+          background: '#F8FAFC', borderLeft: `2px solid ${BRAND}`, borderRadius: 3,
+          fontSize: 10, color: '#475569', lineHeight: 1.5,
+        }}>
+          <strong style={{ color: '#0F172A' }}>{def.level} · {def.label}</strong>
+          <div style={{ marginTop: 2 }}>{def.description}</div>
+        </div>
+      )}
+
+      {/* B: 相邻档对比卡片（点击 ⓘ 展开） */}
+      {showAdjacent && (
+        <div style={{
+          marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {(['prev', 'current', 'next'] as const).map(slot => {
+            const d = adjacent[slot];
+            if (!d) return null;
+            const isCurrent = slot === 'current';
+            return (
+              <div key={slot} style={{
+                padding: '6px 8px',
+                background: isCurrent ? BRAND_TINT : '#F8FAFC',
+                borderLeft: `2px solid ${isCurrent ? BRAND : '#CBD5E1'}`,
+                borderRadius: 3,
+                fontSize: 10, color: '#475569', lineHeight: 1.5,
+              }}>
+                <div style={{ fontSize: 9, color: '#94A3B8', marginBottom: 1 }}>
+                  {slot === 'prev' ? '上一档' : slot === 'current' ? '当前' : '下一档'}
+                </div>
+                <strong style={{ color: '#0F172A' }}>{d.level} · {d.label}</strong>
+                <div style={{ marginTop: 1 }}>{d.description}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

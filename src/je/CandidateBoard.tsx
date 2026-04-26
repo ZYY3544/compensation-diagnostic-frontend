@@ -185,7 +185,13 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
       const res = await jeUpdateFactors(job.id, newFactors);
       onUpdated(res.data.job);
     } catch (e: any) {
-      alert(`重算失败：${e?.response?.data?.error || e.message}`);
+      // 网络异常或后端冷启动 — 不用 native alert 阻塞用户，让 Sparky 温和提示。
+      // 受控组件 value 维持原值（因为 onUpdated 没触发），视觉上下拉自动回弹到上次成功的档位。
+      const reason = e?.response?.data?.error || e?.message || '网络异常';
+      console.warn('[je] update_factors failed:', reason);
+      onSparkyMessage?.(
+        `刚才的档位调整没保存上（${reason}）。可能是后端冷启动或网络抖动 — 等几秒再改一次试试。`
+      );
     } finally {
       setSaving(false);
     }
@@ -199,7 +205,11 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated, 
       onUpdated(res.data.job);
       onApplied?.(cardLabel);
     } catch (e: any) {
-      alert(`应用失败：${e?.response?.data?.error || e.message}`);
+      const reason = e?.response?.data?.error || e?.message || '网络异常';
+      console.warn('[je] apply candidate failed:', reason);
+      onSparkyMessage?.(
+        `${cardLabel} 没采用上（${reason}）。可能是后端冷启动或网络抖动 — 等几秒再点一次。`
+      );
     } finally {
       setSaving(false);
     }

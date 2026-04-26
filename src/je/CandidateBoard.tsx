@@ -568,26 +568,16 @@ function checkConstraintChain(factors: Record<string, string>): {
   const violations = new Set<string>();
   const messages: string[] = [];
 
-  // PK 必须紧邻 TE 上方一档（pkIdx - teIdx === 1）
-  if (pkIdx - teIdx !== 1) {
+  // PK ≥ TE — 只校验"上限"，不要求紧邻
+  if (teIdx > pkIdx) {
     violations.add('thinking_environment');
-    const expected = pkIdx - 1 >= 0 ? ALL_LEVELS[pkIdx - 1] : null;
-    if (expected) {
-      messages.push(`提醒：按 Hay 约束链，专业知识档位是 ${pk} 时，思维环境通常紧邻在它下方一档（${expected}）。你现在选的是 ${te}。`);
-    } else {
-      messages.push(`提醒：专业知识档位 ${pk} 已是最低档，思维环境难以找到紧邻档。`);
-    }
+    messages.push(`提醒：按 Hay 规则，思维环境不应该高于专业知识。当前专业知识是 ${pk}，思维环境是 ${te}。`);
   }
 
-  // TE 必须紧邻 FTA 上方一档（teIdx - ftaIdx === 1）
-  if (teIdx - ftaIdx !== 1) {
+  // TE ≥ FTA — 只校验"上限"，不要求紧邻
+  if (ftaIdx > teIdx) {
     violations.add('freedom_to_act');
-    const expected = teIdx - 1 >= 0 ? ALL_LEVELS[teIdx - 1] : null;
-    if (expected) {
-      messages.push(`提醒：按 Hay 约束链，思维环境档位是 ${te} 时，行动自由度通常紧邻在它下方一档（${expected}）。你现在选的是 ${fta}。`);
-    } else {
-      messages.push(`提醒：思维环境档位 ${te} 已是最低档，行动自由度难以找到紧邻档。`);
-    }
+    messages.push(`提醒：按 Hay 规则，行动自由度不应该高于思维环境。当前思维环境是 ${te}，行动自由度是 ${fta}。`);
   }
 
   return {

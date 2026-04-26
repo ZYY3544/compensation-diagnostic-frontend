@@ -21,7 +21,7 @@
  *   │ [✓ 当前采用]    或    [采用此方案]    + (如 dirty) 重算 │
  *   └───────────────────────────────────────────────────────┘
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { jeUpdateFactors, type JeJob, type JeCandidate } from '../api/client';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 
@@ -209,14 +209,15 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
         </div>
       </div>
 
-      {/* 三维分数 + 三维档位下拉 */}
+      {/* 三个维度上下堆叠（不再三列横排）。每个维度顶部维度名 + 分数，
+          下方该维度因子列表，因子档位的解释直接展示在下拉旁。 */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-        background: '#FAFBFC', borderRadius: 8, overflow: 'hidden',
-        border: '1px solid #F1F5F9',
+        display: 'flex', flexDirection: 'column', gap: 14,
+        background: '#FAFBFC', border: '1px solid #F1F5F9', borderRadius: 8,
+        padding: 16,
       }}>
         {(['KH', 'PS', 'ACC'] as const).map((dim, idx) => (
-          <DimensionColumn
+          <DimensionRow
             key={dim}
             dim={dim}
             score={dim === 'KH' ? card.kh_score : dim === 'PS' ? card.ps_score : card.acc_score}
@@ -225,7 +226,7 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
             originalFactors={card.factors}
             editable={editable}
             onChange={(k, v) => setDraft(prev => ({ ...prev, [k]: v }))}
-            isLast={idx === 2}
+            isFirst={idx === 0}
           />
         ))}
       </div>
@@ -256,9 +257,9 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
 }
 
 // ============================================================================
-// 三维列：分数（顶）+ 该维度因子下拉（底）
+// 维度行：顶部维度名 + 分数；下方该维度的因子列表（每个因子一行）
 // ============================================================================
-function DimensionColumn({ dim, score, factorKeys, draft, originalFactors, editable, onChange, isLast }: {
+function DimensionRow({ dim, score, factorKeys, draft, originalFactors, editable, onChange, isFirst }: {
   dim: 'KH' | 'PS' | 'ACC';
   score: number;
   factorKeys: readonly string[];
@@ -266,29 +267,29 @@ function DimensionColumn({ dim, score, factorKeys, draft, originalFactors, edita
   originalFactors: Record<string, string>;
   editable: boolean;
   onChange: (factor: string, value: string) => void;
-  isLast: boolean;
+  isFirst: boolean;
 }) {
   const color = dim === 'KH' ? KH_COLOR : dim === 'PS' ? PS_COLOR : ACC_COLOR;
   const fullName = DIMENSION_LABELS[dim];
 
   return (
     <div style={{
-      padding: 12,
-      borderRight: isLast ? 'none' : '1px solid #F1F5F9',
+      paddingTop: isFirst ? 0 : 12,
+      borderTop: isFirst ? 'none' : '1px dashed #E2E8F0',
     }}>
-      {/* 分数（顶部） */}
-      <div style={{ paddingBottom: 10, borderBottom: '1px dashed #F1F5F9', marginBottom: 10 }}>
-        <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 2 }} title={fullName}>{fullName}</div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color }}>{score}</span>
-          <span style={{ fontSize: 10, color: '#94A3B8' }}>分</span>
-        </div>
+      {/* 顶部：维度名 + 分数 */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12,
+      }}>
+        <span style={{ fontSize: 12, color: '#94A3B8' }} title={fullName}>{fullName}</span>
+        <span style={{ fontSize: 18, fontWeight: 700, color }}>{score}</span>
+        <span style={{ fontSize: 11, color: '#94A3B8' }}>分</span>
       </div>
 
-      {/* 因子下拉（底部） */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* 因子列表 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {factorKeys.map(k => (
-          <FactorSelect
+          <FactorRow
             key={k}
             factorKey={k}
             value={draft[k] || ''}
@@ -302,7 +303,9 @@ function DimensionColumn({ dim, score, factorKeys, draft, originalFactors, edita
   );
 }
 
-function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
+// 因子行：label 在上、下方左侧下拉 + 右侧档位定义（直接常驻展示，不再 hover 触发）。
+// ⓘ 按钮点击切换"上一档 / 下一档"对比（相邻档定义跟当前档并列显示，方便横向对比）。
+function FactorRow({ factorKey, value, originalValue, editable, onChange }: {
   factorKey: string;
   value: string;
   originalValue: string;
@@ -313,124 +316,86 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
   const adjacent = getAdjacentDefinitions(factorKey, value);
   const dirty = value !== originalValue;
   const label = FACTOR_LABELS[factorKey] || factorKey;
-
-  // A: 鼠标停在因子区 700ms → 下方淡入实时定义条（hover 0.7s 是"故意 hover"门槛
-  //    避免快速划过频繁闪烁；离开立即关闭）
-  const [showDef, setShowDef] = useState(false);
-  const hoverTimerRef = useRef<number | null>(null);
-  const handleMouseEnter = () => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = window.setTimeout(() => setShowDef(true), 700);
-  };
-  const handleMouseLeave = () => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-    setShowDef(false);
-  };
-  useEffect(() => () => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-  }, []);
-
-  // B: ⓘ 图标点击切换 → 展开当前档 + 上下相邻档对比卡片
   const [showAdjacent, setShowAdjacent] = useState(false);
 
   return (
-    <div
-      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-        <span
-          style={{
-            flex: 1,
-            fontSize: 11, color: '#475569',
-            lineHeight: 1.4,
-            wordBreak: 'break-word',
-          }}
-          title={label}
-        >
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* label 行 + ⓘ 按钮 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ flex: 1, fontSize: 12, color: '#0F172A', lineHeight: 1.4 }} title={label}>
           {label}
         </span>
-        {/* B: ⓘ 图标，点击切换相邻档对比 */}
         <button
-          onClick={(e) => { e.stopPropagation(); setShowAdjacent(s => !s); }}
-          title="对比上下相邻档位"
+          onClick={() => setShowAdjacent(s => !s)}
+          title={showAdjacent ? '收起相邻档对比' : '对比上下相邻档位'}
           style={{
             flexShrink: 0,
-            width: 16, height: 16, borderRadius: '50%',
-            border: 'none', padding: 0,
-            background: showAdjacent ? BRAND : 'transparent',
+            width: 18, height: 18, borderRadius: '50%',
+            border: showAdjacent ? `1px solid ${BRAND}` : '1px solid #E2E8F0',
+            padding: 0,
+            background: showAdjacent ? BRAND : '#fff',
             color: showAdjacent ? '#fff' : '#94A3B8',
             fontSize: 10, fontFamily: 'serif', fontStyle: 'italic',
-            cursor: 'pointer', lineHeight: '14px',
+            cursor: 'pointer', lineHeight: '16px',
           }}
         >i</button>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {editable ? (
-          <select
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            style={{
-              padding: '3px 8px', fontSize: 11,
-              border: `1px solid ${dirty ? BRAND : '#E2E8F0'}`, borderRadius: 4,
-              background: dirty ? BRAND_TINT : '#fff',
-              fontFamily: 'inherit', minWidth: 64, cursor: 'pointer',
-              color: '#0F172A',
-            }}
-          >
-            {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        ) : (
-          <span style={{
-            padding: '3px 8px', fontSize: 11,
-            background: '#F8FAFC', borderRadius: 4,
-            fontFamily: 'ui-monospace, monospace',
-            color: '#475569',
-          }}>{value}</span>
+      {/* 下拉 + 当前档定义（同一行，左下拉右定义） */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flexShrink: 0 }}>
+          {editable ? (
+            <select
+              value={value}
+              onChange={e => onChange(e.target.value)}
+              style={{
+                padding: '4px 10px', fontSize: 12,
+                border: `1px solid ${dirty ? BRAND : '#E2E8F0'}`, borderRadius: 4,
+                background: dirty ? BRAND_TINT : '#fff',
+                fontFamily: 'inherit', minWidth: 70, cursor: 'pointer',
+                color: '#0F172A',
+              }}
+            >
+              {(FACTOR_OPTIONS[factorKey] || []).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ) : (
+            <span style={{
+              display: 'inline-block', padding: '4px 10px', fontSize: 12,
+              background: '#F1F5F9', borderRadius: 4,
+              fontFamily: 'ui-monospace, monospace', color: '#475569',
+              minWidth: 50, textAlign: 'center',
+            }}>{value}</span>
+          )}
+        </div>
+        {def && (
+          <div style={{ flex: 1, fontSize: 11, lineHeight: 1.6, paddingTop: 4 }}>
+            <span style={{ color: '#0F172A', fontWeight: 600 }}>{def.level} · {def.label}</span>
+            <span style={{ color: '#64748B', marginLeft: 6 }}>— {def.description}</span>
+          </div>
         )}
       </div>
 
-      {/* A: 实时定义条（hover 700ms 后淡入显示当前选中档位的定义） */}
-      {showDef && def && !showAdjacent && (
-        <div style={{
-          marginTop: 2, padding: '6px 8px',
-          background: '#F8FAFC', borderLeft: `2px solid ${BRAND}`, borderRadius: 3,
-          fontSize: 10, color: '#475569', lineHeight: 1.5,
-        }}>
-          <strong style={{ color: '#0F172A' }}>{def.level} · {def.label}</strong>
-          <div style={{ marginTop: 2 }}>{def.description}</div>
-        </div>
-      )}
-
-      {/* B: 相邻档对比卡片（点击 ⓘ 展开） */}
+      {/* 相邻档对比（点 ⓘ 展开 — 只显示 prev / next，current 已经常驻） */}
       {showAdjacent && (
-        <div style={{
-          marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
-          {(['prev', 'current', 'next'] as const).map(slot => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 82, marginTop: 2 }}>
+          {(['prev', 'next'] as const).map(slot => {
             const d = adjacent[slot];
             if (!d) return null;
-            const isCurrent = slot === 'current';
             return (
               <div key={slot} style={{
-                padding: '6px 8px',
-                background: isCurrent ? BRAND_TINT : '#F8FAFC',
-                borderLeft: `2px solid ${isCurrent ? BRAND : '#CBD5E1'}`,
+                padding: '6px 10px',
+                background: '#F8FAFC',
+                borderLeft: '2px solid #CBD5E1',
                 borderRadius: 3,
-                fontSize: 10, color: '#475569', lineHeight: 1.5,
+                fontSize: 11, lineHeight: 1.5,
               }}>
-                <div style={{ fontSize: 9, color: '#94A3B8', marginBottom: 1 }}>
-                  {slot === 'prev' ? '上一档' : slot === 'current' ? '当前' : '下一档'}
-                </div>
-                <strong style={{ color: '#0F172A' }}>{d.level} · {d.label}</strong>
-                <div style={{ marginTop: 1 }}>{d.description}</div>
+                <span style={{ fontSize: 10, color: '#94A3B8' }}>
+                  {slot === 'prev' ? '上一档' : '下一档'}：
+                </span>
+                <span style={{ color: '#0F172A', fontWeight: 600 }}>{d.level} · {d.label}</span>
+                <span style={{ color: '#64748B', marginLeft: 6 }}>— {d.description}</span>
               </div>
             );
           })}

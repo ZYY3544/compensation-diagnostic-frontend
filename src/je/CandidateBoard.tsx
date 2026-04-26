@@ -177,34 +177,27 @@ function CandidateCard({ job, card, index, isCurrent, isRecommended, onUpdated }
       boxShadow: isCurrent ? `0 0 0 2px ${BRAND_TINT}` : 'none',
       position: 'relative',
     }}>
-      {/* 顶部：方案名 + 徽章 */}
+      {/* 顶部：方案名 + 三个核心数据（横排 inline "label：value" 格式） + 徽章 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
             方案 {String.fromCharCode(65 + index)}
           </div>
-          {/* 三个核心数据：每个都是"值 + 下方 label"双行结构，用户一眼能看到含义 */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-            <ValueWithLabel
-              value={`G${card.job_grade}`}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 24, flexWrap: 'wrap' }}>
+            <InlineStat
               label="Hay 职级"
-              valueSize={24}
-              valueColor="#0F172A"
-              tooltip="Hay 体系的标准化岗位职级 (G1-G27)，数值越大代表岗位价值越高"
+              value={String(card.job_grade)}
+              tooltip="Hay 体系的标准化岗位职级（1-27），数值越大代表岗位价值越高"
             />
-            <ValueWithLabel
-              value={String(card.total_score)}
+            <InlineStat
               label="总分"
-              valueSize={20}
-              valueColor="#475569"
+              value={`${card.total_score} 分`}
               tooltip="Know-How + Problem Solving + Accountability 三维分数之和"
             />
             {card.profile && (
-              <ValueWithLabel
+              <InlineStat
+                label="Short Profile"
                 value={card.profile}
-                label="岗位倾向"
-                valueSize={20}
-                valueColor="#475569"
                 tooltip={profileTooltip(card.profile)}
               />
             )}
@@ -453,31 +446,26 @@ function FactorSelect({ factorKey, value, originalValue, editable, onChange }: {
 // DominantPill (KH/PS/ACC 主导小标签) 已删除 — 跟 orientation 一起呈现时
 // 语义经常冲突 (KH 主导 + 偏管理 矛盾)，让用户困惑。
 
-// 双行数据展示：上方大字值 + 下方灰字标签，用户一眼能看到字段含义。
-// hover 显示 tooltip 解释字段细节。
-function ValueWithLabel({ value, label, valueSize, valueColor, tooltip }: {
-  value: string;
+// 横排 inline "label：value" 数据展示。鼠标悬停 label 显示 tooltip 解释字段含义。
+// 跟之前的双行 ValueWithLabel 相比更紧凑，三个数据并排不占多大空间。
+function InlineStat({ label, value, tooltip }: {
   label: string;
-  valueSize: number;
-  valueColor: string;
+  value: string;
   tooltip?: string;
 }) {
   return (
-    <div title={tooltip}>
-      <div style={{
-        fontSize: valueSize, fontWeight: 700, color: valueColor,
-        lineHeight: 1.1,
-      }}>
-        {value}
-      </div>
-      <div style={{
-        fontSize: 10, color: '#94A3B8', marginTop: 4,
-        cursor: tooltip ? 'help' : 'default',
-        borderBottom: tooltip ? '1px dotted #CBD5E1' : 'none',
-        display: 'inline-block',
-      }}>
-        {label}
-      </div>
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, fontSize: 13 }}>
+      <span
+        title={tooltip}
+        style={{
+          color: '#94A3B8',
+          cursor: tooltip ? 'help' : 'default',
+          borderBottom: tooltip ? '1px dotted #CBD5E1' : 'none',
+        }}
+      >
+        {label}：
+      </span>
+      <span style={{ color: '#0F172A', fontWeight: 600 }}>{value}</span>
     </div>
   );
 }

@@ -241,12 +241,7 @@ export default function SingleEvalView({ functionCatalog, onJobCreated, onGoToMa
           </FadeBlock>
 
           <FadeBlock visible={stage === 'result'}>
-            {job && (
-              <>
-                <ResultBanner job={job} />
-                <CandidateBoard job={job} onUpdated={handleJobUpdated} />
-              </>
-            )}
+            {job && <CandidateBoard job={job} onUpdated={handleJobUpdated} />}
           </FadeBlock>
         </div>
       </Workspace>
@@ -346,48 +341,10 @@ function EvaluatingPlaceholder() {
   );
 }
 
-// ============================================================================
-// 结果顶部 banner（总分 / 职级 / 三维分数 / confidence）
-// ============================================================================
-function ResultBanner({ job }: { job: JeJob }) {
-  const r = (job.result || {}) as any;
-  const grade = r.job_grade;
-  const total = r.total_score;
-  const kh = r.kh_score, ps = r.ps_score, acc = r.acc_score;
-  const confidence = r.confidence as 'high' | 'low' | undefined;
-
-  return (
-    <div style={{
-      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-      padding: 20, marginBottom: 16,
-    }}>
-      <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
-        <Stat label="Hay 职级" value={grade != null ? `G${grade}` : '—'} accent />
-        <Stat label="总分" value={total ?? '—'} accent />
-        <Stat label="Know-How" value={kh ?? '—'} />
-        <Stat label="Problem Solving" value={ps ?? '—'} />
-        <Stat label="Accountability" value={acc ?? '—'} />
-        {confidence === 'low' && (
-          <span style={{
-            marginLeft: 'auto', padding: '4px 10px', borderRadius: 4,
-            background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 600,
-          }}>
-            AI 推断 · 建议补 JD
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: any; accent?: boolean }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: accent ? 22 : 16, fontWeight: 700, color: accent ? BRAND : '#0F172A' }}>{value}</div>
-    </div>
-  );
-}
+// 注: 之前这里有个 ResultBanner + Stat（顶部展示 Hay 职级 / 总分 / 三维分数 /
+// confidence 徽章），跟下方 CandidateBoard "当前采用"卡片信息完全重复，已删除。
+// confidence='low' 时的"AI 推断 · 建议补 JD"提示在 detail 页的 ConfidenceBanner
+// 仍然保留，单评 view 不再额外重复一份。
 
 // ============================================================================
 // 三段淡入淡出包装器

@@ -37,6 +37,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
   const [open, setOpen] = useState(defaultOpen);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingEntry, setEditingEntry] = useState<JeLibraryEntry | null>(null);
+  const [query, setQuery] = useState('');     // 搜索关键词
 
   // 已选 lib_id 集合（jobs 里某条 result.lib_id 命中即视为已添加）
   const usedLibIds = useMemo(() => {
@@ -56,9 +57,21 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
     );
   }
 
+  // 搜索:跨 name / department / function / sub_function 做 fuzzy 匹配
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? library.entries.filter(e => {
+        const fields = [
+          e.name, e.department || '', e.function,
+          (e as any).sub_function || '',
+        ];
+        return fields.some(f => f && f.toLowerCase().includes(q));
+      })
+    : library.entries;
+
   // 按部门分组（无部门归到"未分组"）
   const grouped: Record<string, JeLibraryEntry[]> = {};
-  for (const e of library.entries) {
+  for (const e of filtered) {
     const dept = e.department || '未分组';
     (grouped[dept] ||= []).push(e);
   }
@@ -114,6 +127,41 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
 
       {open && (
         <>
+          {/* 搜索框 — 跨全库 fuzzy 匹配 name/department/function/sub_function */}
+          <div style={{ padding: '0 16px 10px', borderBottom: '1px solid #F1F5F9' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="搜岗位 — 比如 '市场经理' / 'HR' / '财务'"
+                style={{
+                  width: '100%', padding: '8px 32px 8px 12px',
+                  fontSize: 13, border: '1px solid #E2E8F0', borderRadius: 6,
+                  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+                }}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery('')}
+                  style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    border: 'none', background: 'transparent', color: '#94A3B8',
+                    cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1,
+                  }}
+                  title="清除"
+                >×</button>
+              )}
+            </div>
+            {q && (
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
+                {filtered.length === 0
+                  ? `没找到匹配"${query}"的岗位 — 试试更短的关键词,或者告诉 Sparky 帮你建一个`
+                  : `匹配 ${filtered.length} 个岗位`}
+              </div>
+            )}
+          </div>
+
           <div style={contentStyle}>
             {Object.entries(grouped).map(([dept, items]) => (
               <DeptGroup
@@ -287,19 +335,25 @@ function AddFromLibraryModal({ entry, onClose, onConfirm }: {
           <input value={department} onChange={e => setDepartment(e.target.value)} style={inputStyle} />
         </FormRow>
 
-        <div style={{ marginTop: 12, padding: 10, background: '#F8FAFC', borderRadius: 6 }}>
-          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>该岗位将带以下因子（后续可在详情页调整）：</div>
-          <div style={{ fontSize: 11, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
-            <span>PK <strong>{entry.factors.practical_knowledge}</strong></span>
-            <span>MK <strong>{entry.factors.managerial_knowledge}</strong></span>
-            <span>Comm <strong>{entry.factors.communication}</strong></span>
-            <span>TC <strong>{entry.factors.thinking_challenge}</strong></span>
-            <span>TE <strong>{entry.factors.thinking_environment}</strong></span>
-            <span>FTA <strong>{entry.factors.freedom_to_act}</strong></span>
-            <span>Mag <strong>{entry.factors.magnitude}</strong></span>
-            <span>NoI <strong>{entry.factors.nature_of_impact}</strong></span>
+        {entry.factors ? (
+          <div style={{ marginTop: 12, padding: 10, background: '#F8FAFC', borderRadius: 6 }}>
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>该岗位将带以下因子(后续可在详情页调整):</div>
+            <div style={{ fontSize: 11, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
+              <span>PK <strong>{entry.factors.practical_knowledge}</strong></span>
+              <span>MK <strong>{entry.factors.managerial_knowledge}</strong></span>
+              <span>Comm <strong>{entry.factors.communication}</strong></span>
+              <span>TC <strong>{entry.factors.thinking_challenge}</strong></span>
+              <span>TE <strong>{entry.factors.thinking_environment}</strong></span>
+              <span>FTA <strong>{entry.factors.freedom_to_act}</strong></span>
+              <span>Mag <strong>{entry.factors.magnitude}</strong></span>
+              <span>NoI <strong>{entry.factors.nature_of_impact}</strong></span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ marginTop: 12, padding: 10, background: '#FEF7F4', borderRadius: 6, fontSize: 11, color: '#92400E', lineHeight: 1.6 }}>
+            添加时会按 Hay 职级 G{entry.hay_grade} 自动生成一组合理的 8 因子档位,后续可以在岗位详情页手改任何档位 — 分数和职级会跟着重新计算。
+          </div>
+        )}
 
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} style={ghostBtn}>取消</button>
@@ -327,11 +381,18 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
 // 工具
 // ============================================================================
 function pickDominant(e: JeLibraryEntry): { color: string; label: string } {
-  const total = e.kh_score + e.ps_score + e.acc_score;
+  // standard library entry 没分数,用 track 标记替代主导维度色
+  if (e.kh_score == null || e.ps_score == null || e.acc_score == null) {
+    if (e.track === 'management') return { color: ACC_COLOR, label: '管理通道' };
+    if (e.track === 'specialist') return { color: KH_COLOR, label: '专业通道' };
+    return { color: '#94A3B8', label: '—' };
+  }
+  const kh = e.kh_score, ps = e.ps_score, acc = e.acc_score;
+  const total = kh + ps + acc;
   if (total === 0) return { color: '#94A3B8', label: '—' };
-  const m = Math.max(e.kh_score, e.ps_score, e.acc_score);
-  if (m === e.kh_score) return { color: KH_COLOR, label: 'KH' };
-  if (m === e.ps_score) return { color: PS_COLOR, label: 'PS' };
+  const m = Math.max(kh, ps, acc);
+  if (m === kh) return { color: KH_COLOR, label: 'KH' };
+  if (m === ps) return { color: PS_COLOR, label: 'PS' };
   return { color: ACC_COLOR, label: 'ACC' };
 }
 

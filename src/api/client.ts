@@ -307,15 +307,21 @@ export interface JeLibraryEntry {
   name: string;
   department: string | null;
   function: string;
-  factors: Record<string, string>;
+  // factors / scores 可能为 null — standard library 的 entry 不预存因子,
+  // 用户在 /jobs/from-library 时由后端按 hay_grade 反推一组合理 baseline
+  factors: Record<string, string> | null;
   hay_grade: number | null;
-  total_score: number;
-  kh_score: number;
-  ps_score: number;
-  acc_score: number;
+  total_score: number | null;
+  kh_score: number | null;
+  ps_score: number | null;
+  acc_score: number | null;
   profile: string | null;
   responsibilities: string[];
   invalid_factors?: boolean;
+  // standard library 专属字段(LLM 生成的 entry 没有这些,所以可选)
+  level_label?: string | null;     // "Level 5-1" 等
+  track?: 'specialist' | 'management' | 'unknown';
+  sub_function?: string;            // "薪酬管理" 等子职能名 (用于搜索匹配)
 }
 
 export interface JeLibrary {

@@ -14,8 +14,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   jeListJobs, jeListFunctions, jeCreateJob, jeUpdateJd, jeUpdateFactors, jeDeleteJob,
-  jeListAnomalies, jeAdjustGrade,
-  type JeJob, type JeAnomaly, type JeCandidate, type JeLibrary,
+  jeListAnomalies, jeAdjustGrade, jeGetProfile,
+  type JeJob, type JeAnomaly, type JeCandidate, type JeLibrary, type JeOrgProfile,
 } from '../api/client';
 import GradeMatrix from './GradeMatrix';
 import BatchEvalView from './BatchEvalView';
@@ -69,6 +69,7 @@ export default function JeApp() {
   const [jobs, setJobs] = useState<JeJob[]>([]);
   const [anomalies, setAnomalies] = useState<JeAnomaly[]>([]);
   const [library, setLibrary] = useState<JeLibrary | null>(null);
+  const [profile, setProfile] = useState<JeOrgProfile | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // 默认进 entry 入口选择页 — 用户从三个高频场景里选一条路径
   // (评一个 / 批量评 / 建立体系)。账户记忆功能开启时，已经走过流程的用户
@@ -101,6 +102,12 @@ export default function JeApp() {
   // 职能字典是给"+ 单个评估"模态的下拉用，没历史的概念，正常加载。
   useEffect(() => {
     jeListFunctions().then(r => setFunctionCatalog(r.data.catalog)).catch(() => {});
+    // 同时拉一下 profile - 如果之前走过路径 C 留下了组织画像,matrix 视图的
+    // "访谈笔记"按钮就能直接渲染 (用户没走过路径 C 时返回 null,按钮就隐藏)
+    jeGetProfile().then(r => {
+      if (r.data.profile) setProfile(r.data.profile);
+      if (r.data.library) setLibrary(r.data.library);
+    }).catch(() => {});
   }, []);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
@@ -264,7 +271,8 @@ export default function JeApp() {
           />
         ) : view === 'onboarding' ? (
           <JeOnboarding
-            onComplete={(_profile, library) => {
+            onComplete={(p, library) => {
+              setProfile(p);                // 给 matrix 视图的"访谈笔记"按钮用
               setLibrary(library);          // 让 matrix 视图立刻能渲染岗位库面板
               setView('matrix');
             }}
@@ -281,6 +289,7 @@ export default function JeApp() {
             jobs={jobs}
             anomalies={anomalies}
             library={library}
+            profile={profile}
             selectedJobId={selectedId}
             onJobSelect={handleSelectJob}
             onJobCreated={handleJobCreated}

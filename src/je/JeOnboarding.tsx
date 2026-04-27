@@ -29,7 +29,7 @@ const API_BASE = (import.meta.env as any).VITE_API_URL || '/api';
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
-type Stage = 'interview' | 'generating' | 'done' | 'error';
+export type Stage = 'interview' | 'generating' | 'done' | 'error';
 type StepId = 'Opening' | 'JE_Q1' | 'JE_Q2' | 'JE_Q3' | 'JE_Q4';
 
 const STEP_ORDER: StepId[] = ['JE_Q1', 'JE_Q2', 'JE_Q3', 'JE_Q4'];
@@ -53,6 +53,11 @@ export default function JeOnboarding({ onComplete }: Props) {
   const lastSparkyQuestionRef = useRef<string>('');
   const profileRef = useRef<Partial<JeOrgProfile>>({ departments: [], layers: [] });
   const initRef = useRef(false);
+  // 库生成完成后,把成果暂存在 ref 上 — done 阶段用户点'看推荐岗位库'再 onComplete
+  // (之前是 setTimeout 800ms 自动跳走,导致访谈对话历史 + 右侧笔记被强制销毁,
+  //  用户反馈'对话框里访谈的输入输出都没了')
+  const finishedLibraryRef = useRef<JeLibrary | null>(null);
+  const finishedProfileRef = useRef<JeOrgProfile | null>(null);
 
   // 进入即让 LLM 生成开场白 (走 question_id='Opening') + 后端预热
   useEffect(() => {
@@ -236,15 +241,16 @@ export default function JeOnboarding({ onComplete }: Props) {
         );
       });
 
+      // 暂存,等用户点'看推荐岗位库'按钮再 onComplete (不再自动跳转)
+      finishedLibraryRef.current = library;
+      finishedProfileRef.current = finalProfile;
+
       const doneId = nextMsgId();
       setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
       streamText(
-        `生成完成 — 我为你们公司推荐了 ${library.entries.length} 个岗位。\n\n右边可以看到按部门分组的列表,每个岗位都带了 Hay 职级和 8 因子建议。从里面挑跟你们实际匹配的,或者告诉我需要增减哪些。`,
+        `生成完成 — 我为你们公司推荐了 ${library.entries.length} 个岗位。准备好后点右下角"看推荐岗位库"进入选岗界面,从里面挑跟你们实际匹配的就行。\n\n如果对刚才的访谈内容或推荐有疑问,直接问我。`,
         (t) => setMessages(prev => prev.map(m => m.id === doneId ? { ...m, text: t } : m)),
-        () => {
-          setStage('done');
-          setTimeout(() => onComplete(finalProfile, library), 800);
-        },
+        () => setStage('done'),
       );
     } catch (err: any) {
       const isNetwork = !err?.response;
@@ -284,11 +290,32 @@ export default function JeOnboarding({ onComplete }: Props) {
 
       {/* 右:访谈笔记 — 文字摘要,不再用部门×层级矩阵 */}
       <Workspace mode="wide" title="访谈笔记" subtitle="访谈中实时整理,完成后用来生成推荐岗位库">
+        {/* done 状态下顶部 CTA — 用户主动决定什么时候离开访谈视图,这样
+            访谈对话历史 + 笔记都能被回看,不会因为自动跳转被销毁 */}
+        {stage === 'done' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+            <button
+              onClick={() => {
+                if (finishedProfileRef.current && finishedLibraryRef.current) {
+                  onComplete(finishedProfileRef.current, finishedLibraryRef.current);
+                }
+              }}
+              style={primaryBtn}
+            >
+              看推荐岗位库 →
+            </button>
+          </div>
+        )}
         <NotesView profile={profile} stage={stage} errorText={errorText} />
       </Workspace>
     </div>
   );
 }
+
+const primaryBtn: React.CSSProperties = {
+  padding: '8px 18px', borderRadius: 6, border: 'none',
+  background: BRAND, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 500,
+};
 
 // ============================================================================
 // 右侧访谈笔记 — 4 段文字摘要,顾问随手记的样子。
@@ -296,7 +323,7 @@ export default function JeOnboarding({ onComplete }: Props) {
 // 推荐岗位库,所以这里不再尝试'实时构建组织矩阵'(那种结构化展示对 LLM
 // 提取的自由文本不友好)。
 // ============================================================================
-function NotesView({ profile, stage, errorText }: {
+export function NotesView({ profile, stage, errorText }: {
   profile: Partial<JeOrgProfile>;
   stage: Stage;
   errorText: string | null;
@@ -384,10 +411,12 @@ function NotesView({ profile, stage, errorText }: {
       {stage === 'done' && (
         <div style={{
           background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 12,
-          padding: '18px 16px', textAlign: 'center', color: '#059669', fontSize: 13,
-          fontWeight: 500,
+          padding: '18px 16px', color: '#059669', fontSize: 13, lineHeight: 1.7,
         }}>
-          岗位库生成完成,进入选岗界面...
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>岗位库已生成</div>
+          <div style={{ color: '#065F46' }}>
+            上面"看推荐岗位库 →"按钮进入选岗界面。这页的对话历史 + 笔记都还在,需要时可以滚回去看。
+          </div>
         </div>
       )}
       {stage === 'error' && (

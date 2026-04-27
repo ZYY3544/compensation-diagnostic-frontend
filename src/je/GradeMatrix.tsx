@@ -13,10 +13,11 @@
  *  - ≥ 5 个岗位 → 右侧用矩阵（X 部门/职能、Y 职级）
  */
 import { useMemo, useState } from 'react';
-import type { JeJob, JeAnomaly, JeLibrary } from '../api/client';
+import type { JeJob, JeAnomaly, JeLibrary, JeOrgProfile } from '../api/client';
 import JeSparkyChat from './JeSparkyChat';
 import LibraryPanel from './LibraryPanel';
 import Workspace from '../components/layout/Workspace';
+import { NotesView } from './JeOnboarding';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
@@ -33,6 +34,8 @@ interface Props {
   jobs: JeJob[];
   anomalies: JeAnomaly[];
   library: JeLibrary | null;
+  /** 路径 C 访谈过的组织画像;没访谈过为 null,'访谈笔记'按钮就隐藏 */
+  profile: JeOrgProfile | null;
   onJobSelect: (jobId: string) => void;
   onJobCreated: (job: JeJob) => void;
   onBatchUpload: () => void;
@@ -48,9 +51,10 @@ interface Props {
 type AxisMode = 'department' | 'function';
 
 export default function GradeMatrix({
-  jobs, anomalies, library, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, onCompareLegacy, onDropToCell, selectedJobId, sparkyAlert,
+  jobs, anomalies, library, profile, onJobSelect, onJobCreated, onBatchUpload, onSingleEval, onPersonJobMatch, onCompareLegacy, onDropToCell, selectedJobId, sparkyAlert,
 }: Props) {
   const [axisMode, setAxisMode] = useState<AxisMode>('department');
+  const [showNotesDrawer, setShowNotesDrawer] = useState(false);
 
   const evaluated = useMemo(
     () => jobs.filter(j => j.result?.job_grade != null),
@@ -113,6 +117,11 @@ export default function GradeMatrix({
             <div style={{
               display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12, gap: 8,
             }}>
+              {profile && (
+                <button onClick={() => setShowNotesDrawer(true)} style={ghostBtn}>
+                  访谈笔记
+                </button>
+              )}
               <button onClick={onCompareLegacy} style={ghostBtn}>对照现行体系</button>
               {useMatrix && <AxisToggle mode={axisMode} onChange={setAxisMode} />}
             </div>
@@ -132,6 +141,63 @@ export default function GradeMatrix({
           </>
         )}
       </Workspace>
+
+      {/* 访谈笔记 Drawer — 路径 C 走过访谈的用户随时回看组织画像 */}
+      {showNotesDrawer && profile && (
+        <NotesDrawer profile={profile} onClose={() => setShowNotesDrawer(false)} />
+      )}
+    </div>
+  );
+}
+
+function NotesDrawer({ profile, onClose }: {
+  profile: JeOrgProfile;
+  onClose: () => void;
+}) {
+  // 把 JeOrgProfile 转成 NotesView 期待的 Partial 形状
+  // (profile.industry / headcount 直接对得上;company_profile_md 是 onboarding
+  //  阶段 LLM 给的丰富 markdown,这里没存所以为 undefined,展示 industry+headcount tag 就够)
+  const partialForNotes = {
+    industry: profile.industry || undefined,
+    headcount: profile.headcount ?? undefined,
+    departments: profile.departments || [],
+    layers: profile.layers || [],
+    existing_grade_system: profile.existing_grade_system,
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
+        zIndex: 1000, display: 'flex', justifyContent: 'flex-end',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#FAFAFA', width: 520, maxWidth: '90vw', height: '100%',
+          padding: '24px 28px', overflowY: 'auto',
+          boxShadow: '-8px 0 32px rgba(15,23,42,0.15)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>访谈笔记</div>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
+              路径 C 组织访谈收集的关键信息,用于生成推荐岗位库
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '4px 10px', border: '1px solid #E2E8F0', background: '#fff',
+              borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#475569',
+            }}
+          >关闭</button>
+        </div>
+        <NotesView profile={partialForNotes} stage="interview" errorText={null} />
+      </div>
     </div>
   );
 }

@@ -282,96 +282,92 @@ export default function JeOnboarding({ onComplete }: Props) {
         />
       </div>
 
-      {/* 右:组织骨架 (实时构建) */}
-      <Workspace mode="wide" title="组织骨架" subtitle="访谈中实时构建">
-        <SkeletonView profile={profile} stage={stage} errorText={errorText} />
+      {/* 右:访谈笔记 — 文字摘要,不再用部门×层级矩阵 */}
+      <Workspace mode="wide" title="访谈笔记" subtitle="访谈中实时整理,完成后用来生成推荐岗位库">
+        <NotesView profile={profile} stage={stage} errorText={errorText} />
       </Workspace>
     </div>
   );
 }
 
 // ============================================================================
-// 右侧骨架视图 — 根据 profile 当前完成度展示不同形态
+// 右侧访谈笔记 — 4 段文字摘要,顾问随手记的样子。
+// 访谈完成 → submitProfile → onComplete 跳到 matrix 视图,那边直接展示
+// 推荐岗位库,所以这里不再尝试'实时构建组织矩阵'(那种结构化展示对 LLM
+// 提取的自由文本不友好)。
 // ============================================================================
-function SkeletonView({ profile, stage, errorText }: {
+function NotesView({ profile, stage, errorText }: {
   profile: Partial<JeOrgProfile>;
   stage: Stage;
   errorText: string | null;
 }) {
-  const hasOrg = !!profile.industry || profile.headcount != null;
-  const hasDept = (profile.departments?.length || 0) > 0;
-  const hasLayers = (profile.layers?.length || 0) > 0;
   const profileMd = (profile as any).company_profile_md as string | undefined;
-
-  if (!hasOrg && !hasDept && !hasLayers) {
-    return (
-      <div style={{ padding: '40px 0', textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
-        访谈开始后这里会逐步出现你们公司的组织骨架
-      </div>
-    );
-  }
+  const hasAny = profileMd
+    || (profile.departments?.length || 0) > 0
+    || (profile.layers?.length || 0) > 0
+    || profile.existing_grade_system != null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* 公司概况 — 行业 / 规模 / (现有体系) tag + 完整 markdown */}
-      {hasOrg && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {!hasAny && (
         <div style={{
-          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16,
+          padding: '40px 24px', textAlign: 'center', color: '#94A3B8', fontSize: 13,
+          background: '#fff', border: '1px dashed #E2E8F0', borderRadius: 12,
         }}>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>公司概况</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13, marginBottom: profileMd ? 12 : 0 }}>
-            {profile.industry && <Tag>{profile.industry}</Tag>}
-            {profile.headcount != null && <Tag>{profile.headcount} 人</Tag>}
-            {profile.existing_grade_system && <Tag accent>{profile.existing_grade_system}</Tag>}
-          </div>
-          {profileMd && (
-            <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-              {profileMd.replace(/\*\*([^*]+)\*\*/g, '$1')}
-            </div>
-          )}
+          访谈开始后这里会逐段出现你们公司的关键信息 — 行业 / 规模 / 部门 / 层级 / 现有职级体系。访谈结束后我会基于这些信息生成推荐岗位库。
         </div>
       )}
 
-      {/* 部门 × 层级 矩阵 */}
-      {hasDept && (
+      {hasAny && (
         <div style={{
-          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16,
-          overflowX: 'auto',
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+          padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18,
         }}>
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>
-            {hasLayers ? '部门 × 层级' : '部门列表'}
-          </div>
-          {hasLayers ? (
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...thStyle, width: 64, textAlign: 'right', paddingRight: 12 }}>层级</th>
-                  {profile.departments!.map(d => (
-                    <th key={d} style={thStyle}>{d}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {profile.layers!.map(layer => (
-                  <tr key={layer}>
-                    <td style={layerCellStyle}>{layer}</td>
-                    {profile.departments!.map(d => (
-                      <td key={`${layer}_${d}`} style={cellStyle}>
-                        <div style={cellPlaceholder}>·</div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {profile.departments!.map(d => <Tag key={d}>{d}</Tag>)}
-            </div>
-          )}
-          <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8' }}>
-            · = 待填入岗位(访谈完成后会用 AI 推荐填进去)
-          </div>
+          <NoteSection
+            label="公司概况"
+            empty="(待 Q1 收集)"
+            done={!!profileMd}
+          >
+            {profileMd && renderMd(profileMd)}
+          </NoteSection>
+
+          <NoteSection
+            label="部门 / 团队"
+            empty="(待 Q2 收集)"
+            done={(profile.departments?.length || 0) > 0}
+          >
+            {(profile.departments?.length || 0) > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {profile.departments!.map(d => <Chip key={d}>{d}</Chip>)}
+              </div>
+            )}
+          </NoteSection>
+
+          <NoteSection
+            label="管理层级"
+            empty="(待 Q3 收集)"
+            done={(profile.layers?.length || 0) > 0}
+          >
+            {(profile.layers?.length || 0) > 0 && (
+              <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.8 }}>
+                {profile.layers!.join(' → ')}
+              </div>
+            )}
+          </NoteSection>
+
+          <NoteSection
+            label="现有职级体系"
+            empty="(待 Q4 收集)"
+            done={profile.existing_grade_system != null || stage !== 'interview'}
+          >
+            {profile.existing_grade_system != null ? (
+              <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.7 }}>
+                {profile.existing_grade_system}
+              </div>
+            ) : stage !== 'interview' ? (
+              <div style={{ fontSize: 13, color: '#94A3B8' }}>暂无正式体系</div>
+            ) : null}
+          </NoteSection>
         </div>
       )}
 
@@ -379,15 +375,17 @@ function SkeletonView({ profile, stage, errorText }: {
       {stage === 'generating' && (
         <div style={{
           background: BRAND_TINT, border: `1px solid ${BRAND}33`, borderRadius: 12,
-          padding: '20px 16px', textAlign: 'center', color: BRAND, fontSize: 13,
+          padding: '18px 16px', textAlign: 'center', color: BRAND, fontSize: 13,
+          fontWeight: 500,
         }}>
-          正在根据组织画像生成推荐岗位库(约 20-30 秒)...
+          正在根据访谈笔记生成推荐岗位库(约 20-30 秒)...
         </div>
       )}
       {stage === 'done' && (
         <div style={{
           background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 12,
-          padding: '20px 16px', textAlign: 'center', color: '#059669', fontSize: 13,
+          padding: '18px 16px', textAlign: 'center', color: '#059669', fontSize: 13,
+          fontWeight: 500,
         }}>
           岗位库生成完成,进入选岗界面...
         </div>
@@ -395,47 +393,75 @@ function SkeletonView({ profile, stage, errorText }: {
       {stage === 'error' && (
         <div style={{
           background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12,
-          padding: '20px 16px', textAlign: 'center', color: '#B91C1C', fontSize: 13,
+          padding: '18px 16px', color: '#B91C1C', fontSize: 13,
+          lineHeight: 1.7,
         }}>
-          岗位库生成失败:{errorText || '未知错误'}
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>岗位库生成失败</div>
+          <div>{errorText || '未知错误'}</div>
         </div>
       )}
     </div>
   );
 }
 
-function Tag({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
+function NoteSection({ label, empty, done, children }: {
+  label: string;
+  empty: string;
+  done: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div style={{
+        fontSize: 11, color: done ? '#475569' : '#CBD5E1',
+        fontWeight: 600, marginBottom: 6,
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: done ? BRAND : '#E2E8F0',
+          display: 'inline-block',
+        }} />
+        {label}
+      </div>
+      {done ? children : (
+        <div style={{ fontSize: 12, color: '#CBD5E1', paddingLeft: 12, fontStyle: 'italic' }}>
+          {empty}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
-      padding: '4px 10px', borderRadius: 999, fontSize: 12,
-      background: accent ? BRAND_TINT : '#F1F5F9',
-      color: accent ? BRAND : '#475569',
-      border: `1px solid ${accent ? BRAND : 'transparent'}`,
-      fontWeight: accent ? 600 : 400,
+      padding: '3px 10px', borderRadius: 999, fontSize: 12,
+      background: '#F1F5F9', color: '#475569',
     }}>
       {children}
     </span>
   );
 }
 
-const thStyle: React.CSSProperties = {
-  fontSize: 11, fontWeight: 500, color: '#64748B',
-  padding: '8px 6px', textAlign: 'left',
-  borderBottom: '1px solid #E2E8F0',
-};
-const layerCellStyle: React.CSSProperties = {
-  fontSize: 11, color: '#64748B', textAlign: 'right',
-  paddingRight: 12, paddingTop: 8, paddingBottom: 8,
-  borderRight: '1px solid #F1F5F9', verticalAlign: 'top',
-  fontFamily: 'ui-monospace, monospace',
-};
-const cellStyle: React.CSSProperties = {
-  padding: 6, verticalAlign: 'top', minWidth: 80,
-  borderRight: '1px dashed #F1F5F9', borderBottom: '1px dashed #F1F5F9',
-};
-const cellPlaceholder: React.CSSProperties = {
-  minHeight: 24, color: '#CBD5E1', fontSize: 14, textAlign: 'center', padding: 4,
-};
+/** 把 LLM 输出的 **加粗** markdown 渲染成行。SparkyPanel 的 markdown 是块级的不通用,
+ *  这里专门给笔记区做轻量 inline 加粗渲染。 */
+function renderMd(text: string): React.ReactNode {
+  return (
+    <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+      {text.split('\n').map((line, i) => (
+        <div key={i}>
+          {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <span key={j} style={{ fontWeight: 600, color: '#0F172A' }}>{part.slice(2, -2)}</span>;
+            }
+            return <span key={j}>{part}</span>;
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ============================================================================
 // 工具函数

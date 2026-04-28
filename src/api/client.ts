@@ -302,6 +302,31 @@ export interface JeOrgProfile {
   existing_grade_system: string | null;
 }
 
+/** Hay 5 维能力等级(Success Profile 里 competencies 子字段) */
+export interface JeCompetencyRequirement {
+  required_level: number;          // 1-5
+  weight?: number;                  // 0-1,可选,跟 required_level 配合算综合分
+}
+
+/** Success Profile — 岗位画像,跟 KF SP 同结构,V1 自定义字段后续可被替换 */
+export interface JeSuccessProfile {
+  purpose?: string;                 // 一句话岗位使命
+  accountabilities?: string[];      // 核心职责 3-5 条
+  requirements?: {
+    education?: string;
+    experience?: string;
+    professional_skills?: string[];
+  };
+  competencies?: {
+    专业力?: JeCompetencyRequirement;
+    管理力?: JeCompetencyRequirement;
+    合作力?: JeCompetencyRequirement;
+    思辨力?: JeCompetencyRequirement;
+    创新力?: JeCompetencyRequirement;
+  };
+  kpis?: string[];
+}
+
 export interface JeLibraryEntry {
   id: string;
   name: string;
@@ -320,8 +345,14 @@ export interface JeLibraryEntry {
   invalid_factors?: boolean;
   // standard library 专属字段(LLM 生成的 entry 没有这些,所以可选)
   level_label?: string | null;     // "Level 5-1" 等
-  track?: 'specialist' | 'management' | 'unknown';
+  track?: 'specialist' | 'management' | 'balanced' | 'unknown';
   sub_function?: string;            // "薪酬管理" 等子职能名 (用于搜索匹配)
+  kh_level?: number | null;
+  ps_level?: number | null;
+  ps_percentage?: number | null;
+  acc_level?: number | null;
+  /** Success Profile — V1 样板岗位带,LLM 生成的旧 entry 没有 */
+  success_profile?: JeSuccessProfile;
 }
 
 export interface JeLibrary {

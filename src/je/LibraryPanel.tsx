@@ -252,48 +252,216 @@ function EntryRow({ entry, used, selected, onToggle }: {
   onToggle: () => void;
 }) {
   const dom = pickDominant(entry);
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = !!(entry.success_profile || entry.factors);
+
   return (
-    <div
-      onClick={used ? undefined : onToggle}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '6px 10px', borderRadius: 6,
-        cursor: used ? 'default' : 'pointer',
-        background: selected ? BRAND_TINT : 'transparent',
-        opacity: used ? 0.5 : 1,
-        marginBottom: 2,
-      }}
-      onMouseOver={e => { if (!used && !selected) e.currentTarget.style.background = '#F8FAFC'; }}
-      onMouseOut={e => { if (!used && !selected) e.currentTarget.style.background = 'transparent'; }}
-    >
-      <input
-        type="checkbox"
-        checked={used || selected}
-        disabled={used}
-        readOnly
-        style={{ cursor: used ? 'not-allowed' : 'pointer' }}
-      />
-      <div style={{ flex: 1, fontSize: 12, color: '#0F172A' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 4, height: 14, borderRadius: 2, background: dom.color }} />
-          <span>{entry.name}</span>
-          {used && <span style={{ fontSize: 10, color: '#94A3B8' }}>已添加</span>}
-          {entry.invalid_factors && (
-            <span title="LLM 给的因子组合不合法，分数仅供参考"
-                  style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
-          )}
+    <div style={{ marginBottom: 2 }}>
+      <div
+        onClick={used ? undefined : onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '6px 10px', borderRadius: 6,
+          cursor: used ? 'default' : 'pointer',
+          background: selected ? BRAND_TINT : 'transparent',
+          opacity: used ? 0.5 : 1,
+        }}
+        onMouseOver={e => { if (!used && !selected) e.currentTarget.style.background = '#F8FAFC'; }}
+        onMouseOut={e => { if (!used && !selected) e.currentTarget.style.background = 'transparent'; }}
+      >
+        <input
+          type="checkbox"
+          checked={used || selected}
+          disabled={used}
+          readOnly
+          style={{ cursor: used ? 'not-allowed' : 'pointer' }}
+        />
+        <div style={{ flex: 1, fontSize: 12, color: '#0F172A' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 4, height: 14, borderRadius: 2, background: dom.color }} />
+            <span>{entry.name}</span>
+            {entry.profile && (
+              <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
+                {entry.profile}
+              </span>
+            )}
+            {used && <span style={{ fontSize: 10, color: '#94A3B8' }}>已添加</span>}
+            {entry.invalid_factors && (
+              <span title="LLM 给的因子组合不合法,分数仅供参考"
+                    style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+            {entry.function} · {dom.label}
+            {entry.responsibilities.length > 0 && ` · ${entry.responsibilities[0]}`}
+          </div>
         </div>
-        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
-          {entry.function} · {dom.label} 主导
-          {entry.responsibilities.length > 0 && ` · ${entry.responsibilities[0]}`}
+        {hasDetails && (
+          <button
+            onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+            title={expanded ? '收起详情' : '看 Success Profile + 8 因子'}
+            style={{
+              flexShrink: 0, fontSize: 10, color: '#64748B',
+              border: '1px solid #E2E8F0', borderRadius: 4,
+              padding: '2px 6px', background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            {expanded ? '收起 ▲' : '详情 ▼'}
+          </button>
+        )}
+        <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND, minWidth: 28, textAlign: 'right' }}>
+          {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
         </div>
       </div>
-      <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND }}>
-        {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
-      </div>
+      {expanded && <EntryDetails entry={entry} />}
     </div>
   );
 }
+
+/** 行内展开的 Success Profile + 8 因子详情 */
+function EntryDetails({ entry }: { entry: JeLibraryEntry }) {
+  const sp = entry.success_profile;
+  return (
+    <div style={{
+      marginTop: 4, marginLeft: 28, marginBottom: 8,
+      padding: '14px 16px',
+      background: '#F8FAFC', borderRadius: 8,
+      border: '1px solid #E2E8F0',
+      fontSize: 12, color: '#475569', lineHeight: 1.7,
+    }}>
+      {/* 顶部:三维分数 + 总分 + Profile */}
+      <div style={{ display: 'flex', gap: 16, paddingBottom: 10, borderBottom: '1px dashed #E2E8F0', flexWrap: 'wrap' }}>
+        <Stat label="Hay 职级" value={entry.hay_grade != null ? `G${entry.hay_grade}` : '—'} />
+        <Stat label="总分" value={entry.total_score != null ? `${entry.total_score} 分` : '—'} />
+        {entry.profile && <Stat label="Short Profile" value={entry.profile} />}
+        <Stat label="KH" value={entry.kh_score != null ? `${entry.kh_score}` : '—'} color={KH_COLOR} />
+        <Stat label="PS" value={entry.ps_score != null ? `${entry.ps_score}` : '—'} color={PS_COLOR} />
+        <Stat label="ACC" value={entry.acc_score != null ? `${entry.acc_score}` : '—'} color={ACC_COLOR} />
+      </div>
+
+      {/* SP 主体 */}
+      {sp ? (
+        <div style={{ paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sp.purpose && (
+            <Section title="岗位使命">
+              <div>{sp.purpose}</div>
+            </Section>
+          )}
+          {sp.accountabilities && sp.accountabilities.length > 0 && (
+            <Section title="核心职责">
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {sp.accountabilities.map((a, i) => <li key={i} style={{ marginBottom: 2 }}>{a}</li>)}
+              </ul>
+            </Section>
+          )}
+          {sp.requirements && (
+            <Section title="任职要求">
+              <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: '4px 12px' }}>
+                {sp.requirements.education && (<><span style={labelCellStyle}>学历</span><span>{sp.requirements.education}</span></>)}
+                {sp.requirements.experience && (<><span style={labelCellStyle}>经验</span><span>{sp.requirements.experience}</span></>)}
+                {sp.requirements.professional_skills && sp.requirements.professional_skills.length > 0 && (
+                  <><span style={labelCellStyle}>关键技能</span>
+                    <span>{sp.requirements.professional_skills.join(' / ')}</span>
+                  </>
+                )}
+              </div>
+            </Section>
+          )}
+          {sp.competencies && (
+            <Section title="能力要求 (5 维)">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {(['专业力', '管理力', '合作力', '思辨力', '创新力'] as const).map(k => {
+                  const c = sp.competencies?.[k];
+                  if (!c) return null;
+                  return <CompetencyBar key={k} name={k} level={c.required_level} />;
+                })}
+              </div>
+            </Section>
+          )}
+          {sp.kpis && sp.kpis.length > 0 && (
+            <Section title="绩效指标">
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {sp.kpis.map((k, i) => <li key={i} style={{ marginBottom: 2 }}>{k}</li>)}
+              </ul>
+            </Section>
+          )}
+        </div>
+      ) : (
+        <div style={{ paddingTop: 10, color: '#94A3B8', fontStyle: 'italic' }}>
+          这个岗位还没填 Success Profile,可以先添加到岗位库,后续在详情页补充。
+        </div>
+      )}
+
+      {/* 8 因子档位 */}
+      {entry.factors && (
+        <Section title="8 因子档位" style={{ marginTop: 12 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr',
+            gap: '4px 12px', fontSize: 11,
+          }}>
+            <FactorCell label="PK" value={entry.factors.practical_knowledge} />
+            <FactorCell label="MK" value={entry.factors.managerial_knowledge} />
+            <FactorCell label="Comm" value={entry.factors.communication} />
+            <FactorCell label="TC" value={entry.factors.thinking_challenge} />
+            <FactorCell label="TE" value={entry.factors.thinking_environment} />
+            <FactorCell label="FTA" value={entry.factors.freedom_to_act} />
+            <FactorCell label="Mag" value={entry.factors.magnitude} />
+            <FactorCell label="NoI" value={entry.factors.nature_of_impact} />
+          </div>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <span style={{ fontSize: 10, color: '#94A3B8' }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: color || '#0F172A' }}>{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, children, style }: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={style}>
+      <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function CompetencyBar({ name, level }: { name: string; level: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 11, color: '#475569', minWidth: 36 }}>{name}</span>
+      <div style={{ display: 'flex', gap: 2 }}>
+        {[1, 2, 3, 4, 5].map(i => (
+          <span key={i} style={{
+            width: 8, height: 14, borderRadius: 2,
+            background: i <= level ? BRAND : '#E2E8F0',
+          }} />
+        ))}
+      </div>
+      <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{level}</span>
+    </div>
+  );
+}
+
+function FactorCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+      <span style={{ color: '#94A3B8' }}>{label}</span>
+      <span style={{ color: '#0F172A', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>{value}</span>
+    </div>
+  );
+}
+
+const labelCellStyle: React.CSSProperties = {
+  color: '#94A3B8', fontSize: 11,
+};
 
 // ============================================================================
 // 单条编辑 modal（用户可改名 + 确认部门归属再建岗）

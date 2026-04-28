@@ -282,7 +282,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
             <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
               {m.role === 'bot' && (
                 <div className="msg-avatar">
-                  <PixelCat size={18} mode={isLoading && i === messages.length - 1 ? 'walk' : 'idle'} />
+                  <PixelCat size={28} mode={isLoading && i === messages.length - 1 ? 'walk' : 'idle'} />
                 </div>
               )}
               <div className="msg-bubble">

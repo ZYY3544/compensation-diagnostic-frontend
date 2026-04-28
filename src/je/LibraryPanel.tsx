@@ -234,9 +234,7 @@ function EntryRow({ entry, usedKeys, addingKeys, onAdd }: {
   // 用中位 variant 的 KH/PS/ACC 推主导维度色
   const midVariant = variants[Math.floor(variants.length / 2)] || variants[0];
   const dom = pickDominant(midVariant);
-  const purpose = entry.success_profile?.purpose
-    || entry.responsibilities?.[0]
-    || '';
+  const purpose = entry.success_profile?.purpose || '';
 
   return (
     <div

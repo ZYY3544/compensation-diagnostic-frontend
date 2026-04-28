@@ -356,11 +356,8 @@ export interface JeLibraryEntry {
    * 长度 ≥ 1。单职级岗位也用这个数组(只放 1 个 variant)。
    */
   grade_variants: JeGradeVariant[];
-  // standard library 元数据
+  /** standard library 元数据 — 子职能名,用于搜索匹配 */
   sub_function?: string;
-  // 旧 LLM 生成数据兼容字段 (新 standard library 都用 grade_variants)
-  responsibilities?: string[];
-  invalid_factors?: boolean;
 }
 
 export interface JeLibrary {

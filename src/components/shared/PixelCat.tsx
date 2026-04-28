@@ -68,21 +68,16 @@ export default function PixelCat({ size = 32, mode = 'idle' }: PixelCatProps) {
   const offX = (size - COLS * cell) / 2;
   const offY = (size - ROWS * cell) / 2;
 
-  // 量化到整数像素 — 像素艺术应该整数跳变
-  const bobAmp = Math.max(1, Math.round(cell * (mode === 'walk' ? 0.7 : 0.5)));
   const lift = Math.max(1, Math.round(cell * 0.9));
 
   const animated = mode !== 'still';
 
-  // 每个实例不同的随机相位偏移,避免页面上多只猫同时眨眼/晃动
+  // 每个实例不同的随机相位偏移,避免页面上多只猫同时眨眼/抬腿
   const phase = useMemo(() => ({
-    bob: -Math.random() * (mode === 'walk' ? 0.22 : 0.76),
     blink: -Math.random() * 6,
     dart: -Math.random() * 9,
     walk: -Math.random() * 0.44,
   }), [mode]);
-
-  const bobDur = mode === 'walk' ? '0.22s' : '0.76s';
 
   // 瞳孔默认位置
   const pupilLeftX = 3 * cell + offX;
@@ -114,21 +109,7 @@ export default function PixelCat({ size = 32, mode = 'idle' }: PixelCatProps) {
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
-      {/* 整体身体 — bob 上下呼吸 */}
       <g>
-        {animated && (
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            values={`0,0;0,${-bobAmp}`}
-            keyTimes="0;0.5"
-            dur={bobDur}
-            repeatCount="indefinite"
-            calcMode="discrete"
-            begin={`${phase.bob}s`}
-          />
-        )}
-
         {STATIC_PIXELS.map(([r, c, k], i) => renderRect(`s-${i}`, r, c, COLORS[k]))}
         {EYE_WHITES.map(([r, c], i) => renderRect(`w-${i}`, r, c, COLORS.W))}
 

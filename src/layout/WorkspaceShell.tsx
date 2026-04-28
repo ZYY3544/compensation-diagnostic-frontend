@@ -8,7 +8,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import PixelCat from '../components/shared/PixelCat';
 
 export default function WorkspaceShell() {
   const { user, workspace, logout } = useAuth();
@@ -27,11 +26,8 @@ export default function WorkspaceShell() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#FAFAFA' }}>
       {/* 顶栏 */}
       <div style={topNavStyle}>
-        {/* 左：logo + 品牌 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <PixelCat size={26} />
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>铭曦</div>
-        </div>
+        {/* 左：占位,保持右侧用户菜单 space-between 对齐 */}
+        <div />
 
         {/* 右：workspace 名 + 用户菜单 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

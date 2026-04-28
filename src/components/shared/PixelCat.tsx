@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 interface PixelCatProps {
   size?: number;
-  /** 'idle' = 呼吸 + 眨眼 + 眼珠四处看 (默认)
+  /** 'idle' = 眨眼 + 眼珠四处看 (默认)
    *  'walk' = 在 idle 基础上,两条腿交替抬起,走路感
    *  'still' = 完全静止 */
   mode?: 'still' | 'idle' | 'walk';

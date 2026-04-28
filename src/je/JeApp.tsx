@@ -474,8 +474,15 @@ function DetailLayout({
 
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
-      {/* 左：Sparky 对话 — 进入 detail 后开场用该岗位的 pk_reasoning */}
-      <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', background: '#fff', borderRight: '1px solid var(--border, #E2E8F0)' }}>
+      {/* 左：Sparky 对话 — 进入 detail 后开场用该岗位的 pk_reasoning
+          注意外层必须 display:flex + column,SparkyPanel 内部用 flex:1 撑满高度,
+          少了这层 flex 容器输入框会卡在中间出现一大片空白 */}
+      <div style={{
+        flex: 1, minWidth: 0, height: '100%',
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden', background: '#fff',
+        borderRight: '1px solid var(--border, #E2E8F0)',
+      }}>
         <JeSparkyChat
           jobs={jobs}
           anomalies={anomalies}

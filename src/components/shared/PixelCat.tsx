@@ -63,8 +63,7 @@ const RIGHT_LEG: [number, number, ColorKey][] = [
 ];
 
 export default function PixelCat({ size = 32, mode = 'idle' }: PixelCatProps) {
-  const PAD = 2;
-  const cell = (size - PAD * 2) / Math.max(COLS, ROWS);
+  const cell = size / Math.max(COLS, ROWS);
   const offX = (size - COLS * cell) / 2;
   const offY = (size - ROWS * cell) / 2;
 

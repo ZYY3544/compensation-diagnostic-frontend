@@ -3,13 +3,14 @@
  *
  * 数据源:JeProfile.library_data (来自 standard_libraries/<行业>.json)。
  *
- * 交互模型 (V2 — 多职级变体):
+ * 交互模型 (V3 — 多选下拉):
  *   · 搜索框 fuzzy 匹配 name/department/function/sub_function
  *   · 按部门分组,每行展示一个 role family (e.g. "HR 经理")
- *   · 行右侧并列多个职级 chip 按钮 (G15 / G16 / G17),用户点哪个加哪个
- *   · 同一个 role family 的多个 chip 共用一份 Success Profile (在详情页能看)
- *   · 点 chip → jeCreateJobFromLibrary(lib_id, target_grade) 入库
- *   · chip 立即变 "✓ G16" 灰态,继续可点其他 grade chip 添加同一岗位的不同档
+ *   · 点 role family 行展开,出来 N 行职级变体 (G15 / G16 / G17 各一行)
+ *   · 每行变体前面有 checkbox,可勾选多个
+ *   · 选中后底部出现"添加岗位"按钮,点击批量入库
+ *   · 已添加的变体显示 ✓ 已添加 灰态,checkbox 不可勾
+ *   · 共享 Success Profile 在岗位详情页的 "Success Profile" 抽屉里看
  *
  * 已添加判定:job.result.lib_id === entry.id 且 job.result.lib_grade === variant.hay_grade
  */
@@ -20,6 +21,7 @@ import {
 } from '../api/client';
 
 const BRAND = '#D85A30';
+const BRAND_TINT = '#FEF7F4';
 const KH_COLOR = '#4F46E5';
 const PS_COLOR = '#0EA5E9';
 const ACC_COLOR = '#F59E0B';
@@ -31,10 +33,14 @@ interface Props {
   defaultOpen?: boolean;
 }
 
+const variantKey = (libId: string, grade: number) => `${libId}_g${grade}`;
+
 export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen = true }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState<Set<string>>(new Set());     // (lib_id_grade) 复合键
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   // 已添加 (lib_id, grade) 复合键集合 — 同 role family 不同 grade 算独立 entry
@@ -44,7 +50,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
       const r = (j.result as any) || {};
       const lid = r.lib_id;
       const grade = r.lib_grade ?? r.hay_grade ?? r.job_grade;
-      if (lid && grade != null) set.add(`${lid}_g${grade}`);
+      if (lid && grade != null) set.add(variantKey(lid, grade));
     }
     return set;
   }, [jobs]);
@@ -76,27 +82,54 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
     (grouped[dept] ||= []).push(e);
   }
 
-  const handleAdd = async (entry: JeLibraryEntry, variant: JeGradeVariant) => {
-    const key = `${entry.id}_g${variant.hay_grade}`;
-    if (usedKeys.has(key) || adding.has(key)) return;
-    setAdding(prev => new Set(prev).add(key));
+  const toggleFamily = (id: string) => {
+    setExpandedFamilies(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelected = (key: string) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleAddSelected = async () => {
+    if (selectedKeys.size === 0) return;
+    setAdding(true);
     setAddError(null);
+    const tasks: Array<Promise<{ data: { job: JeJob } }>> = [];
+    for (const key of selectedKeys) {
+      const m = key.match(/^(.+)_g(\d+)$/);
+      if (!m) continue;
+      const libId = m[1];
+      const grade = parseInt(m[2], 10);
+      tasks.push(jeCreateJobFromLibrary({ lib_id: libId, target_grade: grade }));
+    }
+    const failed: string[] = [];
     try {
-      const res = await jeCreateJobFromLibrary({
-        lib_id: entry.id,
-        target_grade: variant.hay_grade,
-      });
-      onJobCreated(res.data.job);
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.message || '未知错误';
-      setAddError(`「${entry.name} G${variant.hay_grade}」添加失败: ${msg}`);
-      console.warn('[library] add failed', e);
+      const results = await Promise.allSettled(tasks);
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === 'fulfilled') {
+          onJobCreated(r.value.data.job);
+        } else {
+          failed.push(r.reason?.message || '未知错误');
+        }
+      }
+      if (failed.length > 0) {
+        setAddError(`${failed.length} 个失败: ${failed[0]}`);
+      } else {
+        setSelectedKeys(new Set());
+      }
     } finally {
-      setAdding(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+      setAdding(false);
     }
   };
 
@@ -114,7 +147,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
             </span>
           </div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-            点行右侧职级按钮把对应档位的岗位入库 — 同一岗位多个职级共用一份 Success Profile,详情在岗位详情页查看
+            点角色行展开看职级变体 → 勾选要的职级 → 点底部"添加岗位"批量入库
           </div>
         </div>
         <span style={{ fontSize: 12, color: '#64748B' }}>{open ? '收起 ▲' : '展开 ▼'}</span>
@@ -173,12 +206,39 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
                 key={dept}
                 dept={dept}
                 items={items}
+                expandedFamilies={expandedFamilies}
+                onToggleFamily={toggleFamily}
+                selectedKeys={selectedKeys}
+                onToggleSelected={toggleSelected}
                 usedKeys={usedKeys}
-                addingKeys={adding}
-                onAdd={handleAdd}
               />
             ))}
           </div>
+
+          {/* 底部 action bar — 选中时才出现,统一批量入库 */}
+          {selectedKeys.size > 0 && (
+            <div style={footerStyle}>
+              <span style={{ fontSize: 12, color: '#475569' }}>
+                已选 {selectedKeys.size} 个职级变体
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setSelectedKeys(new Set())}
+                  disabled={adding}
+                  style={ghostBtn}
+                >
+                  清空
+                </button>
+                <button
+                  onClick={handleAddSelected}
+                  disabled={adding}
+                  style={{ ...primaryBtn, opacity: adding ? 0.6 : 1 }}
+                >
+                  {adding ? '添加中…' : `添加岗位 (${selectedKeys.size})`}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -186,14 +246,16 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
 }
 
 // ============================================================================
-// 部门分组 + role family 行
+// 部门分组
 // ============================================================================
-function DeptGroup({ dept, items, usedKeys, addingKeys, onAdd }: {
+function DeptGroup({ dept, items, expandedFamilies, onToggleFamily, selectedKeys, onToggleSelected, usedKeys }: {
   dept: string;
   items: JeLibraryEntry[];
+  expandedFamilies: Set<string>;
+  onToggleFamily: (id: string) => void;
+  selectedKeys: Set<string>;
+  onToggleSelected: (key: string) => void;
   usedKeys: Set<string>;
-  addingKeys: Set<string>;
-  onAdd: (entry: JeLibraryEntry, variant: JeGradeVariant) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   // 按 role family 第一个 variant 的职级降序(高级岗位排前)
@@ -212,88 +274,167 @@ function DeptGroup({ dept, items, usedKeys, addingKeys, onAdd }: {
         <span>{collapsed ? '▶' : '▼'} {dept} · {items.length}</span>
       </div>
       {!collapsed && sorted.map(e => (
-        <EntryRow
+        <RoleFamilyRow
           key={e.id}
           entry={e}
+          expanded={expandedFamilies.has(e.id)}
+          onToggleFamily={() => onToggleFamily(e.id)}
+          selectedKeys={selectedKeys}
+          onToggleSelected={onToggleSelected}
           usedKeys={usedKeys}
-          addingKeys={addingKeys}
-          onAdd={onAdd}
         />
       ))}
     </div>
   );
 }
 
-function EntryRow({ entry, usedKeys, addingKeys, onAdd }: {
+// ============================================================================
+// Role family 行 (上层)— 点击展开 N 行 grade variant
+// ============================================================================
+function RoleFamilyRow({ entry, expanded, onToggleFamily, selectedKeys, onToggleSelected, usedKeys }: {
   entry: JeLibraryEntry;
+  expanded: boolean;
+  onToggleFamily: () => void;
+  selectedKeys: Set<string>;
+  onToggleSelected: (key: string) => void;
   usedKeys: Set<string>;
-  addingKeys: Set<string>;
-  onAdd: (entry: JeLibraryEntry, variant: JeGradeVariant) => void;
 }) {
   const variants = entry.grade_variants || [];
-  // 用中位 variant 的 KH/PS/ACC 推主导维度色
   const midVariant = variants[Math.floor(variants.length / 2)] || variants[0];
   const dom = pickDominant(midVariant);
   const purpose = entry.success_profile?.purpose || '';
 
+  // 该 family 是否所有 variant 都已添加
+  const allUsed = variants.length > 0 && variants.every(v => usedKeys.has(variantKey(entry.id, v.hay_grade)));
+  // 该 family 已选中的 variant 数量
+  const selectedInFamily = variants.filter(v => selectedKeys.has(variantKey(entry.id, v.hay_grade))).length;
+
+  const gradeRange = variants.length > 0
+    ? variants.length === 1
+      ? `G${variants[0].hay_grade}`
+      : `G${Math.min(...variants.map(v => v.hay_grade))}–G${Math.max(...variants.map(v => v.hay_grade))}`
+    : '—';
+
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 6,
-        marginBottom: 2,
-        transition: 'background 0.12s',
-      }}
-      onMouseOver={e => { e.currentTarget.style.background = '#F8FAFC'; }}
-      onMouseOut={e => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      <span style={{ width: 4, height: 16, borderRadius: 2, background: dom.color, flexShrink: 0 }} />
-      <div style={{ flex: 1, fontSize: 12, color: '#0F172A', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 500 }}>{entry.name}</span>
-          {midVariant?.profile && (
-            <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
-              {midVariant.profile}
-            </span>
+    <div style={{ marginBottom: 4 }}>
+      <div
+        onClick={onToggleFamily}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 10px', borderRadius: 6,
+          cursor: 'pointer',
+          background: expanded ? '#F8FAFC' : 'transparent',
+          opacity: allUsed ? 0.55 : 1,
+          transition: 'background 0.12s',
+        }}
+        onMouseOver={e => { if (!expanded) e.currentTarget.style.background = '#F8FAFC'; }}
+        onMouseOut={e => { if (!expanded) e.currentTarget.style.background = 'transparent'; }}
+      >
+        <span style={{
+          flexShrink: 0, fontSize: 11, color: '#94A3B8', width: 12, textAlign: 'center',
+        }}>
+          {expanded ? '▼' : '▶'}
+        </span>
+        <span style={{ width: 4, height: 16, borderRadius: 2, background: dom.color, flexShrink: 0 }} />
+        <div style={{ flex: 1, fontSize: 12, color: '#0F172A', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 500 }}>{entry.name}</span>
+            {midVariant?.profile && (
+              <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
+                {midVariant.profile}
+              </span>
+            )}
+            {selectedInFamily > 0 && (
+              <span style={{ fontSize: 10, color: BRAND, fontWeight: 600 }}>
+                · 已选 {selectedInFamily}
+              </span>
+            )}
+            {allUsed && (
+              <span style={{ fontSize: 10, color: '#16A34A' }}>· 全部已添加</span>
+            )}
+          </div>
+          {purpose && (
+            <div style={{
+              fontSize: 10, color: '#94A3B8', marginTop: 2,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {entry.function} · {purpose}
+            </div>
           )}
         </div>
-        {purpose && (
-          <div style={{
-            fontSize: 10, color: '#94A3B8', marginTop: 2,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {entry.function} · {purpose}
-          </div>
-        )}
+        <div style={{
+          flexShrink: 0, fontSize: 11, color: '#94A3B8',
+          minWidth: 60, textAlign: 'right',
+        }}>
+          {gradeRange} · {variants.length} 档
+        </div>
       </div>
-      {/* 职级变体按钮:每个 grade 一个 chip,点哪个加哪个 */}
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-        {variants.map(v => {
-          const key = `${entry.id}_g${v.hay_grade}`;
-          const used = usedKeys.has(key);
-          const adding = addingKeys.has(key);
-          const disabled = used || adding;
-          return (
-            <button
-              key={v.hay_grade}
-              onClick={() => onAdd(entry, v)}
-              disabled={disabled}
-              title={used ? '已添加 — 进图谱看' : `添加 G${v.hay_grade} 的 ${entry.name} 入库`}
-              style={{
-                padding: '4px 10px', fontSize: 11, fontWeight: 600,
-                border: used ? 'none' : `1px solid ${BRAND}`,
-                borderRadius: 4,
-                background: used ? '#F1F5F9' : (adding ? '#FEF7F4' : '#fff'),
-                color: used ? '#16A34A' : (adding ? '#94A3B8' : BRAND),
-                cursor: disabled ? 'default' : 'pointer',
-                minWidth: 44, textAlign: 'center',
-              }}
-            >
-              {used ? `✓ G${v.hay_grade}` : (adding ? '…' : `G${v.hay_grade}`)}
-            </button>
-          );
-        })}
+
+      {/* 展开:列出每个 grade variant 一行,前面 checkbox */}
+      {expanded && variants.map(v => (
+        <GradeVariantRow
+          key={v.hay_grade}
+          entryId={entry.id}
+          variant={v}
+          checked={selectedKeys.has(variantKey(entry.id, v.hay_grade))}
+          used={usedKeys.has(variantKey(entry.id, v.hay_grade))}
+          onToggle={() => onToggleSelected(variantKey(entry.id, v.hay_grade))}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// Grade variant 行 (展开后的子行) — 前面 checkbox
+// ============================================================================
+function GradeVariantRow({ variant, checked, used, onToggle }: {
+  entryId: string;
+  variant: JeGradeVariant;
+  checked: boolean;
+  used: boolean;
+  onToggle: () => void;
+}) {
+  const disabled = used;
+  return (
+    <div
+      onClick={disabled ? undefined : onToggle}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '6px 10px 6px 34px',     // 缩进对齐 role family 名字
+        borderRadius: 4,
+        cursor: disabled ? 'default' : 'pointer',
+        background: checked ? BRAND_TINT : 'transparent',
+        opacity: used ? 0.55 : 1,
+        marginBottom: 1,
+      }}
+      onMouseOver={e => { if (!disabled && !checked) e.currentTarget.style.background = '#F1F5F9'; }}
+      onMouseOut={e => { if (!disabled && !checked) e.currentTarget.style.background = 'transparent'; }}
+    >
+      <input
+        type="checkbox"
+        checked={checked || used}
+        disabled={disabled}
+        readOnly
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+      />
+      <span style={{
+        fontSize: 12, fontWeight: 600, color: BRAND,
+        minWidth: 36, textAlign: 'left',
+      }}>
+        G{variant.hay_grade}
+      </span>
+      {variant.level_label && (
+        <span style={{ fontSize: 11, color: '#94A3B8' }}>{variant.level_label}</span>
+      )}
+      <div style={{ flex: 1, fontSize: 11, color: '#64748B', display: 'flex', gap: 10 }}>
+        <span>总分 {variant.total_score}</span>
+        {variant.profile && <span>· Profile {variant.profile}</span>}
+        <span style={{ color: KH_COLOR }}>KH {variant.kh_score}</span>
+        <span style={{ color: PS_COLOR }}>PS {variant.ps_score}</span>
+        <span style={{ color: ACC_COLOR }}>ACC {variant.acc_score}</span>
       </div>
+      {used && <span style={{ fontSize: 10, color: '#16A34A', flexShrink: 0 }}>✓ 已添加</span>}
     </div>
   );
 }
@@ -327,6 +468,24 @@ const headerStyle: React.CSSProperties = {
 
 const contentStyle: React.CSSProperties = {
   padding: 16, maxHeight: 480, overflowY: 'auto',
+};
+
+const footerStyle: React.CSSProperties = {
+  padding: '12px 16px', borderTop: '1px solid #F1F5F9',
+  background: '#FAFBFC',
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+};
+
+const primaryBtn: React.CSSProperties = {
+  padding: '6px 14px', fontSize: 12, fontWeight: 500,
+  border: 'none', borderRadius: 6,
+  background: BRAND, color: '#fff', cursor: 'pointer',
+};
+
+const ghostBtn: React.CSSProperties = {
+  padding: '6px 12px', fontSize: 12,
+  border: '1px solid #E2E8F0', borderRadius: 6,
+  background: '#fff', color: '#475569', cursor: 'pointer',
 };
 
 const emptyStyle: React.CSSProperties = {

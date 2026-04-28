@@ -26,6 +26,7 @@ import JeEntryView, { type EntryPath } from './JeEntryView';
 import SingleEvalView from './SingleEvalView';
 import CompareLegacyModal from './CompareLegacyModal';
 import CandidateBoard from './CandidateBoard';
+import SuccessProfileView from './SuccessProfileView';
 import Workspace from '../components/layout/Workspace';
 import { getLevelDefinition, getAdjacentDefinitions } from './hayDefinitions';
 import { nextMsgId } from '../lib/msgId';
@@ -309,6 +310,7 @@ export default function JeApp() {
             job={selectedJob}
             jobs={jobs}
             anomalies={anomalies}
+            library={library}
             onUpdated={handleJobUpdated}
             onDelete={() => handleDelete(selectedJob.id)}
             onBack={() => setView('matrix')}
@@ -436,13 +438,14 @@ function Sidebar({ jobs, loading, selectedId, onSelect, onNew, onBackToMatrix, c
 // 岗位详情页布局：左 Sparky 对话 + 右 Workspace（wide 模式，黄金比例可拖拽）
 // ============================================================================
 function DetailLayout({
-  job, jobs, anomalies, onUpdated, onDelete, onBack,
+  job, jobs, anomalies, library, onUpdated, onDelete, onBack,
   onBatchUpload, onSingleEval, onPersonJobMatch, onJobByTitle,
   sparkyAlert, onRequestSparkyMessage, onGoToMatrix,
 }: {
   job: JeJob;
   jobs: JeJob[];
   anomalies: JeAnomaly[];
+  library: JeLibrary | null;     // 给 SP drawer 用 — 通过 lib_id 反查 entry
   onUpdated: (j: JeJob) => void;
   onDelete: () => void;
   onBack: () => void;
@@ -455,6 +458,14 @@ function DetailLayout({
   onGoToMatrix?: () => void;                          // 采用方案后弹窗的"看图谱"用
 }) {
   const [showJdEditor, setShowJdEditor] = useState(false);
+  const [showSpDrawer, setShowSpDrawer] = useState(false);
+
+  // 通过 job.result.lib_id 反查 standard library entry,有 SP 才显示按钮
+  const libId = (job.result as any)?.lib_id as string | undefined;
+  const libEntry = libId
+    ? library?.entries.find(e => e.id === libId) || null
+    : null;
+  const hasSp = !!libEntry?.success_profile;
 
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
@@ -489,6 +500,11 @@ function DetailLayout({
             ← 返回职级图谱
           </button>
           <div style={{ display: 'flex', gap: 6 }}>
+            {hasSp && (
+              <button onClick={() => setShowSpDrawer(true)} style={ghostBtnStyle}>
+                Success Profile
+              </button>
+            )}
             <button onClick={() => setShowJdEditor(true)} style={ghostBtnStyle}>上传 JD 精细评估</button>
             <button onClick={onDelete} style={ghostBtnStyle}>删除岗位</button>
           </div>
@@ -511,6 +527,54 @@ function DetailLayout({
           />
         )}
       </Workspace>
+
+      {showSpDrawer && libEntry && (
+        <SuccessProfileDrawer entry={libEntry} onClose={() => setShowSpDrawer(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Success Profile 抽屉 — 跟 GradeMatrix 的"访谈笔记"drawer 同款样式,统一交互 */
+function SuccessProfileDrawer({ entry, onClose }: {
+  entry: import('../api/client').JeLibraryEntry;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
+        zIndex: 1000, display: 'flex', justifyContent: 'flex-end',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#FAFAFA', width: 560, maxWidth: '92vw', height: '100%',
+          padding: '24px 28px', overflowY: 'auto',
+          boxShadow: '-8px 0 32px rgba(15,23,42,0.15)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>
+              Success Profile · {entry.name}
+            </div>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
+              {entry.department || '未分组'} · {entry.function} · 标准库基线职级 G{entry.hay_grade}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '4px 10px', border: '1px solid #E2E8F0', background: '#fff',
+              borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#475569',
+            }}
+          >关闭</button>
+        </div>
+        <SuccessProfileView entry={entry} />
+      </div>
     </div>
   );
 }

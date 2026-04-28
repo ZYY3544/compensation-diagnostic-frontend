@@ -1,17 +1,18 @@
 /**
- * AI 推荐岗位库面板（matrix 视图右侧 Workspace 顶部叠加，可折叠）。
+ * 标准岗位库面板 — 用户从这里挑岗位添加到自己的图谱里。
  *
- * 来源：Step 0 访谈完成后 LLM 生成的 20-40 个推荐岗位（写入 JeProfile.library_data）。
- * 进入面板时通过 jeGetLibrary 拉取，已经被添加到 jobs 表的 entry 标记为"已选"。
+ * 数据源:JeProfile.library_data (来自 standard_libraries/<行业>.json,
+ * 不再调 LLM 实时生成)。
  *
- * 设计要点（v2 文档第 4.2 节）：
- *  - 面板叠加在图谱矩阵上方，不替换 — 用户勾选后，岗位实时出现在下方矩阵
- *  - 默认折叠（保持图谱主体可见），首次进入或用户主动展开时打开
- *  - 按部门分组，每组列出 entry（岗位名 + 建议职级 + 主导维度色条）
- *  - 复选框勾选 → 点"添加 N 个岗位" → 弹 AddFromLibraryModal 让用户最后确认/改名
+ * 交互简化:
+ *   · 搜索框 fuzzy 匹配 name/department/function/sub_function
+ *   · 按部门分组展示,每行紧凑展示 name + Hay 职级 + 一句话亮点
+ *   · 点行直接调 jeCreateJobFromLibrary 入库 (不再有勾选 + 批量按钮 + 弹窗
+ *     编辑这种多步流程,因为弹窗也只能改名跟部门,没有真正的编辑价值)
+ *   · 添加成功后行立即变 "✓ 已添加" 灰态,用户继续点其他岗位也能添加
+ *   · 完整 Success Profile / 8 因子 编辑都在岗位详情页做,这里就是个挑选器
  *
- * 已选状态判断：jobs 列表里有 result.lib_id === entry.id 的岗位即视为"已选"
- *  → checkbox 灰色不可勾选 + 标"已添加"
+ * 已选状态:jobs 里某条 result.lib_id === entry.id 即视为已添加
  */
 import { useMemo, useState } from 'react';
 import {
@@ -20,7 +21,6 @@ import {
 } from '../api/client';
 
 const BRAND = '#D85A30';
-const BRAND_TINT = '#FEF7F4';
 const KH_COLOR = '#4F46E5';
 const PS_COLOR = '#0EA5E9';
 const ACC_COLOR = '#F59E0B';
@@ -29,17 +29,16 @@ interface Props {
   library: JeLibrary | null;
   jobs: JeJob[];
   onJobCreated: (job: JeJob) => void;
-  onRegenerate?: () => void;       // 后续支持"重新生成"，本期可不传
   defaultOpen?: boolean;
 }
 
 export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen = true }: Props) {
   const [open, setOpen] = useState(defaultOpen);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editingEntry, setEditingEntry] = useState<JeLibraryEntry | null>(null);
-  const [query, setQuery] = useState('');     // 搜索关键词
+  const [query, setQuery] = useState('');
+  const [adding, setAdding] = useState<Set<string>>(new Set());     // 正在加的 entry id
+  const [addError, setAddError] = useState<string | null>(null);
 
-  // 已选 lib_id 集合（jobs 里某条 result.lib_id 命中即视为已添加）
+  // 已添加的 lib_id 集合(jobs 里某条 result.lib_id 命中即视为已添加)
   const usedLibIds = useMemo(() => {
     const set = new Set<string>();
     for (const j of jobs) {
@@ -52,7 +51,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
   if (!library || !library.entries || library.entries.length === 0) {
     return (
       <div style={emptyStyle}>
-        AI 岗位库还没生成 — 完成 Step 0 访谈后 Sparky 会自动生成 20-40 个推荐岗位。
+        AI 推荐岗位库还没生成 — 完成路径 C 访谈后,这里会出现你们行业的标准岗位清单。
       </div>
     );
   }
@@ -69,44 +68,31 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
       })
     : library.entries;
 
-  // 按部门分组（无部门归到"未分组"）
+  // 按部门分组
   const grouped: Record<string, JeLibraryEntry[]> = {};
   for (const e of filtered) {
     const dept = e.department || '未分组';
     (grouped[dept] ||= []).push(e);
   }
 
-  const toggle = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const selectedEntries = library.entries.filter(e => selected.has(e.id));
-  const handleBatchAdd = () => {
-    if (selectedEntries.length === 0) return;
-    // 如果只选了一个，直接弹编辑面板让用户确认改名
-    // 选多个时也弹同一个面板，让用户逐个确认（或直接批量添加默认值）
-    if (selectedEntries.length === 1) {
-      setEditingEntry(selectedEntries[0]);
-      return;
+  const handleAdd = async (entry: JeLibraryEntry) => {
+    if (usedLibIds.has(entry.id) || adding.has(entry.id)) return;
+    setAdding(prev => new Set(prev).add(entry.id));
+    setAddError(null);
+    try {
+      const res = await jeCreateJobFromLibrary({ lib_id: entry.id });
+      onJobCreated(res.data.job);
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || '未知错误';
+      setAddError(`「${entry.name}」添加失败: ${msg}`);
+      console.warn('[library] add failed', e);
+    } finally {
+      setAdding(prev => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
     }
-    // 多选直接批量添加（用 entry 默认 name/department，用户后续在岗位详情页可改）
-    batchAdd(selectedEntries).catch(e => alert(`部分添加失败：${e?.message || e}`));
-  };
-
-  const batchAdd = async (entries: JeLibraryEntry[]) => {
-    for (const e of entries) {
-      try {
-        const res = await jeCreateJobFromLibrary({ lib_id: e.id });
-        onJobCreated(res.data.job);
-      } catch (err: any) {
-        console.warn(`[library] 添加 ${e.name} 失败`, err);
-      }
-    }
-    setSelected(new Set());
   };
 
   return (
@@ -114,12 +100,12 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
       <div onClick={() => setOpen(o => !o)} style={headerStyle}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
-            AI 推荐岗位库 <span style={{ marginLeft: 6, fontSize: 11, color: '#94A3B8', fontWeight: 400 }}>
+            标准岗位库 <span style={{ marginLeft: 6, fontSize: 11, color: '#94A3B8', fontWeight: 400 }}>
               {library.entries.length} 个 · 已添加 {usedLibIds.size}
             </span>
           </div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-            根据你们组织画像生成的标准岗位 — 勾选跟实际匹配的，添加到我的岗位
+            点你公司有的岗位直接添加 — 添加后在岗位详情页可以看完整 Success Profile + 调整 8 因子
           </div>
         </div>
         <span style={{ fontSize: 12, color: '#64748B' }}>{open ? '收起 ▲' : '展开 ▼'}</span>
@@ -127,7 +113,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
 
       {open && (
         <>
-          {/* 搜索框 — 跨全库 fuzzy 匹配 name/department/function/sub_function */}
+          {/* 搜索框 */}
           <div style={{ padding: '0 16px 10px', borderBottom: '1px solid #F1F5F9' }}>
             <div style={{ position: 'relative' }}>
               <input
@@ -162,6 +148,16 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
             )}
           </div>
 
+          {addError && (
+            <div style={{
+              margin: '8px 16px', padding: '8px 12px',
+              background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6,
+              fontSize: 12, color: '#B91C1C',
+            }}>
+              {addError}
+            </div>
+          )}
+
           <div style={contentStyle}>
             {Object.entries(grouped).map(([dept, items]) => (
               <DeptGroup
@@ -169,42 +165,12 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
                 dept={dept}
                 items={items}
                 usedLibIds={usedLibIds}
-                selected={selected}
-                onToggle={toggle}
+                addingIds={adding}
+                onAdd={handleAdd}
               />
             ))}
           </div>
-
-          {selected.size > 0 && (
-            <div style={footerStyle}>
-              <span style={{ fontSize: 12, color: '#475569' }}>已选 {selected.size} 个</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setSelected(new Set())} style={ghostBtn}>清空</button>
-                <button onClick={handleBatchAdd} style={primaryBtn}>
-                  {selected.size === 1 ? '添加并编辑' : `添加 ${selected.size} 个岗位`}
-                </button>
-              </div>
-            </div>
-          )}
         </>
-      )}
-
-      {/* 单条编辑 modal */}
-      {editingEntry && (
-        <AddFromLibraryModal
-          entry={editingEntry}
-          onClose={() => setEditingEntry(null)}
-          onConfirm={async (params) => {
-            try {
-              const res = await jeCreateJobFromLibrary(params);
-              onJobCreated(res.data.job);
-              setEditingEntry(null);
-              setSelected(new Set());
-            } catch (e: any) {
-              alert(`添加失败：${e?.response?.data?.error || e.message}`);
-            }
-          }}
-        />
       )}
     </div>
   );
@@ -213,15 +179,15 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
 // ============================================================================
 // 部门分组 + entry 行
 // ============================================================================
-function DeptGroup({ dept, items, usedLibIds, selected, onToggle }: {
+function DeptGroup({ dept, items, usedLibIds, addingIds, onAdd }: {
   dept: string;
   items: JeLibraryEntry[];
   usedLibIds: Set<string>;
-  selected: Set<string>;
-  onToggle: (id: string) => void;
+  addingIds: Set<string>;
+  onAdd: (entry: JeLibraryEntry) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  // 按 hay_grade 降序排（高级岗位排前面）
+  // 按 hay_grade 降序排(高级岗位排前面)
   const sorted = [...items].sort((a, b) => (b.hay_grade ?? 0) - (a.hay_grade ?? 0));
   return (
     <div style={{ marginBottom: 14 }}>
@@ -237,310 +203,68 @@ function DeptGroup({ dept, items, usedLibIds, selected, onToggle }: {
           key={e.id}
           entry={e}
           used={usedLibIds.has(e.id)}
-          selected={selected.has(e.id)}
-          onToggle={() => onToggle(e.id)}
+          adding={addingIds.has(e.id)}
+          onClick={() => onAdd(e)}
         />
       ))}
     </div>
   );
 }
 
-function EntryRow({ entry, used, selected, onToggle }: {
+function EntryRow({ entry, used, adding, onClick }: {
   entry: JeLibraryEntry;
   used: boolean;
-  selected: boolean;
-  onToggle: () => void;
+  adding: boolean;
+  onClick: () => void;
 }) {
   const dom = pickDominant(entry);
-  const [expanded, setExpanded] = useState(false);
-  const hasDetails = !!(entry.success_profile || entry.factors);
+  const disabled = used || adding;
+  const purpose = entry.success_profile?.purpose
+    || entry.responsibilities[0]
+    || '';
 
   return (
-    <div style={{ marginBottom: 2 }}>
-      <div
-        onClick={used ? undefined : onToggle}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '6px 10px', borderRadius: 6,
-          cursor: used ? 'default' : 'pointer',
-          background: selected ? BRAND_TINT : 'transparent',
-          opacity: used ? 0.5 : 1,
-        }}
-        onMouseOver={e => { if (!used && !selected) e.currentTarget.style.background = '#F8FAFC'; }}
-        onMouseOut={e => { if (!used && !selected) e.currentTarget.style.background = 'transparent'; }}
-      >
-        <input
-          type="checkbox"
-          checked={used || selected}
-          disabled={used}
-          readOnly
-          style={{ cursor: used ? 'not-allowed' : 'pointer' }}
-        />
-        <div style={{ flex: 1, fontSize: 12, color: '#0F172A' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 4, height: 14, borderRadius: 2, background: dom.color }} />
-            <span>{entry.name}</span>
-            {entry.profile && (
-              <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
-                {entry.profile}
-              </span>
-            )}
-            {used && <span style={{ fontSize: 10, color: '#94A3B8' }}>已添加</span>}
-            {entry.invalid_factors && (
-              <span title="LLM 给的因子组合不合法,分数仅供参考"
-                    style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
-            )}
-          </div>
-          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
-            {entry.function} · {dom.label}
-            {entry.responsibilities.length > 0 && ` · ${entry.responsibilities[0]}`}
-          </div>
-        </div>
-        {hasDetails && (
-          <button
-            onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
-            title={expanded ? '收起详情' : '看 Success Profile + 8 因子'}
-            style={{
-              flexShrink: 0, fontSize: 10, color: '#64748B',
-              border: '1px solid #E2E8F0', borderRadius: 4,
-              padding: '2px 6px', background: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            {expanded ? '收起 ▲' : '详情 ▼'}
-          </button>
-        )}
-        <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND, minWidth: 28, textAlign: 'right' }}>
-          {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
-        </div>
-      </div>
-      {expanded && <EntryDetails entry={entry} />}
-    </div>
-  );
-}
-
-/** 行内展开的 Success Profile + 8 因子详情 */
-function EntryDetails({ entry }: { entry: JeLibraryEntry }) {
-  const sp = entry.success_profile;
-  return (
-    <div style={{
-      marginTop: 4, marginLeft: 28, marginBottom: 8,
-      padding: '14px 16px',
-      background: '#F8FAFC', borderRadius: 8,
-      border: '1px solid #E2E8F0',
-      fontSize: 12, color: '#475569', lineHeight: 1.7,
-    }}>
-      {/* 顶部:三维分数 + 总分 + Profile */}
-      <div style={{ display: 'flex', gap: 16, paddingBottom: 10, borderBottom: '1px dashed #E2E8F0', flexWrap: 'wrap' }}>
-        <Stat label="Hay 职级" value={entry.hay_grade != null ? `G${entry.hay_grade}` : '—'} />
-        <Stat label="总分" value={entry.total_score != null ? `${entry.total_score} 分` : '—'} />
-        {entry.profile && <Stat label="Short Profile" value={entry.profile} />}
-        <Stat label="KH" value={entry.kh_score != null ? `${entry.kh_score}` : '—'} color={KH_COLOR} />
-        <Stat label="PS" value={entry.ps_score != null ? `${entry.ps_score}` : '—'} color={PS_COLOR} />
-        <Stat label="ACC" value={entry.acc_score != null ? `${entry.acc_score}` : '—'} color={ACC_COLOR} />
-      </div>
-
-      {/* SP 主体 */}
-      {sp ? (
-        <div style={{ paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {sp.purpose && (
-            <Section title="岗位使命">
-              <div>{sp.purpose}</div>
-            </Section>
+    <div
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 10px', borderRadius: 6,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: used ? 0.5 : 1,
+        marginBottom: 2,
+        transition: 'background 0.12s',
+      }}
+      onMouseOver={e => { if (!disabled) e.currentTarget.style.background = '#F8FAFC'; }}
+      onMouseOut={e => { if (!disabled) e.currentTarget.style.background = 'transparent'; }}
+    >
+      <span style={{ width: 4, height: 16, borderRadius: 2, background: dom.color, flexShrink: 0 }} />
+      <div style={{ flex: 1, fontSize: 12, color: '#0F172A', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontWeight: 500 }}>{entry.name}</span>
+          {entry.profile && (
+            <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
+              {entry.profile}
+            </span>
           )}
-          {sp.accountabilities && sp.accountabilities.length > 0 && (
-            <Section title="核心职责">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {sp.accountabilities.map((a, i) => <li key={i} style={{ marginBottom: 2 }}>{a}</li>)}
-              </ul>
-            </Section>
-          )}
-          {sp.requirements && (
-            <Section title="任职要求">
-              <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: '4px 12px' }}>
-                {sp.requirements.education && (<><span style={labelCellStyle}>学历</span><span>{sp.requirements.education}</span></>)}
-                {sp.requirements.experience && (<><span style={labelCellStyle}>经验</span><span>{sp.requirements.experience}</span></>)}
-                {sp.requirements.professional_skills && sp.requirements.professional_skills.length > 0 && (
-                  <><span style={labelCellStyle}>关键技能</span>
-                    <span>{sp.requirements.professional_skills.join(' / ')}</span>
-                  </>
-                )}
-              </div>
-            </Section>
-          )}
-          {sp.competencies && (
-            <Section title="能力要求 (5 维)">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {(['专业力', '管理力', '合作力', '思辨力', '创新力'] as const).map(k => {
-                  const c = sp.competencies?.[k];
-                  if (!c) return null;
-                  return <CompetencyBar key={k} name={k} level={c.required_level} />;
-                })}
-              </div>
-            </Section>
-          )}
-          {sp.kpis && sp.kpis.length > 0 && (
-            <Section title="绩效指标">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {sp.kpis.map((k, i) => <li key={i} style={{ marginBottom: 2 }}>{k}</li>)}
-              </ul>
-            </Section>
+          {used && <span style={{ fontSize: 10, color: '#16A34A' }}>✓ 已添加</span>}
+          {adding && <span style={{ fontSize: 10, color: '#94A3B8' }}>添加中…</span>}
+          {entry.invalid_factors && (
+            <span title="LLM 给的因子组合不合法,分数仅供参考"
+                  style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
           )}
         </div>
-      ) : (
-        <div style={{ paddingTop: 10, color: '#94A3B8', fontStyle: 'italic' }}>
-          这个岗位还没填 Success Profile,可以先添加到岗位库,后续在详情页补充。
-        </div>
-      )}
-
-      {/* 8 因子档位 */}
-      {entry.factors && (
-        <Section title="8 因子档位" style={{ marginTop: 12 }}>
+        {purpose && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr',
-            gap: '4px 12px', fontSize: 11,
+            fontSize: 10, color: '#94A3B8', marginTop: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            <FactorCell label="PK" value={entry.factors.practical_knowledge} />
-            <FactorCell label="MK" value={entry.factors.managerial_knowledge} />
-            <FactorCell label="Comm" value={entry.factors.communication} />
-            <FactorCell label="TC" value={entry.factors.thinking_challenge} />
-            <FactorCell label="TE" value={entry.factors.thinking_environment} />
-            <FactorCell label="FTA" value={entry.factors.freedom_to_act} />
-            <FactorCell label="Mag" value={entry.factors.magnitude} />
-            <FactorCell label="NoI" value={entry.factors.nature_of_impact} />
-          </div>
-        </Section>
-      )}
-    </div>
-  );
-}
-
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <span style={{ fontSize: 10, color: '#94A3B8' }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: color || '#0F172A' }}>{value}</span>
-    </div>
-  );
-}
-
-function Section({ title, children, style }: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={style}>
-      <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function CompetencyBar({ name, level }: { name: string; level: number }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 11, color: '#475569', minWidth: 36 }}>{name}</span>
-      <div style={{ display: 'flex', gap: 2 }}>
-        {[1, 2, 3, 4, 5].map(i => (
-          <span key={i} style={{
-            width: 8, height: 14, borderRadius: 2,
-            background: i <= level ? BRAND : '#E2E8F0',
-          }} />
-        ))}
-      </div>
-      <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{level}</span>
-    </div>
-  );
-}
-
-function FactorCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-      <span style={{ color: '#94A3B8' }}>{label}</span>
-      <span style={{ color: '#0F172A', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>{value}</span>
-    </div>
-  );
-}
-
-const labelCellStyle: React.CSSProperties = {
-  color: '#94A3B8', fontSize: 11,
-};
-
-// ============================================================================
-// 单条编辑 modal（用户可改名 + 确认部门归属再建岗）
-// ============================================================================
-function AddFromLibraryModal({ entry, onClose, onConfirm }: {
-  entry: JeLibraryEntry;
-  onClose: () => void;
-  onConfirm: (params: { lib_id: string; title?: string; department?: string }) => Promise<void>;
-}) {
-  const [title, setTitle] = useState(entry.name);
-  const [department, setDepartment] = useState(entry.department || '');
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    await onConfirm({
-      lib_id: entry.id,
-      title: title.trim() || undefined,
-      department: department.trim() || undefined,
-    });
-    // 不 setSaving(false)，因为 onConfirm 成功会卸载 modal
-  };
-
-  return (
-    <div style={modalOverlay} onClick={onClose}>
-      <div style={modalBox} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>
-          添加岗位
-        </div>
-        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 16, lineHeight: 1.6 }}>
-          基于 AI 推荐的「{entry.name}」（{entry.function} · G{entry.hay_grade}）。
-          可以改成你们公司实际的岗位名称，或者留空用默认值。
-        </div>
-
-        <FormRow label="岗位名称">
-          <input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} />
-        </FormRow>
-        <FormRow label="部门">
-          <input value={department} onChange={e => setDepartment(e.target.value)} style={inputStyle} />
-        </FormRow>
-
-        {entry.factors ? (
-          <div style={{ marginTop: 12, padding: 10, background: '#F8FAFC', borderRadius: 6 }}>
-            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>该岗位将带以下因子(后续可在详情页调整):</div>
-            <div style={{ fontSize: 11, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
-              <span>PK <strong>{entry.factors.practical_knowledge}</strong></span>
-              <span>MK <strong>{entry.factors.managerial_knowledge}</strong></span>
-              <span>Comm <strong>{entry.factors.communication}</strong></span>
-              <span>TC <strong>{entry.factors.thinking_challenge}</strong></span>
-              <span>TE <strong>{entry.factors.thinking_environment}</strong></span>
-              <span>FTA <strong>{entry.factors.freedom_to_act}</strong></span>
-              <span>Mag <strong>{entry.factors.magnitude}</strong></span>
-              <span>NoI <strong>{entry.factors.nature_of_impact}</strong></span>
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 12, padding: 10, background: '#FEF7F4', borderRadius: 6, fontSize: 11, color: '#92400E', lineHeight: 1.6 }}>
-            添加时会按 Hay 职级 G{entry.hay_grade} 自动生成一组合理的 8 因子档位,后续可以在岗位详情页手改任何档位 — 分数和职级会跟着重新计算。
+            {entry.function} · {purpose}
           </div>
         )}
-
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} style={ghostBtn}>取消</button>
-          <button onClick={submit} disabled={saving} style={primaryBtn}>
-            {saving ? '添加中…' : '确认添加'}
-          </button>
-        </div>
       </div>
-    </div>
-  );
-}
-
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <label style={{ display: 'block', fontSize: 12, color: '#64748B', marginBottom: 6 }}>
-        {label}
-      </label>
-      {children}
+      <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND, minWidth: 28, textAlign: 'right' }}>
+        {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
+      </div>
     </div>
   );
 }
@@ -567,63 +291,22 @@ function pickDominant(e: JeLibraryEntry): { color: string; label: string } {
 // ============================================================================
 // 样式
 // ============================================================================
-
 const containerStyle: React.CSSProperties = {
   background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-  marginBottom: 12,
-  overflow: 'hidden',
+  marginBottom: 16, overflow: 'hidden',
 };
 
 const headerStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  cursor: 'pointer', userSelect: 'none',
-  borderBottom: '1px solid #F1F5F9',
+  padding: '14px 16px', display: 'flex',
+  justifyContent: 'space-between', alignItems: 'center',
+  cursor: 'pointer', borderBottom: '1px solid #F1F5F9',
 };
 
 const contentStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  maxHeight: 380, overflowY: 'auto',
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: '10px 16px', borderTop: '1px solid #F1F5F9',
-  background: '#FAFBFC',
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  padding: 16, maxHeight: 480, overflowY: 'auto',
 };
 
 const emptyStyle: React.CSSProperties = {
-  padding: 24, textAlign: 'center',
-  fontSize: 12, color: '#94A3B8',
-  background: '#fff', border: '1px dashed #E2E8F0', borderRadius: 12,
-  marginBottom: 12,
-};
-
-const primaryBtn: React.CSSProperties = {
-  padding: '6px 14px', borderRadius: 6,
-  border: 'none', background: BRAND, color: '#fff',
-  fontSize: 12, cursor: 'pointer', fontWeight: 500,
-};
-
-const ghostBtn: React.CSSProperties = {
-  padding: '6px 14px', borderRadius: 6,
-  border: '1px solid #E2E8F0', background: '#fff', color: '#475569',
-  fontSize: 12, cursor: 'pointer',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', fontSize: 13,
-  border: '1px solid #E2E8F0', borderRadius: 6, outline: 'none',
-  fontFamily: 'inherit', boxSizing: 'border-box',
-};
-
-const modalOverlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-};
-
-const modalBox: React.CSSProperties = {
-  background: '#fff', borderRadius: 12, padding: 24,
-  width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto',
-  boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+  padding: 16, fontSize: 12, color: '#94A3B8', textAlign: 'center',
+  background: '#F8FAFC', borderRadius: 8, marginBottom: 16,
 };

@@ -32,7 +32,7 @@ export default function LoginPage() {
     <div style={pageStyle}>
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <PixelCat size={32} />
+          <PixelCat size={32} mode={loading ? 'walk' : 'idle'} />
           <div style={{ fontSize: 20, fontWeight: 700, color: '#0F172A' }}>铭曦</div>
         </div>
         <div style={{ fontSize: 13, color: '#64748B', marginBottom: 24 }}>HR 薪酬诊断 AI 平台</div>

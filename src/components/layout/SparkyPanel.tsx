@@ -229,7 +229,7 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
     >
       {!embedded && (
         <div className="sparky-header">
-          <div className="sparky-icon"><PixelCat size={24} /></div>
+          <div className="sparky-icon"><PixelCat size={24} mode={isLoading ? 'walk' : 'idle'} /></div>
           <div style={{ flex: 1 }}>
             <div className="sparky-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               Sparky
@@ -280,7 +280,11 @@ export default function SparkyPanel({ messages, setMessages, sessionId, visible,
 
           return (
             <div key={i} className={`msg-row ${m.role === 'user' ? 'user' : ''}`}>
-              {m.role === 'bot' && <div className="msg-avatar"><PixelCat size={18} /></div>}
+              {m.role === 'bot' && (
+                <div className="msg-avatar">
+                  <PixelCat size={18} mode={isLoading && i === messages.length - 1 ? 'walk' : 'idle'} />
+                </div>
+              )}
               <div className="msg-bubble">
                 {m.role === 'bot' && /^Sparky 正在.+\.\.\.$/.test(m.text) ? (
                   <>

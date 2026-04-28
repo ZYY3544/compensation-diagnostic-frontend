@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import PixelCat from '../shared/PixelCat';
 
 interface Chip {
@@ -19,9 +20,10 @@ function stripLeadingEmoji(label: string): string {
  * 嵌在 SparkyPanel 的消息区顶部，输入框保持在底部常驻，所以这里不再包含 input。
  */
 export default function WelcomeView({ chips = [] }: Props) {
+  const [hoveringChip, setHoveringChip] = useState(false);
   return (
     <div className="welcome-hero">
-      <PixelCat size={48} />
+      <PixelCat size={48} mode={hoveringChip ? 'walk' : 'idle'} />
       <h1 className="welcome-title">你好，我是 Sparky</h1>
       <p className="welcome-sub">
         你的 AI HR 专业顾问。从薪酬体系、岗位价值，到组织设计与人才发展，复杂的 HR 问题都可以直接问我。
@@ -33,6 +35,8 @@ export default function WelcomeView({ chips = [] }: Props) {
               key={i}
               className="welcome-chip"
               onClick={c.onClick}
+              onMouseEnter={() => setHoveringChip(true)}
+              onMouseLeave={() => setHoveringChip(false)}
             >
               {stripLeadingEmoji(c.label)}
             </button>

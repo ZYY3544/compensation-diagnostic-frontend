@@ -461,10 +461,15 @@ function DetailLayout({
   const [showSpDrawer, setShowSpDrawer] = useState(false);
 
   // 通过 job.result.lib_id 反查 standard library entry,有 SP 才显示按钮
+  // job.result.lib_grade 标记落在哪个 grade variant 上
   const libId = (job.result as any)?.lib_id as string | undefined;
+  const libGrade = (job.result as any)?.lib_grade as number | undefined;
   const libEntry = libId
     ? library?.entries.find(e => e.id === libId) || null
     : null;
+  const libVariant = libEntry?.grade_variants?.find(v => v.hay_grade === libGrade)
+    || libEntry?.grade_variants?.[0]
+    || null;
   const hasSp = !!libEntry?.success_profile;
 
   return (
@@ -529,15 +534,20 @@ function DetailLayout({
       </Workspace>
 
       {showSpDrawer && libEntry && (
-        <SuccessProfileDrawer entry={libEntry} onClose={() => setShowSpDrawer(false)} />
+        <SuccessProfileDrawer
+          entry={libEntry}
+          variant={libVariant}
+          onClose={() => setShowSpDrawer(false)}
+        />
       )}
     </div>
   );
 }
 
 /** Success Profile 抽屉 — 跟 GradeMatrix 的"访谈笔记"drawer 同款样式,统一交互 */
-function SuccessProfileDrawer({ entry, onClose }: {
+function SuccessProfileDrawer({ entry, variant, onClose }: {
   entry: import('../api/client').JeLibraryEntry;
+  variant: import('../api/client').JeGradeVariant | null;
   onClose: () => void;
 }) {
   return (
@@ -562,7 +572,8 @@ function SuccessProfileDrawer({ entry, onClose }: {
               Success Profile · {entry.name}
             </div>
             <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
-              {entry.department || '未分组'} · {entry.function} · 标准库基线职级 G{entry.hay_grade}
+              {entry.department || '未分组'} · {entry.function}
+              {variant && ` · 当前职级 G${variant.hay_grade}`}
             </div>
           </div>
           <button
@@ -573,7 +584,7 @@ function SuccessProfileDrawer({ entry, onClose }: {
             }}
           >关闭</button>
         </div>
-        <SuccessProfileView entry={entry} />
+        <SuccessProfileView entry={entry} variant={variant} />
       </div>
     </div>
   );

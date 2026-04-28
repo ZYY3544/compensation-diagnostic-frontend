@@ -1,23 +1,28 @@
 /**
  * Success Profile + 8 因子 + 三维分数 的只读详情视图。
  *
- * 用在两处:
- *   1. 岗位详情页 DetailLayout 的右侧抽屉(用户点"Success Profile"按钮触发)
- *   2. 后续如果有岗位库 entry 详情弹窗,也复用同一份组件
+ * 用在岗位详情页 DetailLayout 的右侧抽屉(用户点"Success Profile"按钮触发)。
  *
- * SP 内容来自 standard library entry (hay_grade × 行业 决定),用户编辑因子
- * 不会修改 SP — SP 是"目标画像",因子是"实际评分"。如果用户调整因子让职级
- * 偏离 SP 期望,他们应该感知到差距,但不会自动改 SP 文案 (跟我们之前
- * 跟用户讨论过的"SP 与 Hay 双向同步与否"的设计是一致的)。
+ * SP 在 role family 层共享一份;具体 grade variant 决定该岗位的因子档位 +
+ * 分数 + Hay 短画像。所以视图同时展示:
+ *   · 顶部 stat 条 — 用 variant 的数据
+ *   · SP 主体 — entry.success_profile (整 family 共享)
+ *   · 8 因子 — 用 variant 的 factors
  */
-import type { JeLibraryEntry } from '../api/client';
+import type { JeLibraryEntry, JeGradeVariant } from '../api/client';
 
 const BRAND = '#D85A30';
 const KH_COLOR = '#4F46E5';
 const PS_COLOR = '#0EA5E9';
 const ACC_COLOR = '#F59E0B';
 
-export default function SuccessProfileView({ entry }: { entry: JeLibraryEntry }) {
+interface Props {
+  entry: JeLibraryEntry;
+  /** 该 Job 落在哪个 grade variant 上 — 决定 stat 条 + 8 因子展示什么 */
+  variant: JeGradeVariant | null;
+}
+
+export default function SuccessProfileView({ entry, variant }: Props) {
   const sp = entry.success_profile;
   return (
     <div style={{
@@ -26,17 +31,42 @@ export default function SuccessProfileView({ entry }: { entry: JeLibraryEntry })
       border: '1px solid #E2E8F0',
       fontSize: 12, color: '#475569', lineHeight: 1.7,
     }}>
-      {/* 顶部:Hay 职级 / 总分 / Profile / 三维分数 */}
-      <div style={{ display: 'flex', gap: 16, paddingBottom: 12, borderBottom: '1px dashed #E2E8F0', flexWrap: 'wrap' }}>
-        <Stat label="Hay 职级" value={entry.hay_grade != null ? `G${entry.hay_grade}` : '—'} />
-        <Stat label="总分" value={entry.total_score != null ? `${entry.total_score} 分` : '—'} />
-        {entry.profile && <Stat label="Short Profile" value={entry.profile} />}
-        <Stat label="KH" value={entry.kh_score != null ? `${entry.kh_score}` : '—'} color={KH_COLOR} />
-        <Stat label="PS" value={entry.ps_score != null ? `${entry.ps_score}` : '—'} color={PS_COLOR} />
-        <Stat label="ACC" value={entry.acc_score != null ? `${entry.acc_score}` : '—'} color={ACC_COLOR} />
-      </div>
+      {/* 顶部:Hay 职级 / 总分 / Profile / 三维分数 (来自 variant) */}
+      {variant && (
+        <div style={{ display: 'flex', gap: 16, paddingBottom: 12, borderBottom: '1px dashed #E2E8F0', flexWrap: 'wrap' }}>
+          <Stat label="Hay 职级" value={`G${variant.hay_grade}`} />
+          <Stat label="总分" value={`${variant.total_score} 分`} />
+          {variant.profile && <Stat label="Short Profile" value={variant.profile} />}
+          <Stat label="KH" value={`${variant.kh_score}`} color={KH_COLOR} />
+          <Stat label="PS" value={`${variant.ps_score}`} color={PS_COLOR} />
+          <Stat label="ACC" value={`${variant.acc_score}`} color={ACC_COLOR} />
+        </div>
+      )}
 
-      {/* SP 主体 */}
+      {/* 同 role family 的其他 grade variants — 让用户知道这个角色还能调到什么职级 */}
+      {entry.grade_variants && entry.grade_variants.length > 1 && (
+        <div style={{ paddingTop: 10, paddingBottom: 10, borderBottom: '1px dashed #E2E8F0' }}>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>本角色的其他职级</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {entry.grade_variants.map(v => {
+              const current = variant?.hay_grade === v.hay_grade;
+              return (
+                <span key={v.hay_grade} style={{
+                  padding: '3px 9px', fontSize: 11, borderRadius: 4,
+                  background: current ? BRAND : '#F1F5F9',
+                  color: current ? '#fff' : '#475569',
+                  fontWeight: current ? 600 : 500,
+                  border: current ? 'none' : '1px solid transparent',
+                }}>
+                  G{v.hay_grade}{current ? ' (当前)' : ''}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* SP 主体 (整 role family 共享) */}
       {sp ? (
         <div style={{ paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {sp.purpose && (
@@ -89,22 +119,22 @@ export default function SuccessProfileView({ entry }: { entry: JeLibraryEntry })
         </div>
       )}
 
-      {/* 8 因子档位 (只读 — 真正编辑在 CandidateBoard 里做) */}
-      {entry.factors && (
+      {/* 8 因子档位 (来自当前 variant,只读 — 真正编辑在 CandidateBoard 里做) */}
+      {variant?.factors && (
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed #E2E8F0' }}>
-          <Section title="标准 8 因子档位">
+          <Section title={`G${variant.hay_grade} 标准 8 因子档位`}>
             <div style={{
               display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr',
               gap: '4px 12px', fontSize: 11,
             }}>
-              <FactorCell label="PK" value={entry.factors.practical_knowledge} />
-              <FactorCell label="MK" value={entry.factors.managerial_knowledge} />
-              <FactorCell label="Comm" value={entry.factors.communication} />
-              <FactorCell label="TC" value={entry.factors.thinking_challenge} />
-              <FactorCell label="TE" value={entry.factors.thinking_environment} />
-              <FactorCell label="FTA" value={entry.factors.freedom_to_act} />
-              <FactorCell label="Mag" value={entry.factors.magnitude} />
-              <FactorCell label="NoI" value={entry.factors.nature_of_impact} />
+              <FactorCell label="PK" value={variant.factors.practical_knowledge} />
+              <FactorCell label="MK" value={variant.factors.managerial_knowledge} />
+              <FactorCell label="Comm" value={variant.factors.communication} />
+              <FactorCell label="TC" value={variant.factors.thinking_challenge} />
+              <FactorCell label="TE" value={variant.factors.thinking_environment} />
+              <FactorCell label="FTA" value={variant.factors.freedom_to_act} />
+              <FactorCell label="Mag" value={variant.factors.magnitude} />
+              <FactorCell label="NoI" value={variant.factors.nature_of_impact} />
             </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6, lineHeight: 1.5 }}>
               这是从标准库带来的基线档位 — 实际编辑在右侧候选方案卡上,改了之后职级会跟着重算。

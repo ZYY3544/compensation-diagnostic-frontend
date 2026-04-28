@@ -327,32 +327,40 @@ export interface JeSuccessProfile {
   kpis?: string[];
 }
 
+/** 单个职级变体 — 共享同一份 SP,仅 hay_grade + factors + scores 不同 */
+export interface JeGradeVariant {
+  hay_grade: number;
+  factors: Record<string, string>;
+  kh_score: number;
+  ps_score: number;
+  acc_score: number;
+  total_score: number;
+  profile: string | null;
+  kh_level?: number | null;
+  ps_level?: number | null;
+  ps_percentage?: number | null;
+  acc_level?: number | null;
+  level_label?: string | null;
+}
+
 export interface JeLibraryEntry {
   id: string;
   name: string;
   department: string | null;
   function: string;
-  // factors / scores 可能为 null — standard library 的 entry 不预存因子,
-  // 用户在 /jobs/from-library 时由后端按 hay_grade 反推一组合理 baseline
-  factors: Record<string, string> | null;
-  hay_grade: number | null;
-  total_score: number | null;
-  kh_score: number | null;
-  ps_score: number | null;
-  acc_score: number | null;
-  profile: string | null;
-  responsibilities: string[];
-  invalid_factors?: boolean;
-  // standard library 专属字段(LLM 生成的 entry 没有这些,所以可选)
-  level_label?: string | null;     // "Level 5-1" 等
-  track?: 'specialist' | 'management' | 'balanced' | 'unknown';
-  sub_function?: string;            // "薪酬管理" 等子职能名 (用于搜索匹配)
-  kh_level?: number | null;
-  ps_level?: number | null;
-  ps_percentage?: number | null;
-  acc_level?: number | null;
-  /** Success Profile — V1 样板岗位带,LLM 生成的旧 entry 没有 */
+  /** Success Profile — 同一 role family 的所有 grade variant 共享一份 */
   success_profile?: JeSuccessProfile;
+  /**
+   * 该 role family 的所有职级变体。一份 SP 共享,只是 hay_grade 不同
+   * (例:HR 经理有 G15/G16/G17 三个 variant,SP 内容完全相同)。
+   * 长度 ≥ 1。单职级岗位也用这个数组(只放 1 个 variant)。
+   */
+  grade_variants: JeGradeVariant[];
+  // standard library 元数据
+  sub_function?: string;
+  // 旧 LLM 生成数据兼容字段 (新 standard library 都用 grade_variants)
+  responsibilities?: string[];
+  invalid_factors?: boolean;
 }
 
 export interface JeLibrary {
@@ -394,8 +402,14 @@ export const jeGenerateLibrary = (config?: { timeout?: number }) =>
 export const jeGetLibrary = () =>
   api.get<{ library: JeLibrary | null }>('/je/library');
 
-// 从库 entry 创建 Job（不调 LLM，毫秒级）
-export const jeCreateJobFromLibrary = (params: { lib_id: string; title?: string; department?: string }) =>
+// 从库 entry 创建 Job(不调 LLM,毫秒级)。target_grade 选定 entry.grade_variants
+// 里的具体 variant;不传则用第一个 variant
+export const jeCreateJobFromLibrary = (params: {
+  lib_id: string;
+  target_grade?: number;
+  title?: string;
+  department?: string;
+}) =>
   api.post<{ job: JeJob }>('/je/jobs/from-library', params);
 
 // ----- 拖拽职级调整 -----

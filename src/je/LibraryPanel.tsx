@@ -1,23 +1,22 @@
 /**
  * 标准岗位库面板 — 用户从这里挑岗位添加到自己的图谱里。
  *
- * 数据源:JeProfile.library_data (来自 standard_libraries/<行业>.json,
- * 不再调 LLM 实时生成)。
+ * 数据源:JeProfile.library_data (来自 standard_libraries/<行业>.json)。
  *
- * 交互简化:
+ * 交互模型 (V2 — 多职级变体):
  *   · 搜索框 fuzzy 匹配 name/department/function/sub_function
- *   · 按部门分组展示,每行紧凑展示 name + Hay 职级 + 一句话亮点
- *   · 点行直接调 jeCreateJobFromLibrary 入库 (不再有勾选 + 批量按钮 + 弹窗
- *     编辑这种多步流程,因为弹窗也只能改名跟部门,没有真正的编辑价值)
- *   · 添加成功后行立即变 "✓ 已添加" 灰态,用户继续点其他岗位也能添加
- *   · 完整 Success Profile / 8 因子 编辑都在岗位详情页做,这里就是个挑选器
+ *   · 按部门分组,每行展示一个 role family (e.g. "HR 经理")
+ *   · 行右侧并列多个职级 chip 按钮 (G15 / G16 / G17),用户点哪个加哪个
+ *   · 同一个 role family 的多个 chip 共用一份 Success Profile (在详情页能看)
+ *   · 点 chip → jeCreateJobFromLibrary(lib_id, target_grade) 入库
+ *   · chip 立即变 "✓ G16" 灰态,继续可点其他 grade chip 添加同一岗位的不同档
  *
- * 已选状态:jobs 里某条 result.lib_id === entry.id 即视为已添加
+ * 已添加判定:job.result.lib_id === entry.id 且 job.result.lib_grade === variant.hay_grade
  */
 import { useMemo, useState } from 'react';
 import {
   jeCreateJobFromLibrary,
-  type JeLibrary, type JeLibraryEntry, type JeJob,
+  type JeLibrary, type JeLibraryEntry, type JeJob, type JeGradeVariant,
 } from '../api/client';
 
 const BRAND = '#D85A30';
@@ -35,15 +34,17 @@ interface Props {
 export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen = true }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState<Set<string>>(new Set());     // 正在加的 entry id
+  const [adding, setAdding] = useState<Set<string>>(new Set());     // (lib_id_grade) 复合键
   const [addError, setAddError] = useState<string | null>(null);
 
-  // 已添加的 lib_id 集合(jobs 里某条 result.lib_id 命中即视为已添加)
-  const usedLibIds = useMemo(() => {
+  // 已添加 (lib_id, grade) 复合键集合 — 同 role family 不同 grade 算独立 entry
+  const usedKeys = useMemo(() => {
     const set = new Set<string>();
     for (const j of jobs) {
-      const lid = (j.result as any)?.lib_id;
-      if (lid) set.add(lid);
+      const r = (j.result as any) || {};
+      const lid = r.lib_id;
+      const grade = r.lib_grade ?? r.hay_grade ?? r.job_grade;
+      if (lid && grade != null) set.add(`${lid}_g${grade}`);
     }
     return set;
   }, [jobs]);
@@ -75,25 +76,33 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
     (grouped[dept] ||= []).push(e);
   }
 
-  const handleAdd = async (entry: JeLibraryEntry) => {
-    if (usedLibIds.has(entry.id) || adding.has(entry.id)) return;
-    setAdding(prev => new Set(prev).add(entry.id));
+  const handleAdd = async (entry: JeLibraryEntry, variant: JeGradeVariant) => {
+    const key = `${entry.id}_g${variant.hay_grade}`;
+    if (usedKeys.has(key) || adding.has(key)) return;
+    setAdding(prev => new Set(prev).add(key));
     setAddError(null);
     try {
-      const res = await jeCreateJobFromLibrary({ lib_id: entry.id });
+      const res = await jeCreateJobFromLibrary({
+        lib_id: entry.id,
+        target_grade: variant.hay_grade,
+      });
       onJobCreated(res.data.job);
     } catch (e: any) {
       const msg = e?.response?.data?.error || e?.message || '未知错误';
-      setAddError(`「${entry.name}」添加失败: ${msg}`);
+      setAddError(`「${entry.name} G${variant.hay_grade}」添加失败: ${msg}`);
       console.warn('[library] add failed', e);
     } finally {
       setAdding(prev => {
         const next = new Set(prev);
-        next.delete(entry.id);
+        next.delete(key);
         return next;
       });
     }
   };
+
+  // 统计已添加的 variant 数量(用于 header 显示)
+  const totalVariants = library.entries.reduce((s, e) => s + (e.grade_variants?.length || 0), 0);
+  const addedVariants = usedKeys.size;
 
   return (
     <div style={containerStyle}>
@@ -101,11 +110,11 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
             标准岗位库 <span style={{ marginLeft: 6, fontSize: 11, color: '#94A3B8', fontWeight: 400 }}>
-              {library.entries.length} 个 · 已添加 {usedLibIds.size}
+              {library.entries.length} 个角色 · {totalVariants} 个职级变体 · 已添加 {addedVariants}
             </span>
           </div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-            点行右侧"+ 添加"把岗位入库 — 添加后在岗位详情页可以看完整 Success Profile + 调整 8 因子
+            点行右侧职级按钮把对应档位的岗位入库 — 同一岗位多个职级共用一份 Success Profile,详情在岗位详情页查看
           </div>
         </div>
         <span style={{ fontSize: 12, color: '#64748B' }}>{open ? '收起 ▲' : '展开 ▼'}</span>
@@ -142,8 +151,8 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
             {q && (
               <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
                 {filtered.length === 0
-                  ? `没找到匹配"${query}"的岗位 — 试试更短的关键词,或者告诉 Sparky 帮你建一个`
-                  : `匹配 ${filtered.length} 个岗位`}
+                  ? `没找到匹配"${query}"的岗位 — 试试更短的关键词`
+                  : `匹配 ${filtered.length} 个角色`}
               </div>
             )}
           </div>
@@ -164,8 +173,8 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
                 key={dept}
                 dept={dept}
                 items={items}
-                usedLibIds={usedLibIds}
-                addingIds={adding}
+                usedKeys={usedKeys}
+                addingKeys={adding}
                 onAdd={handleAdd}
               />
             ))}
@@ -177,18 +186,22 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
 }
 
 // ============================================================================
-// 部门分组 + entry 行
+// 部门分组 + role family 行
 // ============================================================================
-function DeptGroup({ dept, items, usedLibIds, addingIds, onAdd }: {
+function DeptGroup({ dept, items, usedKeys, addingKeys, onAdd }: {
   dept: string;
   items: JeLibraryEntry[];
-  usedLibIds: Set<string>;
-  addingIds: Set<string>;
-  onAdd: (entry: JeLibraryEntry) => void;
+  usedKeys: Set<string>;
+  addingKeys: Set<string>;
+  onAdd: (entry: JeLibraryEntry, variant: JeGradeVariant) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  // 按 hay_grade 降序排(高级岗位排前面)
-  const sorted = [...items].sort((a, b) => (b.hay_grade ?? 0) - (a.hay_grade ?? 0));
+  // 按 role family 第一个 variant 的职级降序(高级岗位排前)
+  const sorted = [...items].sort((a, b) => {
+    const ag = a.grade_variants?.[0]?.hay_grade ?? 0;
+    const bg = b.grade_variants?.[0]?.hay_grade ?? 0;
+    return bg - ag;
+  });
   return (
     <div style={{ marginBottom: 14 }}>
       <div onClick={() => setCollapsed(c => !c)} style={{
@@ -202,25 +215,27 @@ function DeptGroup({ dept, items, usedLibIds, addingIds, onAdd }: {
         <EntryRow
           key={e.id}
           entry={e}
-          used={usedLibIds.has(e.id)}
-          adding={addingIds.has(e.id)}
-          onAdd={() => onAdd(e)}
+          usedKeys={usedKeys}
+          addingKeys={addingKeys}
+          onAdd={onAdd}
         />
       ))}
     </div>
   );
 }
 
-function EntryRow({ entry, used, adding, onAdd }: {
+function EntryRow({ entry, usedKeys, addingKeys, onAdd }: {
   entry: JeLibraryEntry;
-  used: boolean;
-  adding: boolean;
-  onAdd: () => void;
+  usedKeys: Set<string>;
+  addingKeys: Set<string>;
+  onAdd: (entry: JeLibraryEntry, variant: JeGradeVariant) => void;
 }) {
-  const dom = pickDominant(entry);
-  const disabled = used || adding;
+  const variants = entry.grade_variants || [];
+  // 用中位 variant 的 KH/PS/ACC 推主导维度色
+  const midVariant = variants[Math.floor(variants.length / 2)] || variants[0];
+  const dom = pickDominant(midVariant);
   const purpose = entry.success_profile?.purpose
-    || entry.responsibilities[0]
+    || entry.responsibilities?.[0]
     || '';
 
   return (
@@ -228,25 +243,20 @@ function EntryRow({ entry, used, adding, onAdd }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 10px', borderRadius: 6,
-        opacity: used ? 0.5 : 1,
         marginBottom: 2,
         transition: 'background 0.12s',
       }}
-      onMouseOver={e => { if (!disabled) e.currentTarget.style.background = '#F8FAFC'; }}
+      onMouseOver={e => { e.currentTarget.style.background = '#F8FAFC'; }}
       onMouseOut={e => { e.currentTarget.style.background = 'transparent'; }}
     >
       <span style={{ width: 4, height: 16, borderRadius: 2, background: dom.color, flexShrink: 0 }} />
       <div style={{ flex: 1, fontSize: 12, color: '#0F172A', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 500 }}>{entry.name}</span>
-          {entry.profile && (
+          {midVariant?.profile && (
             <span style={{ fontSize: 10, color: '#94A3B8' }} title="Hay Short Profile">
-              {entry.profile}
+              {midVariant.profile}
             </span>
-          )}
-          {entry.invalid_factors && (
-            <span title="LLM 给的因子组合不合法,分数仅供参考"
-                  style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
           )}
         </div>
         {purpose && (
@@ -258,26 +268,34 @@ function EntryRow({ entry, used, adding, onAdd }: {
           </div>
         )}
       </div>
-      <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND, minWidth: 28, textAlign: 'right' }}>
-        {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
+      {/* 职级变体按钮:每个 grade 一个 chip,点哪个加哪个 */}
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        {variants.map(v => {
+          const key = `${entry.id}_g${v.hay_grade}`;
+          const used = usedKeys.has(key);
+          const adding = addingKeys.has(key);
+          const disabled = used || adding;
+          return (
+            <button
+              key={v.hay_grade}
+              onClick={() => onAdd(entry, v)}
+              disabled={disabled}
+              title={used ? '已添加 — 进图谱看' : `添加 G${v.hay_grade} 的 ${entry.name} 入库`}
+              style={{
+                padding: '4px 10px', fontSize: 11, fontWeight: 600,
+                border: used ? 'none' : `1px solid ${BRAND}`,
+                borderRadius: 4,
+                background: used ? '#F1F5F9' : (adding ? '#FEF7F4' : '#fff'),
+                color: used ? '#16A34A' : (adding ? '#94A3B8' : BRAND),
+                cursor: disabled ? 'default' : 'pointer',
+                minWidth: 44, textAlign: 'center',
+              }}
+            >
+              {used ? `✓ G${v.hay_grade}` : (adding ? '…' : `G${v.hay_grade}`)}
+            </button>
+          );
+        })}
       </div>
-      {/* 显式添加按钮 — 点击直接入库的设计被用户否了,改回需要明确意图按钮 */}
-      <button
-        onClick={onAdd}
-        disabled={disabled}
-        style={{
-          flexShrink: 0,
-          padding: '4px 12px', fontSize: 11, fontWeight: 500,
-          border: used ? 'none' : `1px solid ${BRAND}`,
-          borderRadius: 4,
-          background: used ? '#F1F5F9' : (adding ? '#FEF7F4' : '#fff'),
-          color: used ? '#16A34A' : (adding ? '#94A3B8' : BRAND),
-          cursor: disabled ? 'default' : 'pointer',
-          minWidth: 56, textAlign: 'center',
-        }}
-      >
-        {used ? '✓ 已添加' : (adding ? '添加中…' : '+ 添加')}
-      </button>
     </div>
   );
 }
@@ -285,19 +303,13 @@ function EntryRow({ entry, used, adding, onAdd }: {
 // ============================================================================
 // 工具
 // ============================================================================
-function pickDominant(e: JeLibraryEntry): { color: string; label: string } {
-  // standard library entry 没分数,用 track 标记替代主导维度色
-  if (e.kh_score == null || e.ps_score == null || e.acc_score == null) {
-    if (e.track === 'management') return { color: ACC_COLOR, label: '管理通道' };
-    if (e.track === 'specialist') return { color: KH_COLOR, label: '专业通道' };
-    return { color: '#94A3B8', label: '—' };
-  }
-  const kh = e.kh_score, ps = e.ps_score, acc = e.acc_score;
-  const total = kh + ps + acc;
+function pickDominant(v: JeGradeVariant | undefined): { color: string; label: string } {
+  if (!v) return { color: '#94A3B8', label: '—' };
+  const total = v.kh_score + v.ps_score + v.acc_score;
   if (total === 0) return { color: '#94A3B8', label: '—' };
-  const m = Math.max(kh, ps, acc);
-  if (m === kh) return { color: KH_COLOR, label: 'KH' };
-  if (m === ps) return { color: PS_COLOR, label: 'PS' };
+  const m = Math.max(v.kh_score, v.ps_score, v.acc_score);
+  if (m === v.kh_score) return { color: KH_COLOR, label: 'KH' };
+  if (m === v.ps_score) return { color: PS_COLOR, label: 'PS' };
   return { color: ACC_COLOR, label: 'ACC' };
 }
 

@@ -9,6 +9,11 @@ interface Props {
   children?: ReactNode;
   onModeChange?: (mode: WorkspaceMode) => void;
   /**
+   * 可选:title 行右侧追加节点 (一般是次要操作链接,比如"跳过访谈 →")。
+   * 跟 onModeChange 的全屏按钮共存,顺序: [headerExtra] [全屏按钮]。
+   */
+  headerExtra?: ReactNode;
+  /**
    * 可选：覆盖 mode 计算出的默认宽度。
    * 使用场景：调用方有更明确的宽度期望（比如 JE 工具想让 chat 占视觉主导，
    * 而不是主诊断 wide 黄金比例下 workspace 占主导）。
@@ -33,7 +38,7 @@ function getDefaultWidth(mode: WorkspaceMode): number {
   return 440;  // narrow
 }
 
-export default function Workspace({ mode, title, subtitle, children, onModeChange, initialWidth }: Props) {
+export default function Workspace({ mode, title, subtitle, children, onModeChange, headerExtra, initialWidth }: Props) {
   // 可变宽度：用户拖过后记住；切 mode 时用默认值重置
   const [width, setWidth] = useState<number>(() => initialWidth ?? getDefaultWidth(mode) ?? 440);
   const [isDragging, setIsDragging] = useState(false);
@@ -129,25 +134,28 @@ export default function Workspace({ mode, title, subtitle, children, onModeChang
       )}
 
       {/* Header —— 只保留全屏按钮，移除 ◀▶ 模式切换（改用拖拽边框） */}
-      {(title || onModeChange) && (
+      {(title || onModeChange || headerExtra) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             {title && <div style={{ fontSize: 15, fontWeight: 500, color: '#6b6b7e', marginBottom: 2 }}>{title}</div>}
             {subtitle && <div style={{ fontSize: 12, color: '#a0a0b0' }}>{subtitle}</div>}
           </div>
-          {onModeChange && (
-            <button
-              onClick={() => onModeChange(isFullscreen ? 'wide' : 'fullscreen')}
-              style={{
-                fontSize: 11, padding: '4px 10px', borderRadius: 6,
-                border: '1px solid var(--border)', background: '#fff',
-                color: 'var(--text-secondary)', cursor: 'pointer',
-              }}
-              title={isFullscreen ? '退出全屏' : '全屏'}
-            >
-              {isFullscreen ? '✕' : '⛶'}
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            {headerExtra}
+            {onModeChange && (
+              <button
+                onClick={() => onModeChange(isFullscreen ? 'wide' : 'fullscreen')}
+                style={{
+                  fontSize: 11, padding: '4px 10px', borderRadius: 6,
+                  border: '1px solid var(--border)', background: '#fff',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+                title={isFullscreen ? '退出全屏' : '全屏'}
+              >
+                {isFullscreen ? '✕' : '⛶'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

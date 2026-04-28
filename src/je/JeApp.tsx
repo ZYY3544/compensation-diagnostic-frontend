@@ -276,6 +276,10 @@ export default function JeApp() {
               setLibrary(library);          // 让 matrix 视图立刻能渲染岗位库面板
               setView('matrix');
             }}
+            onSkip={() => {
+              // 跳过访谈直接进图谱 — 已准备好数据 / 知道自己要建什么的用户
+              setView('matrix');
+            }}
           />
         ) : view === 'match' ? (
           <div style={{ height: '100%', overflowY: 'auto' }}>

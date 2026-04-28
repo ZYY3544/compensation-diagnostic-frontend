@@ -36,9 +36,16 @@ const STEP_ORDER: StepId[] = ['JE_Q1', 'JE_Q2', 'JE_Q3', 'JE_Q4'];
 
 interface Props {
   onComplete: (profile: JeOrgProfile, library: JeLibrary) => void;
+  /**
+   * 用户点"跳过访谈,直接构建岗位"时的回调。
+   * 跟薪酬诊断的"已准备好数据? 直接上传 →"是同一个套路 — 给那些已经知道
+   * 自己要建什么岗位、不需要 Sparky 帮忙做组织摸底的用户一个出口。
+   * 父组件一般直接 setView('matrix') 跳到图谱视图。
+   */
+  onSkip?: () => void;
 }
 
-export default function JeOnboarding({ onComplete }: Props) {
+export default function JeOnboarding({ onComplete, onSkip }: Props) {
   const [stage, setStage] = useState<Stage>('interview');
   const [profile, setProfile] = useState<Partial<JeOrgProfile>>({
     departments: [], layers: [],
@@ -289,7 +296,24 @@ export default function JeOnboarding({ onComplete }: Props) {
       </div>
 
       {/* 右:访谈笔记 — 文字摘要,不再用部门×层级矩阵 */}
-      <Workspace mode="wide" title="访谈笔记" subtitle="访谈中实时整理,完成后用来生成推荐岗位库">
+      <Workspace
+        mode="wide"
+        title="访谈笔记"
+        subtitle="访谈中实时整理,完成后用来生成推荐岗位库"
+        headerExtra={onSkip && stage === 'interview' ? (
+          // 仅在访谈中阶段才显示跳过链接 — 已经走到 generating/done/error,跳过没意义
+          <span
+            onClick={onSkip}
+            style={{
+              fontSize: 13, color: BRAND, cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="跳过组织访谈,直接进入图谱视图自己建岗位"
+          >
+            跳过访谈,直接建岗 →
+          </span>
+        ) : undefined}
+      >
         {/* done 状态下顶部 CTA — 用户主动决定什么时候离开访谈视图,这样
             访谈对话历史 + 笔记都能被回看,不会因为自动跳转被销毁 */}
         {stage === 'done' && (

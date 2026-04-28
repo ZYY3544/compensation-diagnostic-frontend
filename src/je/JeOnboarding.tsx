@@ -232,13 +232,13 @@ export default function JeOnboarding({ onComplete, onSkip }: Props) {
     const genId = nextMsgId();
     setMessages(prev => [...prev, { id: genId, role: 'bot', text: '' }]);
     streamText(
-      `画像信息我都收齐了 — ${finalProfile.industry || '未指定行业'} · ${finalProfile.headcount ?? '?'} 人 · ${finalProfile.departments.length} 个部门 · ${finalProfile.layers.length} 个管理层级。\n\n现在我用这些信息让 LLM 给你们生成一套推荐岗位库(大概 20-30 秒)...`,
+      `画像信息我都收齐了 — ${finalProfile.industry || '未指定行业'} · ${finalProfile.headcount ?? '?'} 人 · ${finalProfile.departments.length} 个部门 · ${finalProfile.layers.length} 个管理层级。\n\n我从我们的标准岗位库里挑跟你们行业匹配的岗位...`,
       (t) => setMessages(prev => prev.map(m => m.id === genId ? { ...m, text: t } : m)),
     );
 
     try {
       await jeSaveProfile(finalProfile);
-      const library = await tryGenerateLibraryWithRetry((retryNum) => {
+      const result = await tryGenerateLibraryWithRetry((retryNum) => {
         // 重试时给用户一个反馈,知道我们在做什么
         const noticeId = nextMsgId();
         setMessages(prev => [...prev, { id: noticeId, role: 'bot', text: '' }]);
@@ -248,14 +248,29 @@ export default function JeOnboarding({ onComplete, onSkip }: Props) {
         );
       });
 
-      // 暂存,等用户点'看推荐岗位库'按钮再 onComplete (不再自动跳转)
-      finishedLibraryRef.current = library;
       finishedProfileRef.current = finalProfile;
 
+      // 行业不命中 standard library — 给友好的引导文案,允许用户进图谱手动建岗
+      if (!result.library) {
+        finishedLibraryRef.current = {
+          entries: [], generated_at: new Date().toISOString(), model_used: 'none',
+        };
+        const noticeId = nextMsgId();
+        setMessages(prev => [...prev, { id: noticeId, role: 'bot', text: '' }]);
+        streamText(
+          `**抱歉,我们暂时没有"${finalProfile.industry || '你们行业'}"的标准岗位库**\n\n${result.hint || '我们的标准岗位库还在持续扩展中。'}\n\n你可以先用其他方式建岗:\n· 单评一个岗位(粘 JD 最准)\n· 批量上传 Excel 清单\n· 进图谱后手动加岗位\n\n后续我们补上你们行业模板后,你重新走一次访谈就能看到匹配的标准岗位。\n\n点右下角"进入图谱"开始。`,
+          (t) => setMessages(prev => prev.map(m => m.id === noticeId ? { ...m, text: t } : m)),
+          () => setStage('done'),
+        );
+        return;
+      }
+
+      // 命中,展示标准库岗位
+      finishedLibraryRef.current = result.library;
       const doneId = nextMsgId();
       setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
       streamText(
-        `生成完成 — 我为你们公司推荐了 ${library.entries.length} 个岗位。准备好后点右下角"看推荐岗位库"进入选岗界面,从里面挑跟你们实际匹配的就行。\n\n如果对刚才的访谈内容或推荐有疑问,直接问我。`,
+        `从我们的标准岗位库里给你挑了 ${result.library.entries.length} 个跟"${finalProfile.industry || '你们行业'}"匹配的岗位。准备好后点右下角"看推荐岗位库"进入选岗界面,挑跟你们实际匹配的就行。\n\n如果对刚才的访谈内容或推荐有疑问,直接问我。`,
         (t) => setMessages(prev => prev.map(m => m.id === doneId ? { ...m, text: t } : m)),
         () => setStage('done'),
       );
@@ -326,7 +341,9 @@ export default function JeOnboarding({ onComplete, onSkip }: Props) {
               }}
               style={primaryBtn}
             >
-              看推荐岗位库 →
+              {(finishedLibraryRef.current?.entries.length || 0) > 0
+                ? '看推荐岗位库 →'
+                : '进入图谱视图 →'}
             </button>
           </div>
         )}
@@ -429,7 +446,7 @@ export function NotesView({ profile, stage, errorText }: {
           padding: '18px 16px', textAlign: 'center', color: BRAND, fontSize: 13,
           fontWeight: 500,
         }}>
-          正在根据访谈笔记生成推荐岗位库(约 20-30 秒)...
+          正在从标准岗位库里挑跟你们行业匹配的岗位...
         </div>
       )}
       {stage === 'done' && (
@@ -541,7 +558,7 @@ function parseListAnswer(text: string): string[] {
  */
 async function tryGenerateLibraryWithRetry(
   onRetry: (retryNum: number) => void,
-): Promise<JeLibrary> {
+): Promise<{ library: JeLibrary | null; hint?: string }> {
   let lastErr: any;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
@@ -549,10 +566,9 @@ async function tryGenerateLibraryWithRetry(
       await new Promise(r => setTimeout(r, 4000 * attempt));
     }
     try {
-      // 这个调用本来就慢 (LLM 生成 20-40 个岗位,30-90s),150s timeout 比较合理
-      // — 跟 Render gunicorn 300s 配置留余量
-      const res = await jeGenerateLibrary({ timeout: 150_000 });
-      return res.data.library;
+      // 现在不调 LLM 了,纯查表很快;timeout 留 30s 兜底就行
+      const res = await jeGenerateLibrary({ timeout: 30_000 });
+      return res.data;     // {library, hint}
     } catch (e: any) {
       lastErr = e;
       console.warn(`[je-library] generate attempt ${attempt + 1} failed:`,

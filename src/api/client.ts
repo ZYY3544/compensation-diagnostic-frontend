@@ -385,8 +385,9 @@ export interface JeOnboardingExtractResponse {
 export const jeOnboardingExtract = (body: JeOnboardingExtractRequest) =>
   api.post<JeOnboardingExtractResponse>('/je/onboarding/extract', body);
 
+// library: null 时,后端返回 hint 字段说明为啥(一般是行业不命中标准库)
 export const jeGenerateLibrary = (config?: { timeout?: number }) =>
-  api.post<{ library: JeLibrary }>('/je/library/generate', undefined, {
+  api.post<{ library: JeLibrary | null; hint?: string }>('/je/library/generate', undefined, {
     timeout: config?.timeout ?? 0,    // 默认 0=无 timeout (axios 默认行为不变)
   });
 

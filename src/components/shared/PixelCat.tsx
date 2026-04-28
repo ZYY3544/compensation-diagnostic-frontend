@@ -20,8 +20,7 @@ type ColorKey = keyof typeof COLORS;
 const COLS = 12;
 const ROWS = 14;
 
-// 静态像素 (耳朵 / 头 / 脸 / 身体) — 排除 3x3 眼睛区域和腿部
-// 眼睛位置: 左 cols 1-3 / 右 cols 8-10, 都在 rows 4-6
+// 静态像素 (耳朵 / 头 / 脸 / 鼻子 / 胡须 / 身体) — 排除 2x2 眼睛区域和腿部
 const STATIC_PIXELS: [number, number, ColorKey][] = [
   [0, 2, 'P'], [0, 9, 'P'],
   [1, 1, 'P'], [1, 2, 'D'], [1, 3, 'P'], [1, 8, 'P'], [1, 9, 'D'], [1, 10, 'P'],
@@ -29,9 +28,12 @@ const STATIC_PIXELS: [number, number, ColorKey][] = [
   [2, 6, 'P'], [2, 7, 'P'], [2, 8, 'P'], [2, 9, 'P'], [2, 10, 'P'],
   [3, 0, 'P'], [3, 1, 'P'], [3, 2, 'P'], [3, 3, 'P'], [3, 4, 'P'], [3, 5, 'P'],
   [3, 6, 'P'], [3, 7, 'P'], [3, 8, 'P'], [3, 9, 'P'], [3, 10, 'P'], [3, 11, 'P'],
-  [4, 0, 'P'], [4, 4, 'P'], [4, 5, 'P'], [4, 6, 'P'], [4, 7, 'P'], [4, 11, 'P'],
-  [5, 0, 'P'], [5, 4, 'P'], [5, 5, 'P'], [5, 6, 'P'], [5, 7, 'P'], [5, 11, 'P'],
-  [6, 0, 'P'], [6, 4, 'P'], [6, 5, 'P'], [6, 6, 'P'], [6, 7, 'P'], [6, 11, 'P'],
+  [4, 0, 'P'], [4, 1, 'P'], [4, 4, 'P'], [4, 5, 'P'],
+  [4, 6, 'P'], [4, 7, 'P'], [4, 10, 'P'], [4, 11, 'P'],
+  [5, 0, 'P'], [5, 1, 'P'], [5, 4, 'P'], [5, 5, 'P'],
+  [5, 6, 'P'], [5, 7, 'P'], [5, 10, 'P'], [5, 11, 'P'],
+  [6, 0, 'P'], [6, 1, 'P'], [6, 2, 'P'], [6, 3, 'P'], [6, 4, 'P'], [6, 5, 'P'],
+  [6, 6, 'P'], [6, 7, 'P'], [6, 8, 'P'], [6, 9, 'P'], [6, 10, 'P'], [6, 11, 'P'],
   [7, 0, 'P'], [7, 1, 'P'], [7, 2, 'P'], [7, 3, 'P'], [7, 4, 'P'], [7, 5, 'P'],
   [7, 6, 'P'], [7, 7, 'P'], [7, 8, 'P'], [7, 9, 'P'], [7, 10, 'P'], [7, 11, 'P'],
   [8, 0, 'P'], [8, 1, 'P'], [8, 2, 'P'], [8, 3, 'P'], [8, 4, 'P'], [8, 5, 'P'],
@@ -42,10 +44,9 @@ const STATIC_PIXELS: [number, number, ColorKey][] = [
   [10, 6, 'P'], [10, 7, 'P'], [10, 8, 'P'], [10, 9, 'P'],
 ];
 
-// 3x3 眼白 — 9 格 x 2 只 = 18 entries
 const EYE_WHITES: [number, number][] = [
-  [4, 1], [4, 2], [4, 3], [5, 1], [5, 2], [5, 3], [6, 1], [6, 2], [6, 3],
-  [4, 8], [4, 9], [4, 10], [5, 8], [5, 9], [5, 10], [6, 8], [6, 9], [6, 10],
+  [4, 2], [4, 3], [5, 2], [5, 3],
+  [4, 8], [4, 9], [5, 8], [5, 9],
 ];
 
 const LEFT_LEG: [number, number, ColorKey][] = [
@@ -71,21 +72,33 @@ export default function PixelCat({ size = 32, mode = 'idle' }: PixelCatProps) {
   // 每个实例不同的随机相位偏移,避免页面上多只猫同时眨眼/抬腿
   const phase = useMemo(() => ({
     blink: -Math.random() * 6,
+    dart: -Math.random() * 9,
     walk: -Math.random() * 0.44,
   }), [mode]);
 
-  // 闭眼线条 — 跨 3x3 眼睛宽度,垂直居中在第 5 行 (rows 4-6 中间)
+  // 瞳孔默认位置
+  const pupilLeftX = 3 * cell + offX;
+  const pupilLeftY = 5 * cell + offY;
+  const pupilRightX = 9 * cell + offX;
+  const pupilRightY = 5 * cell + offY;
+
+  // 闭眼线条
   const lineH = Math.max(1, Math.round(cell * 0.5));
-  const lineY = 5.5 * cell + offY - lineH / 2;
-  const leftLineX = 1 * cell + offX;
+  const lineY = 5 * cell + offY - lineH / 2;
+  const leftLineX = 2 * cell + offX;
   const rightLineX = 8 * cell + offX;
-  const lineW = 3 * cell;
+  const lineW = 2 * cell;
 
   // 眨眼时序 (6 秒一周期):前 5.7s 睁眼 → 0.15s 闭 → 0.15s 睁
   const blinkOpenValues = '1;1;0;0;1;1';
   const blinkCloseValues = '0;0;1;1;0;0';
   const blinkTimes = '0;0.94;0.95;0.98;0.99;1';
   const blinkDur = '6s';
+
+  // 眼珠 dart 时序 (9 秒一周期):中心 → 左 → 中心 → 上 → 中心 → 左上 → 中心
+  const dartValues = `0,0; ${-cell},0; 0,0; 0,${-cell}; 0,0; ${-cell},${-cell}; 0,0`;
+  const dartTimes = '0;0.16;0.3;0.46;0.6;0.78;1';
+  const dartDur = '9s';
 
   const renderRect = (key: string, r: number, c: number, color: string) => (
     <rect key={key} x={c * cell + offX} y={r * cell + offY} width={cell} height={cell} fill={color} />
@@ -95,20 +108,46 @@ export default function PixelCat({ size = 32, mode = 'idle' }: PixelCatProps) {
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
       <g>
         {STATIC_PIXELS.map(([r, c, k], i) => renderRect(`s-${i}`, r, c, COLORS[k]))}
+        {EYE_WHITES.map(([r, c], i) => renderRect(`w-${i}`, r, c, COLORS.W))}
 
-        {/* 3x3 空白眼睛 — 眨眼时整组透明度 → 0,被闭眼横线替代 */}
+        {/* 瞳孔 — dart 偏移 + 眨眼时透明度 → 0 */}
         <g>
           {animated && (
-            <animate
-              attributeName="opacity"
-              values={blinkOpenValues}
-              keyTimes={blinkTimes}
-              dur={blinkDur}
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values={dartValues}
+              keyTimes={dartTimes}
+              dur={dartDur}
               repeatCount="indefinite"
-              begin={`${phase.blink}s`}
+              calcMode="discrete"
+              begin={`${phase.dart}s`}
             />
           )}
-          {EYE_WHITES.map(([r, c], i) => renderRect(`w-${i}`, r, c, COLORS.W))}
+          <rect x={pupilLeftX} y={pupilLeftY} width={cell} height={cell} fill={COLORS.E}>
+            {animated && (
+              <animate
+                attributeName="opacity"
+                values={blinkOpenValues}
+                keyTimes={blinkTimes}
+                dur={blinkDur}
+                repeatCount="indefinite"
+                begin={`${phase.blink}s`}
+              />
+            )}
+          </rect>
+          <rect x={pupilRightX} y={pupilRightY} width={cell} height={cell} fill={COLORS.E}>
+            {animated && (
+              <animate
+                attributeName="opacity"
+                values={blinkOpenValues}
+                keyTimes={blinkTimes}
+                dur={blinkDur}
+                repeatCount="indefinite"
+                begin={`${phase.blink}s`}
+              />
+            )}
+          </rect>
         </g>
 
         {/* 闭眼横线 — 与瞳孔反相,眨眼瞬间出现 */}

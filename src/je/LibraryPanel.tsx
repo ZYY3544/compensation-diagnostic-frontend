@@ -105,7 +105,7 @@ export default function LibraryPanel({ library, jobs, onJobCreated, defaultOpen 
             </span>
           </div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-            点你公司有的岗位直接添加 — 添加后在岗位详情页可以看完整 Success Profile + 调整 8 因子
+            点行右侧"+ 添加"把岗位入库 — 添加后在岗位详情页可以看完整 Success Profile + 调整 8 因子
           </div>
         </div>
         <span style={{ fontSize: 12, color: '#64748B' }}>{open ? '收起 ▲' : '展开 ▼'}</span>
@@ -204,18 +204,18 @@ function DeptGroup({ dept, items, usedLibIds, addingIds, onAdd }: {
           entry={e}
           used={usedLibIds.has(e.id)}
           adding={addingIds.has(e.id)}
-          onClick={() => onAdd(e)}
+          onAdd={() => onAdd(e)}
         />
       ))}
     </div>
   );
 }
 
-function EntryRow({ entry, used, adding, onClick }: {
+function EntryRow({ entry, used, adding, onAdd }: {
   entry: JeLibraryEntry;
   used: boolean;
   adding: boolean;
-  onClick: () => void;
+  onAdd: () => void;
 }) {
   const dom = pickDominant(entry);
   const disabled = used || adding;
@@ -225,17 +225,15 @@ function EntryRow({ entry, used, adding, onClick }: {
 
   return (
     <div
-      onClick={disabled ? undefined : onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 10px', borderRadius: 6,
-        cursor: disabled ? 'default' : 'pointer',
         opacity: used ? 0.5 : 1,
         marginBottom: 2,
         transition: 'background 0.12s',
       }}
       onMouseOver={e => { if (!disabled) e.currentTarget.style.background = '#F8FAFC'; }}
-      onMouseOut={e => { if (!disabled) e.currentTarget.style.background = 'transparent'; }}
+      onMouseOut={e => { e.currentTarget.style.background = 'transparent'; }}
     >
       <span style={{ width: 4, height: 16, borderRadius: 2, background: dom.color, flexShrink: 0 }} />
       <div style={{ flex: 1, fontSize: 12, color: '#0F172A', minWidth: 0 }}>
@@ -246,8 +244,6 @@ function EntryRow({ entry, used, adding, onClick }: {
               {entry.profile}
             </span>
           )}
-          {used && <span style={{ fontSize: 10, color: '#16A34A' }}>✓ 已添加</span>}
-          {adding && <span style={{ fontSize: 10, color: '#94A3B8' }}>添加中…</span>}
           {entry.invalid_factors && (
             <span title="LLM 给的因子组合不合法,分数仅供参考"
                   style={{ fontSize: 10, color: '#D97706' }}>⚠ 因子异常</span>
@@ -265,6 +261,23 @@ function EntryRow({ entry, used, adding, onClick }: {
       <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: BRAND, minWidth: 28, textAlign: 'right' }}>
         {entry.hay_grade != null ? `G${entry.hay_grade}` : '—'}
       </div>
+      {/* 显式添加按钮 — 点击直接入库的设计被用户否了,改回需要明确意图按钮 */}
+      <button
+        onClick={onAdd}
+        disabled={disabled}
+        style={{
+          flexShrink: 0,
+          padding: '4px 12px', fontSize: 11, fontWeight: 500,
+          border: used ? 'none' : `1px solid ${BRAND}`,
+          borderRadius: 4,
+          background: used ? '#F1F5F9' : (adding ? '#FEF7F4' : '#fff'),
+          color: used ? '#16A34A' : (adding ? '#94A3B8' : BRAND),
+          cursor: disabled ? 'default' : 'pointer',
+          minWidth: 56, textAlign: 'center',
+        }}
+      >
+        {used ? '✓ 已添加' : (adding ? '添加中…' : '+ 添加')}
+      </button>
     </div>
   );
 }

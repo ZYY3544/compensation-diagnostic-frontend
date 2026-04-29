@@ -715,6 +715,8 @@ function AppInner() {
                 dispatchSkill('full_diagnosis', '做一次完整的薪酬诊断');
               } else if (key === 'je') {
                 nav('/je');
+              } else if (key === 'sd') {
+                nav('/sd');
               }
             }}
           />

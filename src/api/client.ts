@@ -469,4 +469,86 @@ export const classifyIntent = (message: string, context?: any) =>
 export const invokeSkill = (skillKey: string, sessionId: string, params: any) =>
   api.post('/skill/invoke', { skill_key: skillKey, session_id: sessionId, params });
 
+// ============================================================================
+// SD - 战略解码 (Strategy Decoding)
+// ============================================================================
+
+export interface SdProfile {
+  vision_md: string;
+  business_model_md: string;
+  growth_opportunities_md: string;
+  core_capabilities: string[];
+  constraints_md: string;
+}
+
+export interface SdDecodingLever {
+  name: string;
+  rationale: string;
+}
+
+export interface SdDepartmentTranslation {
+  department: string;
+  critical_outcomes: string[];
+  kpis: string[];
+}
+
+export interface SdCriticalRole {
+  role: string;
+  why_critical: string;
+  priority: '立即' | '6 月内' | '1 年内' | string;
+}
+
+export interface SdRoadmapQuarter {
+  quarter: string;
+  milestones: string[];
+}
+
+export interface SdConsistencyCheck {
+  criterion: string;
+  status: string;
+  note: string;
+}
+
+export interface SdDecoding {
+  strategy_statement: string;
+  three_levers: SdDecodingLever[];
+  department_translations: SdDepartmentTranslation[];
+  critical_roles: SdCriticalRole[];
+  capability_priorities: { '1y': string[]; '3y': string[] };
+  roadmap: SdRoadmapQuarter[];
+  consistency_check: SdConsistencyCheck[];
+  generated_at?: string;
+  model_used?: string;
+}
+
+export const sdGetProfile = () =>
+  api.get<{ profile: SdProfile | null; decoding: SdDecoding | null; updated_at?: string }>('/sd/profile');
+
+export const sdSaveProfile = (profile: Partial<SdProfile>) =>
+  api.post<{ ok: boolean; profile: SdProfile; decoding: SdDecoding | null }>('/sd/profile', profile);
+
+export const sdGenerateDecoding = (config?: { timeout?: number }) =>
+  api.post<{ ok: boolean; decoding: SdDecoding }>('/sd/decoding/generate', undefined, {
+    timeout: config?.timeout ?? 0,
+  });
+
+export interface SdInterviewExtractRequest {
+  question_id: 'Opening' | 'SD_Q1' | 'SD_Q2' | 'SD_Q3' | 'SD_Q4' | 'SD_Q5';
+  answer: string;
+  previous_value?: string;
+  is_follow_up?: boolean;
+  round?: number;
+  follow_up_question?: string;
+  context?: string;
+}
+
+export interface SdInterviewExtractResponse {
+  extracted: Array<{ field_name: string; value: string }>;
+  reply: string;
+  follow_up: boolean;
+}
+
+export const sdInterviewExtract = (body: SdInterviewExtractRequest) =>
+  api.post<SdInterviewExtractResponse>('/sd/interview/extract', body);
+
 export default api;

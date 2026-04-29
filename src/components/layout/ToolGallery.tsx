@@ -29,6 +29,13 @@ const TOOLS: Tool[] = [
     badge: 'v1',
   },
   {
+    key: 'sd',
+    name: '战略解码',
+    desc: '把战略翻译到部门 KPI、关键岗位、能力建设、季度路线图。基于 Korn Ferry 钻石模型 + 6 项一致性检查。',
+    ready: true,
+    badge: 'v1',
+  },
+  {
     key: 'design',
     name: '薪酬设计',
     desc: '生成调薪方案、薪酬带宽、激励结构。结合诊断和岗位价值结果，输出可落地的薪酬设计。',

@@ -717,6 +717,8 @@ function AppInner() {
                 nav('/je');
               } else if (key === 'sd') {
                 nav('/sd');
+              } else if (key === 'sc') {
+                nav('/sc');
               }
             }}
           />

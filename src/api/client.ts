@@ -551,4 +551,68 @@ export interface SdInterviewExtractResponse {
 export const sdInterviewExtract = (body: SdInterviewExtractRequest) =>
   api.post<SdInterviewExtractResponse>('/sd/interview/extract', body);
 
+// ============================================================================
+// SC - 战略澄清 (Strategy Clarification)
+// ============================================================================
+
+export interface ScProfile {
+  arenas_md: string;
+  vehicles_md: string;
+  differentiators_md: string;
+  staging_md: string;
+  economic_logic_md: string;
+}
+
+export interface ScQualityTest {
+  criterion: string;
+  status: string;
+  note: string;
+}
+
+export interface ScDiamond {
+  strategic_statement: string;
+  diamond: {
+    arenas: string;
+    vehicles: string;
+    differentiators: string;
+    staging: string;
+    economic_logic: string;
+  };
+  quality_tests: ScQualityTest[];
+  consistency_warnings: string[];
+  completeness_gaps: string[];
+  generated_at?: string;
+  model_used?: string;
+}
+
+export const scGetProfile = () =>
+  api.get<{ profile: ScProfile | null; diamond: ScDiamond | null; updated_at?: string }>('/sc/profile');
+
+export const scSaveProfile = (profile: Partial<ScProfile>) =>
+  api.post<{ ok: boolean; profile: ScProfile; diamond: ScDiamond | null }>('/sc/profile', profile);
+
+export const scGenerateDiamond = (config?: { timeout?: number }) =>
+  api.post<{ ok: boolean; diamond: ScDiamond }>('/sc/diamond/generate', undefined, {
+    timeout: config?.timeout ?? 0,
+  });
+
+export interface ScInterviewExtractRequest {
+  question_id: 'Opening' | 'SC_Q1' | 'SC_Q2' | 'SC_Q3' | 'SC_Q4' | 'SC_Q5';
+  answer: string;
+  previous_value?: string;
+  is_follow_up?: boolean;
+  round?: number;
+  follow_up_question?: string;
+  context?: string;
+}
+
+export interface ScInterviewExtractResponse {
+  extracted: Array<{ field_name: string; value: string }>;
+  reply: string;
+  follow_up: boolean;
+}
+
+export const scInterviewExtract = (body: ScInterviewExtractRequest) =>
+  api.post<ScInterviewExtractResponse>('/sc/interview/extract', body);
+
 export default api;

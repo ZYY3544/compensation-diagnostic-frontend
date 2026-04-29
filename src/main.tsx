@@ -10,6 +10,7 @@ import WorkspaceShell from './layout/WorkspaceShell';
 import App from './App';
 import JeApp from './je/JeApp';
 import SdApp from './sd/SdApp';
+import ScApp from './sc/ScApp';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/diagnosis/*" element={<App />} />
             <Route path="/je/*" element={<JeApp />} />
             <Route path="/sd/*" element={<SdApp />} />
+            <Route path="/sc/*" element={<ScApp />} />
             {/* 未来：/design/* /assessment/* */}
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

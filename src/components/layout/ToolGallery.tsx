@@ -29,9 +29,16 @@ const TOOLS: Tool[] = [
     badge: 'v1',
   },
   {
+    key: 'sc',
+    name: '战略澄清',
+    desc: '把脑子里散乱的战略想法整理成 Korn Ferry 钻石模型 5 大元素 + 6 项战略质量测试。Sparky 主动挑战空话,挤出可被检验的战略选择。',
+    ready: true,
+    badge: 'v1',
+  },
+  {
     key: 'sd',
     name: '战略解码',
-    desc: '把战略翻译到部门 KPI、关键岗位、能力建设、季度路线图。基于 Korn Ferry 钻石模型 + 6 项一致性检查。',
+    desc: '把已经想清楚的战略翻译到部门 KPI、关键岗位、能力建设、季度路线图。下游接战略澄清的产出,完成"战略 → 组织"闭环。',
     ready: true,
     badge: 'v1',
   },

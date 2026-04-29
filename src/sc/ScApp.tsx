@@ -2,20 +2,20 @@
  * 战略澄清 (SC) 工具主组件 — 镜像 SdApp。
  *
  * 视图状态:
- *   entry      → 入口页
- *   interview  → ScInterview 多轮访谈
- *   diamond    → ScDiamondView 钻石模型展示
+ *   interview  → ScInterview (默认入口,Sparky 第一条消息会介绍工具 + 4 步流程)
+ *   diamond    → ScDiamondView (有缓存解码时默认进这里)
+ *
+ * 入口卡片已删 — 一进 tool 直接对话,介绍语作为 Sparky 开场白。
  */
 import { useEffect, useState } from 'react';
 import { scGetProfile, scGenerateDiamond, type ScProfile, type ScDiamond } from '../api/client';
-import ScEntryView from './ScEntryView';
 import ScInterview from './ScInterview';
 import ScDiamondView from './ScDiamondView';
 
-type ViewMode = 'entry' | 'interview' | 'diamond';
+type ViewMode = 'interview' | 'diamond';
 
 export default function ScApp() {
-  const [view, setView] = useState<ViewMode>('entry');
+  const [view, setView] = useState<ViewMode>('interview');
   const [, setProfile] = useState<ScProfile | null>(null);
   const [diamond, setDiamond] = useState<ScDiamond | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +26,8 @@ export default function ScApp() {
       .then(res => {
         setProfile(res.data.profile);
         setDiamond(res.data.diamond);
+        // 已经有钻石模型 → 默认进展示页 (用户大概率是回来看而不是重做)
+        // 没有 → 留在 interview (默认值)
         if (res.data.diamond) {
           setView('diamond');
         }
@@ -66,32 +68,19 @@ export default function ScApp() {
     );
   }
 
-  if (view === 'entry') {
-    return (
-      <ScEntryView
-        onStart={() => setView('interview')}
-        hasExistingDiamond={!!diamond}
-        onViewExisting={diamond ? () => setView('diamond') : undefined}
-      />
-    );
-  }
-
   if (view === 'interview') {
     return (
       <ScInterview
         onComplete={handleInterviewComplete}
-        onSkip={diamond ? () => setView('diamond') : () => setView('entry')}
+        onSkip={diamond ? () => setView('diamond') : undefined}
       />
     );
   }
 
+  // view === 'diamond'
   if (!diamond) {
-    return (
-      <ScEntryView
-        onStart={() => setView('interview')}
-        hasExistingDiamond={false}
-      />
-    );
+    // 异常态:没数据但被路由到 diamond,回退访谈
+    return <ScInterview onComplete={handleInterviewComplete} />;
   }
 
   return (

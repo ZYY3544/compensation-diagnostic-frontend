@@ -29,6 +29,25 @@ type StepId = 'Opening' | 'SD_Q1' | 'SD_Q2' | 'SD_Q3' | 'SD_Q4' | 'SD_Q5';
 
 const STEP_ORDER: StepId[] = ['SD_Q1', 'SD_Q2', 'SD_Q3', 'SD_Q4', 'SD_Q5'];
 
+const SD_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的战略顾问 AI。这是战略解码工具。
+
+**什么是战略解码**
+
+把已经想清楚的战略翻译到部门 KPI、关键岗位、能力建设、季度路线图 — 让每个人都知道未来 1 年要交付什么。区别于战略澄清工具(那是从 0 到 1 帮你把战略想清楚),战略解码是从 1 到 100 把战略落到组织上。
+
+**接下来 10-15 分钟,4 步走完**
+
+1. 我用 5 道题采集你们的战略输入 — 愿景 / 业务模式 / 增长机会 / 核心能力 / 关键约束
+2. 基于钻石模型 + 6 项一致性检查,翻译成可执行的解码地图
+3. 部门翻译: 每个核心部门的 critical outcomes + KPIs + 关键岗位 + 能力建设
+4. 季度路线图: 未来 4 个季度的关键里程碑
+
+**适用提醒**
+
+如果你们的战略方向都还没定,建议先用「战略澄清」工具理清楚再来这里。
+
+**第一个问题:你们 3-5 年的愿景目标是什么? 量化的成功画像 / 北极星指标是什么?**`;
+
 interface Props {
   onComplete: (profile: SdProfile, decoding: SdDecoding) => void;
   onSkip?: () => void;
@@ -58,8 +77,17 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    setMessages([{ role: 'user', text: '我想做一次战略解码,把战略翻译到各部门和岗位' }]);
-    setTimeout(() => callExtract('Opening', ''), 200);
+
+    setMessages([
+      { role: 'user', text: '我想做一次战略解码' },
+      { id: nextMsgId(), role: 'bot', text: SD_WELCOME_MESSAGE },
+    ]);
+
+    stepRef.current = 'SD_Q1';
+    roundRef.current = 1;
+    isFollowUpRef.current = true;
+    lastSparkyQuestionRef.current = '你们 3-5 年的愿景目标是什么? 量化的成功画像 / 北极星指标是什么?';
+
     fetch(`${API_BASE}/sd/health`, { method: 'GET' }).catch(() => {});
   }, []);
 

@@ -26,6 +26,25 @@ type StepId = 'Opening' | 'SC_Q1' | 'SC_Q2' | 'SC_Q3' | 'SC_Q4' | 'SC_Q5';
 
 const STEP_ORDER: StepId[] = ['SC_Q1', 'SC_Q2', 'SC_Q3', 'SC_Q4', 'SC_Q5'];
 
+const SC_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的战略顾问 AI。这是战略澄清工具。
+
+**什么是战略澄清**
+
+基于 Korn Ferry 钻石模型,把脑子里散乱的战略想法整理成 5 元素的结构化战略 + 6 项质量测试。区别于战略解码工具(那是把已经清楚的战略翻译到组织和部门),战略澄清是帮你从 0 到 1 把战略本身想清楚。
+
+**接下来 15-20 分钟,4 步走完**
+
+1. 我用 5 道题挖出钻石模型 5 元素 — 竞争领域 / 方式 / 差异化 / 节奏 / 盈利模式
+2. 整理成结构化战略表述 + 一句话战略
+3. 跑 6 项战略质量测试 (适合环境 / 利用资源 / 差异化可持续 / 内部一致 / 资源足够 / 可执行)
+4. 识别 5 元素之间的张力或加固,标出信息不足的 gap
+
+**说在前面**
+
+过程中我会主动挑战空话 — 你说"做行业第一"我会追问"第一具体指什么指标"。这是工具最值钱的部分,请耐心跟我对话。
+
+**第一个问题:你们的业务打算在哪里玩? 服务什么客户、做什么产品、覆盖哪些地域、价值链上的哪些环节?**`;
+
 interface Props {
   onComplete: (profile: ScProfile, diamond: ScDiamond) => void;
   onSkip?: () => void;
@@ -55,8 +74,20 @@ export default function ScInterview({ onComplete, onSkip }: Props) {
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    setMessages([{ role: 'user', text: '我想做一次战略澄清,把战略想清楚' }]);
-    setTimeout(() => callExtract('Opening', ''), 200);
+
+    // 一进 tool 直接展示 Sparky 开场白 (硬编码,无 LLM 延迟)
+    // 介绍工具是什么 + 4 步流程 + 心理预期 + 第一题
+    setMessages([
+      { role: 'user', text: '我想做一次战略澄清' },
+      { id: nextMsgId(), role: 'bot', text: SC_WELCOME_MESSAGE },
+    ]);
+
+    // 状态机直接进入 SC_Q1 round 1 (等用户回答第一题)
+    stepRef.current = 'SC_Q1';
+    roundRef.current = 1;
+    isFollowUpRef.current = true;   // round 1 的回答都标 follow_up=true,跟原 Opening→Q1 流程一致
+    lastSparkyQuestionRef.current = '你们的业务打算在哪里玩? 服务什么客户、做什么产品、覆盖哪些地域、价值链上的哪些环节?';
+
     fetch(`${API_BASE}/sc/health`, { method: 'GET' }).catch(() => {});
   }, []);
 

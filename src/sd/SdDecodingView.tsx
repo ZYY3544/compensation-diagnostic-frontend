@@ -18,13 +18,14 @@ const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
 interface Props {
+  /** 当前 workspace 的战略澄清访谈产出。V1 只读,但保留 prop 接口为 V2 编辑功能预留。 */
   profile: SdProfile;
   decoding: SdDecoding;
   onRestart?: () => void;     // 重新开始访谈 (覆盖 profile 和 decoding)
   onRegenerate?: () => void;  // 基于现 profile 重新生成 decoding
 }
 
-export default function SdDecodingView({ profile, decoding, onRestart, onRegenerate }: Props) {
+export default function SdDecodingView({ decoding, onRestart, onRegenerate }: Props) {
   return (
     <div style={{
       flex: 1, overflow: 'auto', background: '#FAFAFA',
@@ -272,8 +273,8 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const isPass = status.includes('✓') || status.includes('通过');
-  const isWarn = status.includes('⚠') || status.includes('待补');
   const isFail = status.includes('✗') || status.includes('风险');
+  // 其他情况落到 ⚠ 待补 (黄色)
   const color = isPass ? '#059669' : isFail ? '#DC2626' : '#D97706';
   const bg = isPass ? '#ECFDF5' : isFail ? '#FEF2F2' : '#FFFBEB';
   const icon = isPass ? '✓' : isFail ? '✗' : '⚠';

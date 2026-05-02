@@ -697,11 +697,15 @@ export const scInterviewExtract = (body: ScInterviewExtractRequest) =>
 // ============================================================================
 
 export interface OdProfile {
-  strategy_md: string;             // 战略层面
-  organization_md: string;         // 组织层面
-  talent_md: string;               // 人才层面
-  comp_perf_md: string;            // 薪酬绩效层面
-  culture_leadership_md: string;   // 文化领导力层面
+  // EES 背景采集 (2 题)
+  company_basics_md?: string;      // 公司基础情况 (行业 / 规模 / 阶段 / 业务现状)
+  survey_focus_md?: string;        // 这次调研最关心的议题 + 期待发现什么
+  // —— 历史字段 (老 OD V1 5 层访谈, 已废弃, 仅兼容老数据 ——)
+  strategy_md?: string;
+  organization_md?: string;
+  talent_md?: string;
+  comp_perf_md?: string;
+  culture_leadership_md?: string;
 }
 
 export interface OdLayerFinding {
@@ -764,8 +768,18 @@ export interface OdDiagnosisDoubleESummary {
   breakdown: OdDoubleEAgg['breakdown'];
 }
 
+export interface OdEngagementFindings {
+  engagement_observation: string;
+  enablement_observation: string;
+  quadrant_observation: string;
+  department_observation: string;
+}
+
 export interface OdDiagnosis {
   executive_summary: string;
+  /** EES 新字段 — Double E 4 大块解读 */
+  engagement_findings?: OdEngagementFindings;
+  /** 兼容老 OD V1 的占位字段, EES 报告里此字段为空对象 */
   layer_findings: OdLayerFindings;
   top_strengths: OdKeyFinding[];
   top_gaps: OdKeyFinding[];
@@ -909,7 +923,7 @@ export const odSurveyPublicSubmit = (token: string, body: { answers: Record<stri
   publicApi.post<{ ok: boolean; message: string }>(`/od/survey/public/${encodeURIComponent(token)}`, body);
 
 export interface OdInterviewExtractRequest {
-  question_id: 'Opening' | 'OD_Q1' | 'OD_Q2' | 'OD_Q3' | 'OD_Q4' | 'OD_Q5';
+  question_id: 'Opening' | 'BG_Q1' | 'BG_Q2' | 'OD_Q1' | 'OD_Q2' | 'OD_Q3' | 'OD_Q4' | 'OD_Q5';
   answer: string;
   previous_value?: string;
   is_follow_up?: boolean;

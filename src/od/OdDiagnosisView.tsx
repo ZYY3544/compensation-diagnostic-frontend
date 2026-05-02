@@ -1,30 +1,26 @@
 /**
- * 组织诊断 (OD) 完整诊断报告展示页 — 7 大区块.
+ * 员工敬业度调研 (EES) 完整报告展示页 — 7 大区块.
  *
  * 区块:
- *   1. 执行总览 (executive_summary, 大字号高亮)
- *   2. 5 层面诊断 (status + 现状 + 关键观察 + 痛点)
- *   3. Top 3 优势 + Top 3 短板 (并排)
- *   4. 行业实践对标
- *   5. 优化建议 (战略层 / 体系层 / 运营层 3 类)
- *   6. 后续工具推荐 (引导到铭曦其他工具)
+ *   1. 执行总览
+ *   2. Double E 调研数据 (敬业度/支持度/4 类员工/部门差异 — 真实定量)
+ *   3. 4 大维度解读 (engagement_findings — LLM 基于数据写)
+ *   4. Top 3 优势 + Top 3 短板 (基于 14 维度)
+ *   5. 行业实践对标
+ *   6. 优化建议 (战略层 / 体系层 / 运营层 3 类)
+ *   7. 后续工具推荐
+ *
+ * 注: layer_findings 字段保留但不再渲染 (兼容老 OD V1 数据).
  */
 import { useNavigate } from 'react-router-dom';
 import type {
-  OdDiagnosis, OdLayerFinding, OdRecommendation,
+  OdDiagnosis, OdRecommendation,
   OdDiagnosisDoubleESummary, OdDoubleEDimension, OdDoubleEBreakdownRow,
+  OdEngagementFindings,
 } from '../api/client';
 
 const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
-
-const LAYER_META: Array<{ key: keyof OdDiagnosis['layer_findings']; cn: string; emoji: string; color: string; bg: string }> = [
-  { key: 'strategy',           cn: '战略层',     emoji: '🎯', color: '#0EA5E9', bg: '#F0F9FF' },
-  { key: 'organization',       cn: '组织层',     emoji: '🏗️', color: '#7C3AED', bg: '#F5F3FF' },
-  { key: 'talent',             cn: '人才层',     emoji: '👥', color: '#059669', bg: '#ECFDF5' },
-  { key: 'comp_perf',          cn: '薪酬绩效层', emoji: '💰', color: '#D97706', bg: '#FFFBEB' },
-  { key: 'culture_leadership', cn: '文化领导力', emoji: '⭐', color: '#DB2777', bg: '#FDF2F8' },
-];
 
 const TOOL_META: Record<string, { cn: string; route: string; desc: string }> = {
   sc:                 { cn: '战略澄清',     route: '/sc',         desc: 'KF 钻石模型 5 元素 + 6 项质量测试' },
@@ -65,19 +61,18 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
           </div>
         </Section>
 
-        {/* 2. 5 层面诊断 */}
-        <Section title="② 5 层面诊断" subtitle="基于 KF 战略-组织-领导三角框架的多角度评估">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {LAYER_META.map(meta => {
-              const finding = diagnosis.layer_findings?.[meta.key] as OdLayerFinding | undefined;
-              if (!finding) return null;
-              return <LayerCard key={meta.key} meta={meta} finding={finding} />;
-            })}
-          </div>
-        </Section>
+        {/* 2. Double E 调研数据 (真实定量) */}
+        {diagnosis.double_e_summary && (
+          <DoubleESection summary={diagnosis.double_e_summary} />
+        )}
 
-        {/* 3. Top 优势 + 短板 */}
-        <Section title="③ Top 优势 / 短板" subtitle="影响战略实现的关键要素">
+        {/* 3. 4 大维度解读 (LLM 基于数据写) */}
+        {diagnosis.engagement_findings && (
+          <EngagementFindingsSection findings={diagnosis.engagement_findings} />
+        )}
+
+        {/* 4. Top 优势 + 短板 */}
+        <Section title="④ Top 优势 / 短板维度" subtitle="基于 Double E 14 维度赞同比 + 双基准差距">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <FindingsList
               title="Top 优势"
@@ -94,14 +89,9 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
           </div>
         </Section>
 
-        {/* 3.5 Double E 员工调研 — 来自真实定量数据 */}
-        {diagnosis.double_e_summary && (
-          <DoubleESection summary={diagnosis.double_e_summary} />
-        )}
-
-        {/* 4. 行业实践对标 */}
+        {/* 5. 行业实践对标 */}
         {diagnosis.industry_benchmarks?.length > 0 && (
-          <Section title="④ 行业实践对标" subtitle="跟领先企业的差距识别">
+          <Section title="⑤ 行业实践对标" subtitle="跟领先企业的差距识别">
             <div style={{
               background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
               overflow: 'hidden',
@@ -133,7 +123,7 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
         )}
 
         {/* 5. 优化建议 */}
-        <Section title="⑤ 优化建议" subtitle="按战略层 / 体系层 / 运营层 3 类排序">
+        <Section title="⑥ 优化建议" subtitle="按战略层 / 体系层 / 运营层 3 类排序">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {(['strategic', 'systematic', 'operational'] as const).map(level => {
               const items = diagnosis.recommendations?.[level];
@@ -158,7 +148,7 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
 
         {/* 6. 后续工具推荐 */}
         {diagnosis.next_tools?.length > 0 && (
-          <Section title="⑥ 后续工具推荐" subtitle="基于诊断发现, 引导到铭曦其他工具继续深化">
+          <Section title="⑦ 后续工具推荐" subtitle="基于诊断发现, 引导到铭曦其他工具继续深化">
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12,
             }}>
@@ -226,84 +216,6 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
 // ============================================================================
 // Helpers
 // ============================================================================
-function LayerCard({ meta, finding }: {
-  meta: { cn: string; emoji: string; color: string; bg: string };
-  finding: OdLayerFinding;
-}) {
-  return (
-    <div style={{
-      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-      padding: '18px 22px', borderLeft: `4px solid ${meta.color}`,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14,
-      }}>
-        <div style={{
-          fontSize: 20, lineHeight: 1,
-        }}>{meta.emoji}</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>
-            {meta.cn}
-          </div>
-          {finding.status && (
-            <span style={{
-              display: 'inline-block', marginTop: 4,
-              padding: '2px 10px', borderRadius: 4,
-              background: meta.bg, color: meta.color,
-              fontSize: 11, fontWeight: 600,
-            }}>
-              {finding.status}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {finding.current_state && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{
-            fontSize: 11, color: '#94A3B8', fontWeight: 600,
-            textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6,
-          }}>
-            现状
-          </div>
-          <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.7 }}>
-            {renderMd(finding.current_state)}
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        {finding.observations?.length > 0 && (
-          <div>
-            <div style={{
-              fontSize: 11, color: meta.color, fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6,
-            }}>
-              关键观察
-            </div>
-            <ul style={{ ...ulStyle, fontSize: 13 }}>
-              {finding.observations.map((o, i) => <li key={i}>{o}</li>)}
-            </ul>
-          </div>
-        )}
-        {finding.pain_points?.length > 0 && (
-          <div>
-            <div style={{
-              fontSize: 11, color: '#DC2626', fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6,
-            }}>
-              痛点
-            </div>
-            <ul style={{ ...ulStyle, fontSize: 13 }}>
-              {finding.pain_points.map((p, i) => <li key={i}>{p}</li>)}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function FindingsList({ title, items, color, bg }: {
   title: string; items: any[]; color: string; bg: string;
 }) {
@@ -393,6 +305,46 @@ function RecommendationsBlock({ title, desc, color, items }: {
 // ============================================================
 // Double E 员工调研 — 真实定量数据 section
 // ============================================================
+// ============================================================
+// ③ engagement_findings — 4 大维度的 LLM 解读
+// ============================================================
+function EngagementFindingsSection({ findings }: { findings: OdEngagementFindings }) {
+  const blocks = [
+    { key: 'engagement_observation',  label: '员工敬业度 (我想做)',  color: BRAND,      tint: BRAND_TINT },
+    { key: 'enablement_observation',  label: '组织支持度 (我能做)',  color: '#2563EB',  tint: '#EFF6FF' },
+    { key: 'quadrant_observation',    label: '4 类员工分布解读',     color: '#16A34A',  tint: '#F0FDF4' },
+    { key: 'department_observation',  label: '部门差异解读',         color: '#7C3AED',  tint: '#F5F3FF' },
+  ] as const;
+
+  return (
+    <Section title="③ 关键洞察 (Sparky 解读)" subtitle="基于真实数据 + 客户背景, 4 大维度的诊断观察">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {blocks.map(b => {
+          const text = findings[b.key as keyof OdEngagementFindings];
+          if (!text) return null;
+          return (
+            <div key={b.key} style={{
+              background: '#fff', border: `1px solid ${b.color}33`,
+              borderLeft: `4px solid ${b.color}`,
+              borderRadius: 10, padding: '18px 22px',
+            }}>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: b.color, marginBottom: 10,
+                display: 'inline-block', padding: '3px 10px',
+                background: b.tint, borderRadius: 10,
+              }}>{b.label}</div>
+              <div style={{
+                fontSize: 13, color: '#0F172A', lineHeight: 1.85,
+                whiteSpace: 'pre-wrap',
+              }}>{text}</div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
 function DoubleESection({ summary }: { summary: OdDiagnosisDoubleESummary }) {
   const overall = summary.overall;
   const quad = overall.quadrant_distribution || {};
@@ -400,8 +352,8 @@ function DoubleESection({ summary }: { summary: OdDiagnosisDoubleESummary }) {
 
   return (
     <Section
-      title="③.5 员工 Double E 调研 (真实定量数据)"
-      subtitle={`基于 ${summary.response_count} 份匿名答卷 — 14 维度 / 4 类员工分布 / 部门差异`}
+      title="② Double E 调研数据"
+      subtitle={`基于 ${summary.response_count} 份匿名答卷 — 综合得分 / 4 类员工分布 / Top-Bottom 维度 / 部门差异`}
     >
       {/* 综合得分 */}
       <div style={{

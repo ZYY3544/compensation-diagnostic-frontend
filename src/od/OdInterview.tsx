@@ -1,10 +1,14 @@
 /**
- * 组织诊断 (OD) 5 层访谈 — 镜像 SD V2 模式但产出不同。
+ * 员工敬业度调研 - Stage 3: 背景采集 (Background Interview).
  *
  * 流程:
- *   Welcome → OD_Q1 (战略层) → OD_Q2 (组织层) → OD_Q3 (人才层)
- *   → OD_Q4 (薪酬绩效层) → OD_Q5 (文化领导力层)
- *   → 提交 profile → LLM 生成完整诊断报告 → onComplete 跳到展示页
+ *   Welcome → BG_Q1 (公司基础) → BG_Q2 (调研关注点)
+ *   → 提交 profile → 进入 survey 阶段 (诊断报告留到调研回收够后再生成)
+ *
+ * 设计:
+ *   - 2 题轻量, 每题 1-2 轮就收束
+ *   - 不再是诊断访谈, 是给报告补上下文 (LLM 生成时用)
+ *   - 复用现有 SparkyPanel + Workspace 模式 (跟其他 tool 风格一致)
  */
 import { useEffect, useRef, useState } from 'react';
 import SparkyPanel from '../components/layout/SparkyPanel';
@@ -22,45 +26,31 @@ const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
 export type Stage = 'interview' | 'generating' | 'done' | 'error';
-type StepId = 'Opening' | 'OD_Q1' | 'OD_Q2' | 'OD_Q3' | 'OD_Q4' | 'OD_Q5';
+type StepId = 'Opening' | 'BG_Q1' | 'BG_Q2';
 
-const STEP_ORDER: StepId[] = ['OD_Q1', 'OD_Q2', 'OD_Q3', 'OD_Q4', 'OD_Q5'];
+const STEP_ORDER: StepId[] = ['BG_Q1', 'BG_Q2'];
 
-const OD_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的组织诊断 AI 顾问。这是组织诊断 (OD) 工具。
+const WELCOME_MESSAGE = `好的, 在启动员工调研之前, 我跟你做一次**轻量的 2 题背景采集** — 大概 2-3 分钟。
 
-**什么是组织诊断**
+这一步不是诊断访谈, 是为了让最终报告里的优化建议能跟你公司的实际情况对得上, 而不是给你一堆模板话。
 
-参考 Korn Ferry / Hay Group 的方法论,从 5 个层面给你的组织做"体检",识别现状与领先实践的差距,为后续优化提供方向。
+**两道题:**
+1. 公司基础情况 (行业 / 规模 / 阶段 / 最近关键变化)
+2. 这次调研最关心什么 (担心员工流失? 战略宣贯效果? 跨部门协作?)
 
-5 层面 = 战略 / 组织 / 人才 / 薪酬绩效 / 文化领导力
+每题我会基于你的回答简单追问 1-2 句, 不会深挖。如果时间紧也可以直接说"先这样吧", 我会尊重你的节奏。
 
-**接下来 15-20 分钟,我会做 5 层访谈**
-
-每层 1 道核心题, 我会基于你的回答深挖追问 (大概 2-3 轮/题)。访谈结束后我会基于 KF 战略-组织-领导三角框架生成完整诊断报告:
-
-1. 一段话执行总览
-2. 5 层面诊断 (现状 + 关键观察 + 痛点)
-3. Top 3 优势 + Top 3 短板 (含证据)
-4. 行业实践对标
-5. 优化建议 (战略层 / 体系层 / 运营层 3 类)
-6. 后续工具推荐 (诊断发现的问题 → 引导到铭曦其他工具)
-
-**说在前面**
-
-诊断访谈是为了发现真问题,我会主动挑战模糊的回答 — 你说"我们绩效管理还行",我会追问"绩效结果真的影响了薪酬调整和晋升吗?多少比例"。请耐心配合,这是诊断真有价值的关键。
-
-**第一个问题:你们公司的战略目标是什么? 高管团队 / 中层 / 一线员工对战略的认知一致吗? 战略宣贯怎么做的?**`;
+**第一个问题: 你们公司是什么行业 + 大概多少人 + 最近 1-2 年有什么关键变化 (业务转型 / 大组织调整 / 关键人变动)?**`;
 
 interface Props {
-  onSaved: (profile: OdProfile) => void;     // 访谈完成 + profile 已存盘 → 进 survey 阶段
-  onSkip?: () => void;                       // 已有诊断时让用户回看上版
+  onSaved: (profile: OdProfile) => void;
+  onSkip?: () => void;
 }
 
 export default function OdInterview({ onSaved, onSkip }: Props) {
   const [stage, setStage] = useState<Stage>('interview');
   const [profile, setProfile] = useState<Partial<OdProfile>>({
-    strategy_md: '', organization_md: '', talent_md: '',
-    comp_perf_md: '', culture_leadership_md: '',
+    company_basics_md: '', survey_focus_md: '',
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -70,8 +60,7 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
   const isFollowUpRef = useRef<boolean>(false);
   const lastSparkyQuestionRef = useRef<string>('');
   const profileRef = useRef<Partial<OdProfile>>({
-    strategy_md: '', organization_md: '', talent_md: '',
-    comp_perf_md: '', culture_leadership_md: '',
+    company_basics_md: '', survey_focus_md: '',
   });
   const initRef = useRef(false);
   const finishedProfileRef = useRef<OdProfile | null>(null);
@@ -81,14 +70,14 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
     initRef.current = true;
 
     setMessages([
-      { role: 'user', text: '我想做一次组织诊断' },
-      { id: nextMsgId(), role: 'bot', text: OD_WELCOME_MESSAGE },
+      { role: 'user', text: '我准备做敬业度调研' },
+      { id: nextMsgId(), role: 'bot', text: WELCOME_MESSAGE },
     ]);
 
-    stepRef.current = 'OD_Q1';
+    stepRef.current = 'BG_Q1';
     roundRef.current = 1;
     isFollowUpRef.current = true;
-    lastSparkyQuestionRef.current = '你们公司的战略目标是什么? 高管团队 / 中层 / 一线员工对战略的认知一致吗? 战略宣贯怎么做的?';
+    lastSparkyQuestionRef.current = '你们公司是什么行业 + 大概多少人 + 最近 1-2 年有什么关键变化?';
 
     fetch(`${API_BASE}/od/health`, { method: 'GET' }).catch(() => {});
   }, []);
@@ -99,11 +88,8 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
       for (const item of items) {
         const v = (item.value || '').trim();
         if (!v) continue;
-        if (item.field_name === 'strategy_md') next.strategy_md = v;
-        else if (item.field_name === 'organization_md') next.organization_md = v;
-        else if (item.field_name === 'talent_md') next.talent_md = v;
-        else if (item.field_name === 'comp_perf_md') next.comp_perf_md = v;
-        else if (item.field_name === 'culture_leadership_md') next.culture_leadership_md = v;
+        if (item.field_name === 'company_basics_md') next.company_basics_md = v;
+        else if (item.field_name === 'survey_focus_md') next.survey_focus_md = v;
       }
       profileRef.current = next;
       return next;
@@ -113,21 +99,15 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
   const buildContext = (): string => {
     const p = profileRef.current;
     const parts: string[] = [];
-    if (p.strategy_md) parts.push(`【战略】${p.strategy_md}`);
-    if (p.organization_md) parts.push(`【组织】${p.organization_md}`);
-    if (p.talent_md) parts.push(`【人才】${p.talent_md}`);
-    if (p.comp_perf_md) parts.push(`【薪酬绩效】${p.comp_perf_md}`);
-    if (p.culture_leadership_md) parts.push(`【文化领导力】${p.culture_leadership_md}`);
+    if (p.company_basics_md) parts.push(`【公司基础】${p.company_basics_md}`);
+    if (p.survey_focus_md) parts.push(`【调研关注】${p.survey_focus_md}`);
     return parts.join('\n\n');
   };
 
   const getPreviousValue = (step: StepId): string => {
     const p = profileRef.current;
-    if (step === 'OD_Q1') return p.strategy_md || '';
-    if (step === 'OD_Q2') return p.organization_md || '';
-    if (step === 'OD_Q3') return p.talent_md || '';
-    if (step === 'OD_Q4') return p.comp_perf_md || '';
-    if (step === 'OD_Q5') return p.culture_leadership_md || '';
+    if (step === 'BG_Q1') return p.company_basics_md || '';
+    if (step === 'BG_Q2') return p.survey_focus_md || '';
     return '';
   };
 
@@ -159,7 +139,7 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
       lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
 
       if (questionId === 'Opening') {
-        stepRef.current = 'OD_Q1';
+        stepRef.current = 'BG_Q1';
         roundRef.current = 1;
         isFollowUpRef.current = true;
         return;
@@ -196,7 +176,7 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
       const replyId = nextMsgId();
       setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
       streamText(
-        stage === 'generating' ? '正在保存访谈, 稍等...' : '访谈我都收完了, 已存盘 — 点上方"进入员工调研 →"开启下一步。',
+        stage === 'generating' ? '正在保存背景采集...' : '背景采集已收完, 点上方"进入员工调研 →"开启调研环节。',
         (t) => setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m)),
       );
       return true;
@@ -210,11 +190,8 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
     setStage('generating');
     const p = profileRef.current;
     const finalProfile: OdProfile = {
-      strategy_md: p.strategy_md || '',
-      organization_md: p.organization_md || '',
-      talent_md: p.talent_md || '',
-      comp_perf_md: p.comp_perf_md || '',
-      culture_leadership_md: p.culture_leadership_md || '',
+      company_basics_md: p.company_basics_md || '',
+      survey_focus_md: p.survey_focus_md || '',
     };
 
     const filledCount = Object.values(finalProfile).filter(v => v).length;
@@ -222,7 +199,7 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
     const genId = nextMsgId();
     setMessages(prev => [...prev, { id: genId, role: 'bot', text: '' }]);
     streamText(
-      `5 层访谈收齐了 (${filledCount}/5 维度), 已存盘。\n\n下一步是**员工 Double E 调研** — 这是组织诊断必不可少的另一半数据。你的访谈是高管视角, 调研是员工视角, 双源交叉才能出真正的诊断。\n\n我会帮你启动调研、生成员工填答链接、追踪回收进度, 然后再生成完整诊断报告。`,
+      `背景采集完成 (${filledCount}/2 题), 已存盘。\n\n下一步: **员工 Double E 调研** — 我会帮你启动调研、生成员工填答链接、追踪回收进度, 等回收够 (≥ 门槛) 再用真实数据 + 你的背景上下文一起生成完整报告。`,
       (t) => setMessages(prev => prev.map(m => m.id === genId ? { ...m, text: t } : m)),
     );
 
@@ -245,10 +222,10 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
       const errId = nextMsgId();
       setMessages(prev => [...prev, { id: errId, role: 'bot', text: '' }]);
       const detail = isNetwork
-        ? '是网络问题,可能是后端冷启动。'
+        ? '是网络问题, 可能是后端冷启动。'
         : `保存出错了:${msg}`;
       streamText(
-        `保存访谈失败 — ${detail}\n\n你可以:\n· 刷新页面重走访谈\n· 联系管理员排查`,
+        `保存背景采集失败 — ${detail}\n\n你可以:\n· 刷新页面重新采集\n· 联系管理员排查`,
         (t) => setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m)),
       );
     }
@@ -274,14 +251,14 @@ export default function OdInterview({ onSaved, onSkip }: Props) {
 
       <Workspace
         mode="wide"
-        title="组织诊断笔记"
-        subtitle="访谈中实时整理 5 层面诊断输入"
+        title="背景采集笔记"
+        subtitle="2 题轻量背景, 给报告生成提供上下文"
         headerExtra={onSkip && stage === 'interview' ? (
           <span
             onClick={onSkip}
             style={{ fontSize: 13, color: BRAND, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            跳过访谈,看上一版 →
+            跳过, 看上一版报告 →
           </span>
         ) : undefined}
       >
@@ -313,10 +290,7 @@ const primaryBtn: React.CSSProperties = {
 function NotesView({ profile, stage, errorText }: {
   profile: Partial<OdProfile>; stage: Stage; errorText: string | null;
 }) {
-  const hasAny = !!(
-    profile.strategy_md || profile.organization_md || profile.talent_md
-    || profile.comp_perf_md || profile.culture_leadership_md
-  );
+  const hasAny = !!(profile.company_basics_md || profile.survey_focus_md);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -325,7 +299,7 @@ function NotesView({ profile, stage, errorText }: {
           padding: '40px 24px', textAlign: 'center', color: '#94A3B8', fontSize: 13,
           background: '#fff', border: '1px dashed #E2E8F0', borderRadius: 12,
         }}>
-          访谈开始后这里会出现 5 层面诊断输入 — 战略 / 组织 / 人才 / 薪酬绩效 / 文化领导力。访谈结束后会进入员工 Double E 调研环节, 双源数据齐了再生成完整诊断报告。
+          访谈开始后这里会出现 2 题背景采集 — 公司基础情况 + 调研关注议题。完成后进入员工 Double E 调研环节。
         </div>
       )}
 
@@ -334,20 +308,11 @@ function NotesView({ profile, stage, errorText }: {
           background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
           padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18,
         }}>
-          <NoteSection label="① 战略层" empty="(待 Q1 收集)" done={!!profile.strategy_md}>
-            {profile.strategy_md && renderMd(profile.strategy_md)}
+          <NoteSection label="① 公司基础情况" empty="(待 BG_Q1 收集)" done={!!profile.company_basics_md}>
+            {profile.company_basics_md && renderMd(profile.company_basics_md)}
           </NoteSection>
-          <NoteSection label="② 组织层" empty="(待 Q2 收集)" done={!!profile.organization_md}>
-            {profile.organization_md && renderMd(profile.organization_md)}
-          </NoteSection>
-          <NoteSection label="③ 人才层" empty="(待 Q3 收集)" done={!!profile.talent_md}>
-            {profile.talent_md && renderMd(profile.talent_md)}
-          </NoteSection>
-          <NoteSection label="④ 薪酬绩效层" empty="(待 Q4 收集)" done={!!profile.comp_perf_md}>
-            {profile.comp_perf_md && renderMd(profile.comp_perf_md)}
-          </NoteSection>
-          <NoteSection label="⑤ 文化领导力层" empty="(待 Q5 收集)" done={!!profile.culture_leadership_md}>
-            {profile.culture_leadership_md && renderMd(profile.culture_leadership_md)}
+          <NoteSection label="② 调研重点关注" empty="(待 BG_Q2 收集)" done={!!profile.survey_focus_md}>
+            {profile.survey_focus_md && renderMd(profile.survey_focus_md)}
           </NoteSection>
         </div>
       )}
@@ -357,7 +322,7 @@ function NotesView({ profile, stage, errorText }: {
           background: BRAND_TINT, border: `1px solid ${BRAND}33`, borderRadius: 12,
           padding: '18px 16px', textAlign: 'center', color: BRAND, fontSize: 13, fontWeight: 500,
         }}>
-          正在保存 5 层访谈结果...
+          正在保存背景采集...
         </div>
       )}
       {stage === 'done' && (
@@ -365,8 +330,8 @@ function NotesView({ profile, stage, errorText }: {
           background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 12,
           padding: '18px 16px', color: '#059669', fontSize: 13, lineHeight: 1.7,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>访谈已保存</div>
-          <div style={{ color: '#065F46' }}>点上方"进入员工调研 →"启动 Double E 调研, 这是诊断报告必需的另一半数据。</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>背景采集已保存</div>
+          <div style={{ color: '#065F46' }}>点上方"进入员工调研 →"启动 Double E 调研, 这是诊断报告必需的数据。</div>
         </div>
       )}
       {stage === 'error' && (
@@ -374,7 +339,7 @@ function NotesView({ profile, stage, errorText }: {
           background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12,
           padding: '18px 16px', color: '#B91C1C', fontSize: 13, lineHeight: 1.7,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>诊断生成失败</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>保存失败</div>
           <div>{errorText || '未知错误'}</div>
         </div>
       )}
@@ -383,56 +348,43 @@ function NotesView({ profile, stage, errorText }: {
 }
 
 function NoteSection({ label, empty, done, children }: {
-  label: string; empty: string; done: boolean; children?: React.ReactNode;
+  label: string; empty: string; done: boolean; children: React.ReactNode;
 }) {
   return (
     <div>
       <div style={{
-        fontSize: 11, color: done ? '#475569' : '#CBD5E1',
-        fontWeight: 600, marginBottom: 6,
-        display: 'flex', alignItems: 'center', gap: 6,
+        fontSize: 12, color: done ? BRAND : '#94A3B8', fontWeight: 600,
+        marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6,
       }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: done ? BRAND : '#E2E8F0',
-          display: 'inline-block',
-        }} />
-        {label}
+        {done ? '✓' : '○'} {label}
       </div>
-      {done ? children : (
-        <div style={{ fontSize: 12, color: '#CBD5E1', paddingLeft: 12, fontStyle: 'italic' }}>
-          {empty}
-        </div>
-      )}
+      <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7, paddingLeft: 18 }}>
+        {done ? children : <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>{empty}</span>}
+      </div>
     </div>
   );
 }
 
 function renderMd(text: string): React.ReactNode {
-  const lines = text.split('\n').filter(l => l.trim());
-  return (
-    <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.8 }}>
-      {lines.map((line, i) => {
-        const parts = line.split(/(\*\*[^*]+\*\*)/g).map((p, j) => {
-          if (p.startsWith('**') && p.endsWith('**')) {
-            return <span key={j} style={{ color: '#0F172A', fontWeight: 600 }}>{p.slice(2, -2)}</span>;
-          }
-          return <span key={j}>{p}</span>;
-        });
-        return <div key={i}>{parts}</div>;
-      })}
-    </div>
-  );
+  return text.split('\n').map((line, i) => {
+    if (!line.trim()) return <div key={i} style={{ height: 6 }} />;
+    const html = line
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/^- /, '• ');
+    return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+  });
 }
 
 function streamText(text: string, onTick: (s: string) => void, onDone?: () => void) {
   let i = 0;
   const tick = () => {
-    if (i >= text.length) { onDone?.(); return; }
-    i = Math.min(i + 1, text.length);
+    if (i >= text.length) {
+      if (onDone) onDone();
+      return;
+    }
+    i = Math.min(text.length, i + 3);
     onTick(text.slice(0, i));
-    if (i < text.length) setTimeout(tick, 25);
-    else onDone?.();
+    setTimeout(tick, 20);
   };
   tick();
 }

@@ -21,11 +21,11 @@ interface Props {
 }
 
 const STEPS: { key: OdStage; label: string; sub: string }[] = [
-  { key: 'frame', label: '破题', sub: '诊断什么 / 适合谁' },
-  { key: 'method', label: '方法论', sub: 'KF 框架 + 4 渠道' },
-  { key: 'interview', label: '访谈', sub: '5 层 5 题深挖 (高管)' },
-  { key: 'survey', label: '员工调研', sub: 'Double E 40 题 (员工)' },
-  { key: 'diagnosis', label: '报告', sub: '诊断 + 优化建议' },
+  { key: 'frame', label: '破题', sub: '为什么做敬业度调研' },
+  { key: 'method', label: '方法论', sub: 'Double E + 14 维度' },
+  { key: 'interview', label: '背景采集', sub: '公司情况 + 关注点' },
+  { key: 'survey', label: '员工调研', sub: '40 题匿名问卷' },
+  { key: 'diagnosis', label: '报告', sub: '14 维度 + 优化建议' },
 ];
 
 export default function OdProgressBar({ current, hasDiagnosis, onJump }: Props) {

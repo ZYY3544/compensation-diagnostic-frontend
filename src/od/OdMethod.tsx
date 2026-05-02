@@ -1,18 +1,16 @@
 /**
- * 组织诊断 - Stage 2: 方法论屏 (Method)
+ * 员工敬业度调研 - Stage 2: 方法论屏 (Method)
  *
- * 目的: 用"PPT 边讲边画"的咨询师感觉, 把 KF 方法论讲清楚:
- *   1. 战略-组织-领导三角 (核心框架)
- *   2. 4 渠道调研 (信息采集)
- *   3. 5 层诊断内容 (诊断范围)
- *   4. Double E 模型 + 4 类员工 (员工诊断核心)
- *   5. 工作流程 (信息→差距→建议)
+ * 5 节 PPT 风格的方法论解读:
+ *   1. Double E 双因素模型
+ *   2. 4 类员工 2x2 矩阵
+ *   3. 14 维度框架
+ *   4. 员工状态研究 100 年演化 (为什么是 Double E 不是满意度)
+ *   5. 样本量 + 数据可信度
  *
  * 设计:
- *   - 左侧 Sparky 面板: 4 段解读, 用户点 "下一节 →" 推进, Sparky 解释当前可视化
- *   - 右侧 Workspace: 5 张可视化卡片同时呈现, 当前章节高亮 + 自动滚到对应卡片
- *
- * 这就是用户问"区别于通用 agent 的差异化"想要的视觉体验。
+ *   - 左侧 Sparky 面板: 5 段解读, 用户点 "下一节 →" 推进
+ *   - 右侧 Workspace: 5 张可视化卡片同时呈现, 当前节高亮 + 自动滚动
  */
 import { useEffect, useRef, useState } from 'react';
 import SparkyPanel from '../components/layout/SparkyPanel';
@@ -20,11 +18,11 @@ import Workspace from '../components/layout/Workspace';
 import { nextMsgId } from '../lib/msgId';
 import type { Message } from '../types';
 import {
-  StrategyOrgLeaderTriangle,
-  FourChannelDiagram,
-  FiveLayerStack,
+  DoubleEModelDiagram,
   DoubleEMatrix,
-  DiagnosticWorkflow,
+  FourteenDimensionsCard,
+  EngagementEvolutionCard,
+  SampleSizeGuideCard,
 } from './components/OdVisuals';
 
 const BRAND = '#D85A30';
@@ -36,7 +34,7 @@ interface Props {
   onSkipToDiagnosis?: () => void;
 }
 
-type SectionId = 'triangle' | 'channels' | 'layers' | 'doublee' | 'workflow';
+type SectionId = 'double_e' | 'matrix' | 'dimensions' | 'evolution' | 'sample';
 
 interface Section {
   id: SectionId;
@@ -46,69 +44,66 @@ interface Section {
 
 const SECTIONS: Section[] = [
   {
-    id: 'triangle',
-    title: '① 诊断三角框架',
-    narration: `KF 的组织诊断核心模型是**战略 / 组织 / 领导**三角。
+    id: 'double_e',
+    title: '① Double E 双因素模型',
+    narration: `KF 在 2007 年之后定义的员工状态衡量标准是 **Double E**:
 
-- **战略 (上下同欲)** — 战略目标与计划要被有效宣贯, 架构和职能要清晰高效
-- **组织 (人尽其才)** — 薪酬利出一孔, 考核赏罚有方, 选拔优胜劣汰
-- **领导 (领导有方)** — 明确能力标准, 搭建良好组织氛围与文化
+- **员工敬业度 (Engagement)** — "我想做" — 决定员工是否愿意承诺并主动奉献
+- **组织支持度 (Enablement)** — "我能做" — 决定员工能否在岗位上发挥潜能
+- 二者相乘 = **员工效能 (Engaged Performance™)**, 这才是预测公司业绩的真正指标
 
-这 3 个角任何一个失衡, 战略都落不了地。诊断就是定位**到底哪个角出了问题, 出在哪里**。`,
+只看一端不够 — 员工愿意付出但缺资源, 一样产生不了效能; 员工有资源但不愿意, 也是浪费。Double E 的诊断能力就在于"两端同时量化"。`,
   },
   {
-    id: 'channels',
-    title: '② 4 渠道调研',
-    narration: `单一信息源做诊断不靠谱 — 高管讲的、员工感受的、制度写的、行业实践的, 经常对不上。所以 KF 用 **4 渠道交叉印证**:
+    id: 'matrix',
+    title: '② 4 类员工 2×2 矩阵',
+    narration: `把每个员工根据"敬业度 + 支持度"两个轴打分, 落到 4 个象限:
 
-- **关键人员访谈** — 自上而下, 高管 + 员工代表
-- **电子问卷调研** — 员工层定量样本 (KF 标准 600+ 份起)
-- **管理资料研读** — 现有制度 / 章程 / 流程文件
-- **领先实践研究** — 行业标杆 + 方法论对照
-
-铭曦把这 4 渠道都做到访谈 + 资料上传里了 — 一个工具内完成。`,
-  },
-  {
-    id: 'layers',
-    title: '③ 5 层诊断内容',
-    narration: `从战略到执行, 完整的诊断要扫描 **5 个层面** — 任何一层有 gap 都会拖累整体。
-
-每一层都有自己的核心议题, 比如:
-- **战略层** — 战略目标是否清晰? 是否传递到一线?
-- **组织层** — 架构是否匹配业务模式? 部门职责清不清?
-- **人才层** — 关键岗位是否到位? 人才储备够不够?
-- **薪酬绩效层** — 薪酬竞争力 / 内部公平 / 绩效结果是否真的影响晋升?
-- **文化领导力层** — 文化是否支持战略? 高管领导力够不够?
-
-你接下来的访谈, 每一层就是 1 道核心题, 我会基于你的回答深挖追问。`,
-  },
-  {
-    id: 'doublee',
-    title: '④ Double E + 4 类员工',
-    narration: `这是 KF 在员工层面诊断的"招牌方法论" — **Double E**:
-
-**员工敬业度 (我想做)** + **组织支持度 (我能做)** = **员工效能** (Engaged Performance™)
-
-把员工按 2×2 分成 4 类:
-- **高效** (双高, 55-65%) — 公司核心, 要扩大
-- **受挫** (高敬业 + 低支持, 10-15%) — 想做事但缺资源, **诊断最值得关注的群体**
-- **漠然** (低敬业 + 高支持, 10-15%) — 可能岗位匹配 / 价值观问题
+- **高效** (双高, 55-65%) — 公司核心, 要保留扩大
+- **受挫** (高敬业 + 低支持, 10-15%) — **诊断最值得关注的群体**, 想做事但缺资源 / 流程, 解决他们就能大幅提升整体效能
+- **漠然** (低敬业 + 高支持, 10-15%) — 可能岗位错配 / 价值观不匹配
 - **低效** (双低, 15-20%) — 突破障碍 / 离开组织
 
-KF 的标准问卷里有 12 维度 70+ 道题来衡量, 铭曦报告里也会按这个结构呈现。`,
+铭曦的报告会自动把每位答卷员工分类, 输出 4 类员工占比 + 部门差异。`,
   },
   {
-    id: 'workflow',
-    title: '⑤ 工作流程',
-    narration: `最后, 整个诊断的工作流是 **3 步** :
+    id: 'dimensions',
+    title: '③ 14 维度框架',
+    narration: `Double E 衡量的不只是"是否敬业", 还要看**敬业的驱动因素**和**支持的驱动因素** — 这就是 14 维度框架:
 
-1. **信息调研** — 4 渠道采集 (KF 案例平均 1-1.5 个月做完)
-2. **差距分析** — 当前现状 vs 行业领先实践, 找出 gap
-3. **优化建议** — 分**战略层 / 体系层 / 运营层** 3 类, 每类对应不同的后续动作
+- **6 个敬业度驱动**: 清晰的方向 / 对领导信心 / 客户聚焦 / 尊重认可 / 发展机会 / 薪酬福利
+- **6 个支持度驱动**: 绩效管理 / 授权 / 资源 / 培训 / 合作 / 工作架构
+- **2 个综合维度**: 员工敬业度 (5 题) + 组织支持度 (4 题)
 
-铭曦把这 3 步压缩到 1-2 周内能拿到 80% 价值的 SaaS 流程, 这是产品差异化。
+总共 **40 道标准题 / 5 级 Likert**, 这是 KF 全球用了 20+ 年的标准问卷。每题都有 **中国全行业** 和 **全球高绩效组织** 双基准。`,
+  },
+  {
+    id: 'evolution',
+    title: '④ 为什么是 Double E 而不是满意度',
+    narration: `**满意度调查跟敬业度调查是完全不同的两件事**:
 
-**到这里, 方法论已经讲完了。点 "进入访谈 →" 我们开始 5 层访谈。**`,
+员工状态研究 100 年的演化, 从 1920s 的"员工士气"到今天的"员工效能", 早已超越了"员工开心吗"这种表层问题。
+
+- 满意度只测**情绪** ("我开心吗") — 但开心不等于会努力
+- 敬业度测的是**承诺 + 主动** ("我愿意为公司付出多少额外努力") — 这才跟绩效相关
+- 员工效能 = 敬业度 + 支持度 — 这是 KF 在 2007 年之后的核心洞察
+
+**所以如果你只是想做"员工满意度调查", Double E 是大材小用; 如果你真的想知道"组织能不能跑起来", Double E 是当前最好的方法论。**`,
+  },
+  {
+    id: 'sample',
+    title: '⑤ 样本量 + 数据可信度',
+    narration: `调研的有效性取决于**回收数 vs 公司规模**的比例。铭曦的回收门槛是 **max(20, 公司人数 × 30%)**:
+
+- < 50 人: 至少 20 份
+- 50-1000 人: 至少 30%
+- 1000+ 人: 至少 500 份
+
+**为什么有门槛?** 数据样本不足时, 任何一个部门或一个序列的"赞同比"都会被几个人的极端答案带偏 — 这种统计就没诊断价值。
+
+**铭曦的硬约束**: 回收数没到门槛, 就不允许生成诊断报告。这是为了保证报告里写的每一个百分比、每一个 Top 3, 都站得住脚。
+
+**到这里方法论讲完了。点 "进入背景采集 →" 我会问你 2 个简单问题, 然后启动调研。**`,
   },
 ];
 
@@ -117,10 +112,9 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const initRef = useRef(false);
   const sectionRefs = useRef<Record<SectionId, HTMLDivElement | null>>({
-    triangle: null, channels: null, layers: null, doublee: null, workflow: null,
+    double_e: null, matrix: null, dimensions: null, evolution: null, sample: null,
   });
 
-  // 第一段: 欢迎 + 第一节解读
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -132,7 +126,6 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
     ]);
   }, []);
 
-  // 切换章节: 追加 narration + 滚到对应卡片
   const goSection = (idx: number) => {
     if (idx < 0 || idx >= SECTIONS.length) return;
     const section = SECTIONS[idx];
@@ -144,7 +137,6 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
       { id: nextMsgId(), role: 'bot', text: `${section.title}\n\n${section.narration}` },
     ]);
 
-    // 滚到对应可视化卡片
     setTimeout(() => {
       const el = sectionRefs.current[section.id];
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -155,7 +147,7 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
     setMessages(prev => [...prev, { role: 'user', text }]);
     setMessages(prev => [...prev, {
       id: nextMsgId(), role: 'bot',
-      text: '方法论这屏是单向铺垫,暂不展开对话 — 用底部"下一节 →"翻页, 或点"进入访谈 →"开始 5 层访谈, 我们到访谈环节再细聊。',
+      text: '方法论这屏是单向铺垫,暂不展开对话 — 用底部"下一节 →"翻页, 或点"进入背景采集 →"开始, 我们到访谈环节再细聊。',
     }]);
     return true;
   };
@@ -178,7 +170,6 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
           onNonChatSend={handleUserMsg}
           embedded={true}
         />
-        {/* 底部章节导航 */}
         <div style={{
           flexShrink: 0, padding: '12px 24px',
           borderTop: '1px solid #E2E8F0', background: '#FAFAFA',
@@ -215,7 +206,7 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
           </div>
 
           {isLast ? (
-            <button onClick={onNext} style={primaryBtn}>进入访谈 →</button>
+            <button onClick={onNext} style={primaryBtn}>进入背景采集 →</button>
           ) : (
             <button onClick={() => goSection(activeIdx + 1)} style={primaryBtn}>下一节 →</button>
           )}
@@ -224,7 +215,7 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
 
       <Workspace
         mode="wide"
-        title="组织诊断方法论"
+        title="员工敬业度调研方法论"
         subtitle="边讲边画 — 左侧 Sparky 解读, 右侧画布同步呈现"
         headerExtra={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -242,7 +233,7 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
                 看上一版报告
               </span>
             )}
-            <button onClick={onNext} style={primaryBtn}>跳到访谈 →</button>
+            <button onClick={onNext} style={primaryBtn}>跳到背景采集 →</button>
           </div>
         }
       >
@@ -269,11 +260,11 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
                   Sparky 正在讲这一节
                 </div>
               )}
-              {section.id === 'triangle' && <StrategyOrgLeaderTriangle />}
-              {section.id === 'channels' && <FourChannelDiagram />}
-              {section.id === 'layers' && <FiveLayerStack />}
-              {section.id === 'doublee' && <DoubleEMatrix />}
-              {section.id === 'workflow' && <DiagnosticWorkflow />}
+              {section.id === 'double_e' && <DoubleEModelDiagram />}
+              {section.id === 'matrix' && <DoubleEMatrix />}
+              {section.id === 'dimensions' && <FourteenDimensionsCard />}
+              {section.id === 'evolution' && <EngagementEvolutionCard />}
+              {section.id === 'sample' && <SampleSizeGuideCard />}
             </div>
           ))}
         </div>
@@ -283,11 +274,11 @@ export default function OdMethod({ onNext, onBack, onSkipToDiagnosis }: Props) {
 }
 
 function introMessage(): string {
-  return `好的, 现在我用 5 张图把组织诊断的方法论给你过一遍 — 大概 3-5 分钟。
+  return `好的, 现在我用 5 张图把员工敬业度调研的方法论给你过一遍 — 大概 3-5 分钟。
 
 每张图都对应右侧画布的一张卡片, 我说到哪一节, 右边对应卡片就高亮。
 
-底下"下一节 →"按钮翻页, 也可以直接点中间的圆点跳到任意一节。讲完会自动出现"进入访谈 →"按钮。
+底下"下一节 →"按钮翻页, 也可以直接点中间的圆点跳到任意一节。讲完会自动出现"进入背景采集 →"按钮。
 
 我们开始第一节 —`;
 }

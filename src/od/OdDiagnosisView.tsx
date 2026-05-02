@@ -558,23 +558,6 @@ function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-function renderMd(text: string): React.ReactNode {
-  const lines = text.split('\n').filter(l => l.trim());
-  return (
-    <>
-      {lines.map((line, i) => {
-        const parts = line.split(/(\*\*[^*]+\*\*)/g).map((p, j) => {
-          if (p.startsWith('**') && p.endsWith('**')) {
-            return <span key={j} style={{ color: '#0F172A', fontWeight: 600 }}>{p.slice(2, -2)}</span>;
-          }
-          return <span key={j}>{p}</span>;
-        });
-        return <div key={i}>{parts}</div>;
-      })}
-    </>
-  );
-}
-
 const thStyle: React.CSSProperties = {
   padding: '10px 14px', textAlign: 'left',
   fontSize: 11, fontWeight: 600, color: '#64748B',
@@ -583,10 +566,6 @@ const thStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = {
   padding: '12px 14px', fontSize: 13, color: '#475569', lineHeight: 1.6,
-};
-
-const ulStyle: React.CSSProperties = {
-  margin: 0, paddingLeft: 16, fontSize: 13, color: '#475569', lineHeight: 1.7,
 };
 
 const secondaryBtn: React.CSSProperties = {

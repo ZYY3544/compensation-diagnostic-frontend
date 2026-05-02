@@ -12,6 +12,7 @@ import JeApp from './je/JeApp';
 import SdApp from './sd/SdApp';
 import ScApp from './sc/ScApp';
 import OdApp from './od/OdApp';
+import OdSurveyPublic from './od/OdSurveyPublic';
 import LtiApp from './lti/LtiApp';
 
 createRoot(document.getElementById('root')!).render(
@@ -21,6 +22,8 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          {/* 员工 Double E 调研填答页 — 公开访问, 不进 ProtectedRoute / WorkspaceShell */}
+          <Route path="/od-survey/:token" element={<OdSurveyPublic />} />
           <Route element={<ProtectedRoute><WorkspaceShell /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/diagnosis" replace />} />
             <Route path="/diagnosis/*" element={<App />} />

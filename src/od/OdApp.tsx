@@ -18,10 +18,11 @@ import { odGetProfile, odGenerateDiagnosis, type OdProfile, type OdDiagnosis } f
 import OdFrame from './OdFrame';
 import OdMethod from './OdMethod';
 import OdInterview from './OdInterview';
+import OdSurveyPanel from './OdSurveyPanel';
 import OdDiagnosisView from './OdDiagnosisView';
 import OdProgressBar from './components/OdProgressBar';
 
-export type OdStage = 'frame' | 'method' | 'interview' | 'diagnosis';
+export type OdStage = 'frame' | 'method' | 'interview' | 'survey' | 'diagnosis';
 
 export default function OdApp() {
   const [stage, setStage] = useState<OdStage>('frame');
@@ -44,21 +45,28 @@ export default function OdApp() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleInterviewComplete = (newProfile: OdProfile, newDiagnosis: OdDiagnosis) => {
+  // 5 层访谈完成 → 进员工调研阶段 (诊断报告还没生成)
+  const handleInterviewSaved = (newProfile: OdProfile) => {
     setProfile(newProfile);
-    setDiagnosis(newDiagnosis);
-    setStage('diagnosis');
+    setStage('survey');
   };
 
-  const handleRegenerate = async () => {
+  // 调研回收够 → 生成完整诊断报告 (后端会校验门槛 + 把 Double E 数据合并进 LLM)
+  const handleGenerateDiagnosis = async () => {
     if (regenerating) return;
     setRegenerating(true);
     try {
       const res = await odGenerateDiagnosis({ timeout: 0 });
       setDiagnosis(res.data.diagnosis);
+      setStage('diagnosis');
     } catch (err: any) {
-      const msg = err?.response?.data?.reason || err?.message || '重新生成失败';
-      alert(`重新生成失败:${msg}`);
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || err?.response?.data?.reason || err?.message;
+      if (status === 400 && err?.response?.data?.error === 'survey_threshold_not_met') {
+        alert(`回收数还差一些 (当前 ${err.response.data.response_count} / ${err.response.data.threshold} 份), 再等等。`);
+      } else {
+        alert(`生成失败: ${msg || '未知错误'}`);
+      }
     } finally {
       setRegenerating(false);
     }
@@ -109,8 +117,15 @@ export default function OdApp() {
 
         {stage === 'interview' && (
           <OdInterview
-            onComplete={handleInterviewComplete}
+            onSaved={handleInterviewSaved}
             onSkip={diagnosis ? () => setStage('diagnosis') : undefined}
+          />
+        )}
+
+        {stage === 'survey' && (
+          <OdSurveyPanel
+            onProceedToDiagnosis={handleGenerateDiagnosis}
+            onBack={() => setStage('interview')}
           />
         )}
 
@@ -118,7 +133,7 @@ export default function OdApp() {
           <OdDiagnosisView
             diagnosis={diagnosis}
             onRestart={() => setStage('frame')}
-            onRegenerate={regenerating ? undefined : handleRegenerate}
+            onRegenerate={regenerating ? undefined : handleGenerateDiagnosis}
           />
         )}
 

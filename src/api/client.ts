@@ -752,6 +752,18 @@ export interface OdNextTool {
   why: string;
 }
 
+export interface OdDiagnosisDoubleESummary {
+  response_count: number;
+  overall: {
+    engagement_score: number;
+    enablement_score: number;
+    quadrant_distribution: Record<string, OdDoubleEQuadrantBucket>;
+  };
+  top_3_dimensions: OdDoubleEDimension[];
+  bottom_3_dimensions: OdDoubleEDimension[];
+  breakdown: OdDoubleEAgg['breakdown'];
+}
+
 export interface OdDiagnosis {
   executive_summary: string;
   layer_findings: OdLayerFindings;
@@ -760,6 +772,8 @@ export interface OdDiagnosis {
   industry_benchmarks: OdBenchmarkItem[];
   recommendations: OdRecommendations;
   next_tools: OdNextTool[];
+  /** 真实定量数据 — 来自 Double E 员工调研, 由后端 aggregate_responses 注入 */
+  double_e_summary?: OdDiagnosisDoubleESummary | null;
   generated_at?: string;
   model_used?: string;
 }
@@ -774,6 +788,125 @@ export const odGenerateDiagnosis = (config?: { timeout?: number }) =>
   api.post<{ ok: boolean; diagnosis: OdDiagnosis }>('/od/diagnosis/generate', undefined, {
     timeout: config?.timeout ?? 0,
   });
+
+// ---------- OD Double E Survey API ----------
+export interface OdSurveyQuestion {
+  code: string;
+  dimension: string;
+  seq: number;
+  text: string;
+  benchmark_cn_all_industry: number | null;
+  benchmark_global_high_perf: number | null;
+}
+
+export interface OdSurveyScale {
+  description: string;
+  options: Array<{ value: number; label: string; tier: string }>;
+  agree_values: number[];
+  neutral_values: number[];
+  disagree_values: number[];
+}
+
+export interface OdSurveyAttrDef {
+  key: string;
+  label: string;
+  type: 'text' | 'choice';
+  required: boolean;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+}
+
+export interface OdSurveyState {
+  id: string;
+  token: string;
+  name: string | null;
+  total_employees: number;
+  threshold: number;
+  status: 'open' | 'closed';
+  response_count: number;
+  is_significant: boolean;
+  progress_pct: number;
+  aggregated: OdDoubleEAgg | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OdDoubleEDimension {
+  name: string;
+  item_count: number;
+  n: number;
+  agree: number;
+  neutral: number;
+  disagree: number;
+  benchmark_cn: number | null;
+  benchmark_global: number | null;
+  gap_cn: number | null;
+  gap_global: number | null;
+}
+
+export interface OdDoubleEQuadrantBucket {
+  count: number;
+  percentage: number;
+  label_cn: string;
+}
+
+export interface OdDoubleEBreakdownRow {
+  value: string;
+  count: number;
+  engagement_score: number;
+  enablement_score: number;
+  quadrant_pct: Record<string, number>;
+}
+
+export interface OdDoubleEAgg {
+  response_count: number;
+  overall: {
+    engagement_score: number;
+    enablement_score: number;
+    quadrant_distribution: Record<string, OdDoubleEQuadrantBucket>;
+  };
+  dimensions: OdDoubleEDimension[];
+  questions: Array<{
+    code: string; dimension: string; text: string;
+    n: number; agree: number; neutral: number; disagree: number;
+    benchmark_cn: number | null; benchmark_global: number | null;
+    gap_cn: number | null; gap_global: number | null;
+  }>;
+  breakdown: {
+    department?: OdDoubleEBreakdownRow[];
+    is_manager?: OdDoubleEBreakdownRow[];
+    tenure?: OdDoubleEBreakdownRow[];
+    age?: OdDoubleEBreakdownRow[];
+  };
+}
+
+export const odSurveyGet = () =>
+  api.get<{ survey: OdSurveyState | null }>('/od/survey');
+
+export const odSurveyStart = (body: { total_employees: number; name?: string }) =>
+  api.post<{ survey: OdSurveyState }>('/od/survey/start', body);
+
+export const odSurveyRefresh = () =>
+  api.post<{ response_count: number; threshold: number; is_significant: boolean; aggregated: OdDoubleEAgg | null }>(
+    '/od/survey/refresh', undefined, { timeout: 60000 },
+  );
+
+export const odSurveyClose = () =>
+  api.post<{ status: string }>('/od/survey/close');
+
+// 公开接口 (员工填答页用, 不需要登录) — 直接用 axios.create 避开拦截器
+const publicApi = axios.create({ baseURL: API_BASE });
+
+export const odSurveyPublicGet = (token: string) =>
+  publicApi.get<{
+    survey_name: string; status: string;
+    questions: OdSurveyQuestion[];
+    scale: OdSurveyScale;
+    employee_attributes: OdSurveyAttrDef[];
+  }>(`/od/survey/public/${encodeURIComponent(token)}`);
+
+export const odSurveyPublicSubmit = (token: string, body: { answers: Record<string, number>; attributes: Record<string, string> }) =>
+  publicApi.post<{ ok: boolean; message: string }>(`/od/survey/public/${encodeURIComponent(token)}`, body);
 
 export interface OdInterviewExtractRequest {
   question_id: 'Opening' | 'OD_Q1' | 'OD_Q2' | 'OD_Q3' | 'OD_Q4' | 'OD_Q5';

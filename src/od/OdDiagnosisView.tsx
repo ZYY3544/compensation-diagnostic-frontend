@@ -12,6 +12,7 @@
 import { useNavigate } from 'react-router-dom';
 import type {
   OdDiagnosis, OdLayerFinding, OdRecommendation,
+  OdDiagnosisDoubleESummary, OdDoubleEDimension, OdDoubleEBreakdownRow,
 } from '../api/client';
 
 const BRAND = '#D85A30';
@@ -92,6 +93,11 @@ export default function OdDiagnosisView({ diagnosis, onRestart, onRegenerate }: 
             />
           </div>
         </Section>
+
+        {/* 3.5 Double E 员工调研 — 来自真实定量数据 */}
+        {diagnosis.double_e_summary && (
+          <DoubleESection summary={diagnosis.double_e_summary} />
+        )}
 
         {/* 4. 行业实践对标 */}
         {diagnosis.industry_benchmarks?.length > 0 && (
@@ -376,6 +382,169 @@ function RecommendationsBlock({ title, desc, color, items }: {
             <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7 }}>
               <span style={{ color: BRAND, fontWeight: 600 }}>具体动作: </span>
               {rec.suggested_action}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Double E 员工调研 — 真实定量数据 section
+// ============================================================
+function DoubleESection({ summary }: { summary: OdDiagnosisDoubleESummary }) {
+  const overall = summary.overall;
+  const quad = overall.quadrant_distribution || {};
+  const deptRows = (summary.breakdown?.department || []).slice(0, 5);
+
+  return (
+    <Section
+      title="③.5 员工 Double E 调研 (真实定量数据)"
+      subtitle={`基于 ${summary.response_count} 份匿名答卷 — 14 维度 / 4 类员工分布 / 部门差异`}
+    >
+      {/* 综合得分 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14,
+        marginBottom: 18,
+      }}>
+        <ScorePanel label="员工敬业度 (Engagement)" subtitle="我想做" pct={overall.engagement_score} color={BRAND} />
+        <ScorePanel label="组织支持度 (Enablement)" subtitle="我能做" pct={overall.enablement_score} color="#2563EB" />
+      </div>
+
+      {/* 4 类员工分布 */}
+      <div style={{
+        background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+        padding: '20px 22px', marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
+          4 类员工分布
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          {[
+            { k: 'high_performer', label: '高效',  desc: '敬业 + 支持都到位', color: '#16A34A' },
+            { k: 'frustrated',     label: '受挫',  desc: '想做事但缺资源',   color: '#EA580C' },
+            { k: 'detached',       label: '漠然',  desc: '支持够 + 不投入',  color: '#3B82F6' },
+            { k: 'low_performer',  label: '低效',  desc: '都不到位',        color: '#DC2626' },
+          ].map(c => {
+            const v = quad[c.k] || { count: 0, percentage: 0 };
+            return (
+              <div key={c.k} style={{
+                padding: '14px 14px',
+                background: `${c.color}11`, border: `1.5px solid ${c.color}`,
+                borderRadius: 10, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 12, color: c.color, fontWeight: 600 }}>{c.label}</div>
+                <div style={{ fontSize: 22, color: c.color, fontWeight: 700, margin: '6px 0' }}>{v.percentage}%</div>
+                <div style={{ fontSize: 10, color: '#64748B', marginBottom: 3 }}>{v.count} 人</div>
+                <div style={{ fontSize: 10, color: '#94A3B8', fontStyle: 'italic' }}>{c.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Top 3 / Bottom 3 维度 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <DimensionsCard title="✓ Top 3 优势维度" dims={summary.top_3_dimensions} positive />
+        <DimensionsCard title="✗ Bottom 3 短板维度" dims={summary.bottom_3_dimensions} positive={false} />
+      </div>
+
+      {/* 部门差异 */}
+      {deptRows.length > 0 && (
+        <div style={{
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #F1F5F9' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
+              部门差异 (Top {deptRows.length} by 人数)
+            </div>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                <th style={thStyle}>部门</th>
+                <th style={{ ...thStyle, width: 70, textAlign: 'right' }}>人数</th>
+                <th style={{ ...thStyle, width: 100, textAlign: 'right' }}>员工敬业度</th>
+                <th style={{ ...thStyle, width: 100, textAlign: 'right' }}>组织支持度</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deptRows.map((r: OdDoubleEBreakdownRow) => (
+                <tr key={r.value} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <td style={{ ...tdStyle, fontWeight: 500 }}>{r.value}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>{r.count}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', color: BRAND, fontWeight: 600 }}>
+                    {r.engagement_score}%
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', color: '#2563EB', fontWeight: 600 }}>
+                    {r.enablement_score}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function ScorePanel({ label, subtitle, pct, color }: {
+  label: string; subtitle: string; pct: number; color: string;
+}) {
+  return (
+    <div style={{
+      padding: '20px 22px',
+      background: `${color}08`, border: `1.5px solid ${color}33`,
+      borderRadius: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span style={{ fontSize: 13, color, fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 11, color: '#94A3B8' }}>"{subtitle}"</span>
+      </div>
+      <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1.1 }}>{pct}%</div>
+      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>赞同比 (Top 2 Box)</div>
+    </div>
+  );
+}
+
+function DimensionsCard({ title, dims, positive }: {
+  title: string; dims: OdDoubleEDimension[]; positive: boolean;
+}) {
+  const tone = positive ? '#16A34A' : '#DC2626';
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+      padding: '18px 20px',
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: tone, marginBottom: 12 }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {dims.map(d => (
+          <div key={d.name} style={{
+            padding: '10px 12px', background: '#F8FAFC',
+            border: '1px solid #E2E8F0', borderRadius: 8,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#0F172A', marginBottom: 4 }}>{d.name}</div>
+            <div style={{ fontSize: 11, color: '#64748B' }}>
+              <b style={{ color: tone, fontSize: 13 }}>{d.agree}%</b> 赞同
+              {d.gap_cn !== null && (
+                <span style={{
+                  color: d.gap_cn >= 0 ? '#16A34A' : '#DC2626',
+                  marginLeft: 8, fontWeight: 500,
+                }}>
+                  vs 中国全行业 {d.gap_cn >= 0 ? '+' : ''}{d.gap_cn}
+                </span>
+              )}
+              {d.gap_global !== null && (
+                <span style={{
+                  color: d.gap_global >= 0 ? '#16A34A' : '#DC2626',
+                  marginLeft: 8, fontWeight: 500,
+                }}>
+                  vs 全球高绩效 {d.gap_global >= 0 ? '+' : ''}{d.gap_global}
+                </span>
+              )}
             </div>
           </div>
         ))}

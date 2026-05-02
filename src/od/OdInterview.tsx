@@ -12,8 +12,8 @@ import Workspace from '../components/layout/Workspace';
 import { nextMsgId } from '../lib/msgId';
 import type { Message } from '../types';
 import {
-  odSaveProfile, odGenerateDiagnosis, odInterviewExtract,
-  type OdProfile, type OdDiagnosis,
+  odSaveProfile, odInterviewExtract,
+  type OdProfile,
 } from '../api/client';
 
 const API_BASE = (import.meta.env as any).VITE_API_URL || '/api';
@@ -52,11 +52,11 @@ const OD_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的组织诊断 AI 顾问
 **第一个问题:你们公司的战略目标是什么? 高管团队 / 中层 / 一线员工对战略的认知一致吗? 战略宣贯怎么做的?**`;
 
 interface Props {
-  onComplete: (profile: OdProfile, diagnosis: OdDiagnosis) => void;
-  onSkip?: () => void;
+  onSaved: (profile: OdProfile) => void;     // 访谈完成 + profile 已存盘 → 进 survey 阶段
+  onSkip?: () => void;                       // 已有诊断时让用户回看上版
 }
 
-export default function OdInterview({ onComplete, onSkip }: Props) {
+export default function OdInterview({ onSaved, onSkip }: Props) {
   const [stage, setStage] = useState<Stage>('interview');
   const [profile, setProfile] = useState<Partial<OdProfile>>({
     strategy_md: '', organization_md: '', talent_md: '',
@@ -74,7 +74,6 @@ export default function OdInterview({ onComplete, onSkip }: Props) {
     comp_perf_md: '', culture_leadership_md: '',
   });
   const initRef = useRef(false);
-  const finishedDiagnosisRef = useRef<OdDiagnosis | null>(null);
   const finishedProfileRef = useRef<OdProfile | null>(null);
 
   useEffect(() => {
@@ -197,7 +196,7 @@ export default function OdInterview({ onComplete, onSkip }: Props) {
       const replyId = nextMsgId();
       setMessages(prev => [...prev, { id: replyId, role: 'bot', text: '' }]);
       streamText(
-        stage === 'generating' ? '诊断报告生成中,等几秒...' : '访谈我都收完了,稍等会自动展示诊断报告。',
+        stage === 'generating' ? '正在保存访谈, 稍等...' : '访谈我都收完了, 已存盘 — 点上方"进入员工调研 →"开启下一步。',
         (t) => setMessages(prev => prev.map(m => m.id === replyId ? { ...m, text: t } : m)),
       );
       return true;
@@ -223,25 +222,18 @@ export default function OdInterview({ onComplete, onSkip }: Props) {
     const genId = nextMsgId();
     setMessages(prev => [...prev, { id: genId, role: 'bot', text: '' }]);
     streamText(
-      `5 层访谈收齐了 (${filledCount}/5 维度)。\n\n现在我基于 Korn Ferry 组织诊断方法论生成完整诊断报告:\n\n· 一段话执行总览\n· 5 层面诊断结果 (现状 + 痛点)\n· Top 3 优势 + Top 3 短板\n· 行业实践对标\n· 战略层 / 体系层 / 运营层 优化建议\n· 后续工具推荐\n\n这一步要 60-90 秒...`,
+      `5 层访谈收齐了 (${filledCount}/5 维度), 已存盘。\n\n下一步是**员工 Double E 调研** — 这是组织诊断必不可少的另一半数据。你的访谈是高管视角, 调研是员工视角, 双源交叉才能出真正的诊断。\n\n我会帮你启动调研、生成员工填答链接、追踪回收进度, 然后再生成完整诊断报告。`,
       (t) => setMessages(prev => prev.map(m => m.id === genId ? { ...m, text: t } : m)),
     );
 
     try {
       await odSaveProfile(finalProfile);
-      const result = await odGenerateDiagnosis({ timeout: 0 });
-
       finishedProfileRef.current = finalProfile;
-      finishedDiagnosisRef.current = result.data.diagnosis;
 
-      const d = result.data.diagnosis;
-      const totalRecs = (d.recommendations?.strategic?.length || 0)
-                       + (d.recommendations?.systematic?.length || 0)
-                       + (d.recommendations?.operational?.length || 0);
       const doneId = nextMsgId();
       setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
       streamText(
-        `**诊断报告已生成**\n\n包括:\n· 5 层面诊断\n· ${d.top_strengths?.length || 0} 项优势 + ${d.top_gaps?.length || 0} 项短板\n· ${d.industry_benchmarks?.length || 0} 项行业对标\n· ${totalRecs} 条优化建议 (战略/体系/运营 3 类)\n· ${d.next_tools?.length || 0} 个后续工具推荐\n\n点右上角"看诊断报告 →"进入完整展示页。`,
+        `点右上角 **"进入员工调研 →"** 启动 Double E 调研。`,
         (t) => setMessages(prev => prev.map(m => m.id === doneId ? { ...m, text: t } : m)),
         () => setStage('done'),
       );
@@ -253,10 +245,10 @@ export default function OdInterview({ onComplete, onSkip }: Props) {
       const errId = nextMsgId();
       setMessages(prev => [...prev, { id: errId, role: 'bot', text: '' }]);
       const detail = isNetwork
-        ? '是网络问题,可能是后端冷启动或 LLM 那边超时。'
-        : `LLM 那边报错了:${msg}`;
+        ? '是网络问题,可能是后端冷启动。'
+        : `保存出错了:${msg}`;
       streamText(
-        `生成诊断失败 — ${detail}\n\n你可以:\n· 刷新页面重走访谈\n· 用上一版诊断 (如果有)`,
+        `保存访谈失败 — ${detail}\n\n你可以:\n· 刷新页面重走访谈\n· 联系管理员排查`,
         (t) => setMessages(prev => prev.map(m => m.id === errId ? { ...m, text: t } : m)),
       );
     }
@@ -297,13 +289,13 @@ export default function OdInterview({ onComplete, onSkip }: Props) {
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
             <button
               onClick={() => {
-                if (finishedProfileRef.current && finishedDiagnosisRef.current) {
-                  onComplete(finishedProfileRef.current, finishedDiagnosisRef.current);
+                if (finishedProfileRef.current) {
+                  onSaved(finishedProfileRef.current);
                 }
               }}
               style={primaryBtn}
             >
-              看诊断报告 →
+              进入员工调研 →
             </button>
           </div>
         )}
@@ -333,7 +325,7 @@ function NotesView({ profile, stage, errorText }: {
           padding: '40px 24px', textAlign: 'center', color: '#94A3B8', fontSize: 13,
           background: '#fff', border: '1px dashed #E2E8F0', borderRadius: 12,
         }}>
-          访谈开始后这里会出现 5 层面诊断输入 — 战略 / 组织 / 人才 / 薪酬绩效 / 文化领导力。访谈结束后我会基于 KF 方法论生成完整诊断报告。
+          访谈开始后这里会出现 5 层面诊断输入 — 战略 / 组织 / 人才 / 薪酬绩效 / 文化领导力。访谈结束后会进入员工 Double E 调研环节, 双源数据齐了再生成完整诊断报告。
         </div>
       )}
 
@@ -365,7 +357,7 @@ function NotesView({ profile, stage, errorText }: {
           background: BRAND_TINT, border: `1px solid ${BRAND}33`, borderRadius: 12,
           padding: '18px 16px', textAlign: 'center', color: BRAND, fontSize: 13, fontWeight: 500,
         }}>
-          正在生成完整诊断报告 (5 层面 + 优势短板 + 优化建议)... 60-90 秒
+          正在保存 5 层访谈结果...
         </div>
       )}
       {stage === 'done' && (
@@ -373,8 +365,8 @@ function NotesView({ profile, stage, errorText }: {
           background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 12,
           padding: '18px 16px', color: '#059669', fontSize: 13, lineHeight: 1.7,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>诊断报告已生成</div>
-          <div style={{ color: '#065F46' }}>上面"看诊断报告 →"按钮进入完整展示页。</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>访谈已保存</div>
+          <div style={{ color: '#065F46' }}>点上方"进入员工调研 →"启动 Double E 调研, 这是诊断报告必需的另一半数据。</div>
         </div>
       )}
       {stage === 'error' && (

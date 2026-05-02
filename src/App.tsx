@@ -721,6 +721,8 @@ function AppInner() {
                 nav('/sc');
               } else if (key === 'od') {
                 nav('/od');
+              } else if (key === 'lti') {
+                nav('/lti');
               }
             }}
           />

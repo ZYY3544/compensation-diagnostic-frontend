@@ -47,6 +47,13 @@ const TOOLS: Tool[] = [
     name: '战略解码',
     desc: '把已经想清楚的战略翻译到部门 KPI、关键岗位、能力建设、季度路线图。下游接战略澄清的产出,完成"战略 → 组织"闭环。',
     ready: true,
+    badge: 'v2',
+  },
+  {
+    key: 'lti',
+    name: '长期激励 LTI',
+    desc: 'WTW / KF 8 大 LTI 工具选型 + 6 要点方案设计 + 个人激励测算 + 风险提示 + 后续动作清单。给企业起点级别的 LTI 方案,供律师 / 财税顾问深化。',
+    ready: true,
     badge: 'v1',
   },
   {

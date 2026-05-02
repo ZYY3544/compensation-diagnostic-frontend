@@ -22,6 +22,13 @@ export default function SdApp() {
   useEffect(() => {
     sdGetProfile()
       .then(res => {
+        // V1 → V2 schema 检测: 后端检测到 V1 旧数据时返回 migration_notice + null profile/decoding
+        const data = res.data as any;
+        if (data.migration_notice) {
+          // V1 旧数据,默默放空 (用户进 interview 自动重做),不弹窗以免吓人
+          console.log('[SD V2] migration:', data.migration_notice);
+          return;
+        }
         setProfile(res.data.profile);
         setDecoding(res.data.decoding);
         if (res.data.decoding) {

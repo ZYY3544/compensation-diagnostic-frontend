@@ -12,6 +12,7 @@ import JeApp from './je/JeApp';
 import SdApp from './sd/SdApp';
 import ScApp from './sc/ScApp';
 import OdApp from './od/OdApp';
+import LtiApp from './lti/LtiApp';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/sd/*" element={<SdApp />} />
             <Route path="/sc/*" element={<ScApp />} />
             <Route path="/od/*" element={<OdApp />} />
+            <Route path="/lti/*" element={<LtiApp />} />
             {/* 未来：/design/* /assessment/* */}
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

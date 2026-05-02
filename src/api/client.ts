@@ -794,4 +794,164 @@ export interface OdInterviewExtractResponse {
 export const odInterviewExtract = (body: OdInterviewExtractRequest) =>
   api.post<OdInterviewExtractResponse>('/od/interview/extract', body);
 
+// ============================================================================
+// LTI - 长期激励 (Long Term Incentive)
+// ============================================================================
+
+export interface LtiProfile {
+  company_basics_md: string;        // 公司基础情况
+  ownership_md: string;             // 股权结构与股东意愿
+  lti_purpose_md: string;           // LTI 目的
+  financial_md: string;             // 财务现状
+  talent_md: string;                // 激励对象与人才
+}
+
+export interface LtiToolRecommendation {
+  tool: string;
+  tool_cn: string;
+  fit_score: number;
+  reason: string;
+  pros: string[];
+  cons: string[];
+  applicable_factors?: string[];
+}
+
+export interface LtiNotRecommended {
+  tool_cn: string;
+  reason: string;
+}
+
+export interface LtiHoldingModel {
+  primary: string;
+  rationale: string;
+  structure_description?: string;
+}
+
+export interface LtiParticipation {
+  total_persons_estimate: string;
+  scope_description: string;
+  qualification: string[];
+}
+
+export interface LtiLevelDistribution {
+  level: string;
+  percent: string;
+  individual_share: string;
+}
+
+export interface LtiTotalAllocation {
+  total_amount_pct: string;
+  individual_formula: string;
+  level_distribution: LtiLevelDistribution[];
+}
+
+export interface LtiGrantVesting {
+  grant_frequency: string;
+  lock_period: string;
+  vesting_schedule: string;
+  total_period: string;
+}
+
+export interface LtiPerformanceCompletion {
+  completion_range: string;
+  vesting_pct: string;
+}
+
+export interface LtiPerformanceLink {
+  metrics: string[];
+  weight_distribution: string;
+  performance_completion_table: LtiPerformanceCompletion[];
+}
+
+export interface LtiSpecialCase {
+  scenario: string;
+  handling: string;
+}
+
+export interface LtiPlanDesign {
+  holding_model: LtiHoldingModel;
+  participation: LtiParticipation;
+  total_allocation: LtiTotalAllocation;
+  grant_vesting: LtiGrantVesting;
+  performance_link: LtiPerformanceLink;
+  special_cases: LtiSpecialCase[];
+}
+
+export interface LtiSimYear {
+  year: string;
+  vested_amount: string;
+  explanation: string;
+}
+
+export interface LtiSimFactor {
+  factor: string;
+  value: string;
+}
+
+export interface LtiIndividualSim {
+  role: string;
+  scenario_input: LtiSimFactor[];
+  year_by_year_value: LtiSimYear[];
+  total_value_estimate: string;
+}
+
+export interface LtiRisk {
+  category: string;
+  risk: string;
+  mitigation: string;
+}
+
+export interface LtiNextStep {
+  area: string;
+  action: string;
+  priority: 'P0' | 'P1' | 'P2' | string;
+  expected_timeline: string;
+  responsible_role?: string;
+}
+
+export interface LtiPlan {
+  company_summary: string;
+  recommended_tools: {
+    primary: LtiToolRecommendation;
+    secondary: LtiToolRecommendation[];
+    not_recommended: LtiNotRecommended[];
+  };
+  plan_design: LtiPlanDesign;
+  individual_simulation: LtiIndividualSim[];
+  risks: LtiRisk[];
+  next_steps: LtiNextStep[];
+  generated_at?: string;
+  model_used?: string;
+}
+
+export const ltiGetProfile = () =>
+  api.get<{ profile: LtiProfile | null; plan: LtiPlan | null; updated_at?: string }>('/lti/profile');
+
+export const ltiSaveProfile = (profile: Partial<LtiProfile>) =>
+  api.post<{ ok: boolean; profile: LtiProfile; plan: LtiPlan | null }>('/lti/profile', profile);
+
+export const ltiGeneratePlan = (config?: { timeout?: number }) =>
+  api.post<{ ok: boolean; plan: LtiPlan }>('/lti/plan/generate', undefined, {
+    timeout: config?.timeout ?? 0,
+  });
+
+export interface LtiInterviewExtractRequest {
+  question_id: 'Opening' | 'LTI_Q1' | 'LTI_Q2' | 'LTI_Q3' | 'LTI_Q4' | 'LTI_Q5';
+  answer: string;
+  previous_value?: string;
+  is_follow_up?: boolean;
+  round?: number;
+  follow_up_question?: string;
+  context?: string;
+}
+
+export interface LtiInterviewExtractResponse {
+  extracted: Array<{ field_name: string; value: string }>;
+  reply: string;
+  follow_up: boolean;
+}
+
+export const ltiInterviewExtract = (body: LtiInterviewExtractRequest) =>
+  api.post<LtiInterviewExtractResponse>('/lti/interview/extract', body);
+
 export default api;

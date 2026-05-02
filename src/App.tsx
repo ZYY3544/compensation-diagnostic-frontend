@@ -719,6 +719,8 @@ function AppInner() {
                 nav('/sd');
               } else if (key === 'sc') {
                 nav('/sc');
+              } else if (key === 'od') {
+                nav('/od');
               }
             }}
           />

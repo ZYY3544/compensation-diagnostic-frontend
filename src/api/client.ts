@@ -692,4 +692,106 @@ export interface ScInterviewExtractResponse {
 export const scInterviewExtract = (body: ScInterviewExtractRequest) =>
   api.post<ScInterviewExtractResponse>('/sc/interview/extract', body);
 
+// ============================================================================
+// OD - 组织诊断 (Organization Diagnosis)
+// ============================================================================
+
+export interface OdProfile {
+  strategy_md: string;             // 战略层面
+  organization_md: string;         // 组织层面
+  talent_md: string;               // 人才层面
+  comp_perf_md: string;            // 薪酬绩效层面
+  culture_leadership_md: string;   // 文化领导力层面
+}
+
+export interface OdLayerFinding {
+  status: string;
+  current_state: string;
+  observations: string[];
+  pain_points: string[];
+}
+
+export interface OdLayerFindings {
+  strategy: OdLayerFinding;
+  organization: OdLayerFinding;
+  talent: OdLayerFinding;
+  comp_perf: OdLayerFinding;
+  culture_leadership: OdLayerFinding;
+}
+
+export interface OdKeyFinding {
+  title: string;
+  evidence: string;
+  impact: string;
+}
+
+export interface OdBenchmarkItem {
+  topic: string;
+  industry_practice: string;
+  client_status: string;
+  gap_assessment: string;
+}
+
+export interface OdRecommendation {
+  title: string;
+  rationale: string;
+  priority: 'P0' | 'P1' | 'P2' | string;
+  expected_impact: string;
+  suggested_action: string;
+}
+
+export interface OdRecommendations {
+  strategic: OdRecommendation[];
+  systematic: OdRecommendation[];
+  operational: OdRecommendation[];
+}
+
+export interface OdNextTool {
+  related_finding: string;
+  recommended_tool: 'sc' | 'sd' | 'je' | 'salary_diagnostic' | 'lti' | string;
+  why: string;
+}
+
+export interface OdDiagnosis {
+  executive_summary: string;
+  layer_findings: OdLayerFindings;
+  top_strengths: OdKeyFinding[];
+  top_gaps: OdKeyFinding[];
+  industry_benchmarks: OdBenchmarkItem[];
+  recommendations: OdRecommendations;
+  next_tools: OdNextTool[];
+  generated_at?: string;
+  model_used?: string;
+}
+
+export const odGetProfile = () =>
+  api.get<{ profile: OdProfile | null; diagnosis: OdDiagnosis | null; updated_at?: string }>('/od/profile');
+
+export const odSaveProfile = (profile: Partial<OdProfile>) =>
+  api.post<{ ok: boolean; profile: OdProfile; diagnosis: OdDiagnosis | null }>('/od/profile', profile);
+
+export const odGenerateDiagnosis = (config?: { timeout?: number }) =>
+  api.post<{ ok: boolean; diagnosis: OdDiagnosis }>('/od/diagnosis/generate', undefined, {
+    timeout: config?.timeout ?? 0,
+  });
+
+export interface OdInterviewExtractRequest {
+  question_id: 'Opening' | 'OD_Q1' | 'OD_Q2' | 'OD_Q3' | 'OD_Q4' | 'OD_Q5';
+  answer: string;
+  previous_value?: string;
+  is_follow_up?: boolean;
+  round?: number;
+  follow_up_question?: string;
+  context?: string;
+}
+
+export interface OdInterviewExtractResponse {
+  extracted: Array<{ field_name: string; value: string }>;
+  reply: string;
+  follow_up: boolean;
+}
+
+export const odInterviewExtract = (body: OdInterviewExtractRequest) =>
+  api.post<OdInterviewExtractResponse>('/od/interview/extract', body);
+
 export default api;

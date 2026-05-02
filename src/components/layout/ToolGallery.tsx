@@ -29,6 +29,13 @@ const TOOLS: Tool[] = [
     badge: 'v1',
   },
   {
+    key: 'od',
+    name: '组织诊断',
+    desc: '5 层面体检 (战略/组织/人才/薪酬绩效/文化领导力) + Top 优势短板 + 行业对标 + 优化建议 + 后续工具引导。基于 Korn Ferry 战略-组织-领导三角框架。',
+    ready: true,
+    badge: 'v1',
+  },
+  {
     key: 'sc',
     name: '战略澄清',
     desc: '把脑子里散乱的战略想法整理成 Korn Ferry 钻石模型 5 大元素 + 6 项战略质量测试。Sparky 主动挑战空话,挤出可被检验的战略选择。',

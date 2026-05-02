@@ -1,13 +1,15 @@
 /**
- * 战略澄清访谈 — LLM 驱动的多轮访谈,镜像 JeOnboarding 模式。
+ * 战略解码 V2 — 7 道访谈题, 围绕 KF 5 层分解模型 (公司战略 → BSC → MWB → 部门 OGSM → PPC)。
  *
  * 流程:
- *   Opening (LLM 生成开场) → SD_Q1 (愿景) → SD_Q2 (业务模式) → SD_Q3 (增长机会)
- *   → SD_Q4 (核心能力) → SD_Q5 (关键约束) → 提交 profile → LLM 生成战略解码地图
- *   → onComplete 跳到解码地图视图
+ *   Welcome → SD2_Q1 (愿景目标) → SD2_Q2 (业务模式) → SD2_Q3 (差异化)
+ *   → SD2_Q4 (价值链) → SD2_Q5 (必赢之仗候选) → SD2_Q6 (约束) → SD2_Q7 (核心部门)
+ *   → 提交 profile → LLM 生成 V2 解码地图 → onComplete 跳到展示页
  *
- * 跟 JeOnboarding 同款 SparkyPanel + Workspace 左右分栏。
- * 右侧实时同步访谈采集到的 5 个字段笔记。
+ * V2 跟 V1 区别:
+ *   - 5 题 → 7 题 (加价值链、必赢之仗候选、核心部门 3 题, 删了核心能力 1 题)
+ *   - 字段名变化 (vision_md → vision_targets_md, growth_opportunities_md → mwb_candidates_md, etc.)
+ *   - 输出 schema 完全不同 (BSC + MWB + OGSM + PPC, 而不是 V1 的"三大杠杆+部门翻译")
  */
 import { useEffect, useRef, useState } from 'react';
 import SparkyPanel from '../components/layout/SparkyPanel';
@@ -15,7 +17,8 @@ import Workspace from '../components/layout/Workspace';
 import { nextMsgId } from '../lib/msgId';
 import type { Message } from '../types';
 import {
-  sdSaveProfile, sdGenerateDecoding, sdInterviewExtract,
+  sdSaveProfile, sdGenerateDecoding, sdProfileFromSc, scGetProfile,
+  sdInterviewExtract,
   type SdProfile, type SdDecoding,
 } from '../api/client';
 
@@ -25,28 +28,34 @@ const BRAND = '#D85A30';
 const BRAND_TINT = '#FEF7F4';
 
 export type Stage = 'interview' | 'generating' | 'done' | 'error';
-type StepId = 'Opening' | 'SD_Q1' | 'SD_Q2' | 'SD_Q3' | 'SD_Q4' | 'SD_Q5';
+type StepId = 'Opening' | 'SD2_Q1' | 'SD2_Q2' | 'SD2_Q3' | 'SD2_Q4' | 'SD2_Q5' | 'SD2_Q6' | 'SD2_Q7';
 
-const STEP_ORDER: StepId[] = ['SD_Q1', 'SD_Q2', 'SD_Q3', 'SD_Q4', 'SD_Q5'];
+const STEP_ORDER: StepId[] = ['SD2_Q1', 'SD2_Q2', 'SD2_Q3', 'SD2_Q4', 'SD2_Q5', 'SD2_Q6', 'SD2_Q7'];
 
-const SD_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的战略顾问 AI。这是战略解码工具。
+const SD_WELCOME_MESSAGE = `你好,我是 Sparky,铭曦的战略顾问 AI。这是战略解码工具 V2 (基于 Korn Ferry 5 层分解模型重构)。
 
-**什么是战略解码**
+**什么是战略解码 V2**
 
-把已经想清楚的战略翻译到部门 KPI、关键岗位、能力建设、季度路线图 — 让每个人都知道未来 1 年要交付什么。区别于战略澄清工具(那是从 0 到 1 帮你把战略想清楚),战略解码是从 1 到 100 把战略落到组织上。
+把战略翻译成完整的执行地图,落到部门和岗位层面。区别于战略澄清(那是从 0 到 1 把战略想清楚),战略解码是从 1 到 100 把战略落到组织上。
 
-**接下来 10-15 分钟,4 步走完**
+V2 输出 7 大模块:
+1. 一句话战略表述
+2. **BSC 战略地图** (财务 / 客户 / 内部流程 / 学习成长 4 层面因果链)
+3. **必须打赢的仗 MWB** (3-7 场战役, 每场 5 维度描述 + 主帅副帅 + 一级行动计划)
+4. **部门 OGSM** (核心部门的使命/目标/策略/衡量)
+5. 季度路线图
+6. 一致性检查 (6 大维度)
+7. 高管 PPC 雏形
 
-1. 我用 5 道题采集你们的战略输入 — 愿景 / 业务模式 / 增长机会 / 核心能力 / 关键约束
-2. 基于钻石模型 + 6 项一致性检查,翻译成可执行的解码地图
-3. 部门翻译: 每个核心部门的 critical outcomes + KPIs + 关键岗位 + 能力建设
-4. 季度路线图: 未来 4 个季度的关键里程碑
+**接下来 15-20 分钟,我会用 7 道题挖完战略输入**
 
-**适用提醒**
+愿景目标 → 业务模式 → 差异化 → 价值链分析 → 必赢之仗候选 → 关键约束 → 核心部门
 
-如果你们的战略方向都还没定,建议先用「战略澄清」工具理清楚再来这里。
+**说在前面**
 
-**第一个问题:你们 3-5 年的愿景目标是什么? 量化的成功画像 / 北极星指标是什么?**`;
+过程中我会主动挑战空话 — 你说"做行业第一",我会追问"第一具体什么指标"。这是工具最值钱的部分,请耐心跟我对话。
+
+**第一个问题:你们公司未来 3-5 年的战略愿景是什么? 量化的成功画像 / 北极星指标是什么? 时间窗口呢?**`;
 
 interface Props {
   onComplete: (profile: SdProfile, decoding: SdDecoding) => void;
@@ -56,19 +65,23 @@ interface Props {
 export default function SdInterview({ onComplete, onSkip }: Props) {
   const [stage, setStage] = useState<Stage>('interview');
   const [profile, setProfile] = useState<Partial<SdProfile>>({
-    vision_md: '', business_model_md: '', growth_opportunities_md: '',
-    core_capabilities: [], constraints_md: '',
+    vision_targets_md: '', business_model_md: '', differentiators_md: '',
+    value_chain_md: '', mwb_candidates_md: '', constraints_md: '',
+    core_departments_md: '',
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [hasSc, setHasSc] = useState(false);
+  const [scLoaded, setScLoaded] = useState(false);
 
   const stepRef = useRef<StepId>('Opening');
   const roundRef = useRef<number>(1);
   const isFollowUpRef = useRef<boolean>(false);
   const lastSparkyQuestionRef = useRef<string>('');
   const profileRef = useRef<Partial<SdProfile>>({
-    vision_md: '', business_model_md: '', growth_opportunities_md: '',
-    core_capabilities: [], constraints_md: '',
+    vision_targets_md: '', business_model_md: '', differentiators_md: '',
+    value_chain_md: '', mwb_candidates_md: '', constraints_md: '',
+    core_departments_md: '',
   });
   const initRef = useRef(false);
   const finishedDecodingRef = useRef<SdDecoding | null>(null);
@@ -79,32 +92,66 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
     initRef.current = true;
 
     setMessages([
-      { role: 'user', text: '我想做一次战略解码' },
+      { role: 'user', text: '我想做一次战略解码 V2' },
       { id: nextMsgId(), role: 'bot', text: SD_WELCOME_MESSAGE },
     ]);
 
-    stepRef.current = 'SD_Q1';
+    stepRef.current = 'SD2_Q1';
     roundRef.current = 1;
     isFollowUpRef.current = true;
-    lastSparkyQuestionRef.current = '你们 3-5 年的愿景目标是什么? 量化的成功画像 / 北极星指标是什么?';
+    lastSparkyQuestionRef.current = '你们公司未来 3-5 年的战略愿景是什么? 量化的成功画像 / 北极星指标是什么? 时间窗口呢?';
 
     fetch(`${API_BASE}/sd/health`, { method: 'GET' }).catch(() => {});
+
+    // 检测 SC 是否做过 — 如果做过, 在右侧 NotesView 上方提供"从 SC 拉数据"按钮
+    scGetProfile()
+      .then(res => {
+        if (res.data.profile && res.data.diamond) {
+          setHasSc(true);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  /** 同步 LLM 提取的字段到 profile state */
+  /** 从 SC 拉数据初始填充 profile */
+  const handleLoadFromSc = async () => {
+    try {
+      const res = await sdProfileFromSc();
+      if (res.data.profile) {
+        setProfile(res.data.profile);
+        profileRef.current = res.data.profile;
+        setScLoaded(true);
+        const noticeId = nextMsgId();
+        setMessages(prev => [...prev, { id: noticeId, role: 'bot', text: '' }]);
+        streamText(
+          `已从战略澄清拉了初始数据 — ${res.data.message}\n\n你看右边笔记区,前 3 个字段已经有内容了 (来自 SC 钻石模型)。继续访谈我会逐步完善其他字段;也可以直接说"跳过到生成解码"我用现有数据生成。`,
+          (t) => setMessages(prev => prev.map(m => m.id === noticeId ? { ...m, text: t } : m)),
+        );
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || '拉取失败';
+      const noticeId = nextMsgId();
+      setMessages(prev => [...prev, { id: noticeId, role: 'bot', text: '' }]);
+      streamText(
+        `从 SC 拉数据失败: ${msg}\n\n继续访谈即可。`,
+        (t) => setMessages(prev => prev.map(m => m.id === noticeId ? { ...m, text: t } : m)),
+      );
+    }
+  };
+
   const applyExtracted = (items: Array<{ field_name: string; value: string }>) => {
     setProfile(prev => {
       const next: Partial<SdProfile> = { ...prev };
       for (const item of items) {
         const v = (item.value || '').trim();
         if (!v) continue;
-        if (item.field_name === 'vision_md') next.vision_md = v;
+        if (item.field_name === 'vision_targets_md') next.vision_targets_md = v;
         else if (item.field_name === 'business_model_md') next.business_model_md = v;
-        else if (item.field_name === 'growth_opportunities_md') next.growth_opportunities_md = v;
-        else if (item.field_name === 'core_capabilities') {
-          next.core_capabilities = parseListAnswer(v);
-        }
+        else if (item.field_name === 'differentiators_md') next.differentiators_md = v;
+        else if (item.field_name === 'value_chain_md') next.value_chain_md = v;
+        else if (item.field_name === 'mwb_candidates_md') next.mwb_candidates_md = v;
         else if (item.field_name === 'constraints_md') next.constraints_md = v;
+        else if (item.field_name === 'core_departments_md') next.core_departments_md = v;
       }
       profileRef.current = next;
       return next;
@@ -114,23 +161,25 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
   const buildContext = (): string => {
     const p = profileRef.current;
     const parts: string[] = [];
-    if (p.vision_md) parts.push(`【愿景目标】${p.vision_md}`);
+    if (p.vision_targets_md) parts.push(`【愿景目标】${p.vision_targets_md}`);
     if (p.business_model_md) parts.push(`【业务模式】${p.business_model_md}`);
-    if (p.growth_opportunities_md) parts.push(`【增长机会】${p.growth_opportunities_md}`);
-    if (p.core_capabilities && p.core_capabilities.length > 0) {
-      parts.push(`【核心能力】${p.core_capabilities.join('、')}`);
-    }
+    if (p.differentiators_md) parts.push(`【差异化】${p.differentiators_md}`);
+    if (p.value_chain_md) parts.push(`【价值链】${p.value_chain_md}`);
+    if (p.mwb_candidates_md) parts.push(`【必赢之仗候选】${p.mwb_candidates_md}`);
     if (p.constraints_md) parts.push(`【关键约束】${p.constraints_md}`);
+    if (p.core_departments_md) parts.push(`【核心部门】${p.core_departments_md}`);
     return parts.join('\n\n');
   };
 
   const getPreviousValue = (step: StepId): string => {
     const p = profileRef.current;
-    if (step === 'SD_Q1') return p.vision_md || '';
-    if (step === 'SD_Q2') return p.business_model_md || '';
-    if (step === 'SD_Q3') return p.growth_opportunities_md || '';
-    if (step === 'SD_Q4') return (p.core_capabilities || []).join('、');
-    if (step === 'SD_Q5') return p.constraints_md || '';
+    if (step === 'SD2_Q1') return p.vision_targets_md || '';
+    if (step === 'SD2_Q2') return p.business_model_md || '';
+    if (step === 'SD2_Q3') return p.differentiators_md || '';
+    if (step === 'SD2_Q4') return p.value_chain_md || '';
+    if (step === 'SD2_Q5') return p.mwb_candidates_md || '';
+    if (step === 'SD2_Q6') return p.constraints_md || '';
+    if (step === 'SD2_Q7') return p.core_departments_md || '';
     return '';
   };
 
@@ -162,7 +211,7 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
       lastSparkyQuestionRef.current = boldMatch ? boldMatch[1] : reply.slice(-60);
 
       if (questionId === 'Opening') {
-        stepRef.current = 'SD_Q1';
+        stepRef.current = 'SD2_Q1';
         roundRef.current = 1;
         isFollowUpRef.current = true;
         return;
@@ -179,16 +228,15 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
           isFollowUpRef.current = false;
           lastSparkyQuestionRef.current = '';
         } else {
-          // 最后一题收束 → 提交 profile + 生成解码地图
           setTimeout(() => submitProfile(), reply.length * 25 + 500);
         }
       }
     } catch (err: any) {
-      console.error('[SdInterview] extract failed', err);
-      const msg = err?.response?.data?.error || err?.message || '网络抖动,刚才那条没收到';
+      console.error('[SdInterview V2] extract failed', err);
+      const msg = err?.response?.data?.error || err?.message || '网络抖动';
       setMessages(prev => prev.map(m => m.id === loadingId ? {
         ...m,
-        text: `刚才有点小问题:${msg}。再说一遍试试,或者直接说"跳过"我们用现有信息生成解码。`,
+        text: `刚才有点小问题:${msg}。再说一遍试试,或者说"跳过"用现有信息生成解码。`,
       } : m));
     }
   };
@@ -216,17 +264,21 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
     setStage('generating');
     const p = profileRef.current;
     const finalProfile: SdProfile = {
-      vision_md: p.vision_md || '',
+      vision_targets_md: p.vision_targets_md || '',
       business_model_md: p.business_model_md || '',
-      growth_opportunities_md: p.growth_opportunities_md || '',
-      core_capabilities: p.core_capabilities || [],
+      differentiators_md: p.differentiators_md || '',
+      value_chain_md: p.value_chain_md || '',
+      mwb_candidates_md: p.mwb_candidates_md || '',
       constraints_md: p.constraints_md || '',
+      core_departments_md: p.core_departments_md || '',
     };
+
+    const filledCount = Object.values(finalProfile).filter(v => v).length;
 
     const genId = nextMsgId();
     setMessages(prev => [...prev, { id: genId, role: 'bot', text: '' }]);
     streamText(
-      `战略输入我都收齐了 — 愿景 / 业务模式 / 增长机会 / ${finalProfile.core_capabilities.length} 项核心能力 / 关键约束。\n\n现在我来基于钻石模型 + Korn Ferry 解码框架生成战略地图,会包含三大杠杆、部门翻译、关键岗位、能力建设、季度路线图、6 项一致性检查。这一步要 30-60 秒...`,
+      `战略输入收齐了 (${filledCount}/7 维度)。\n\n现在我基于 Korn Ferry 5 层分解模型生成完整战略解码地图,7 大模块全做出来:\n\n· 一句话战略表述\n· BSC 战略地图 (财务/客户/内部流程/学习成长)\n· 3-7 场必赢之仗 (每场 5 维度描述 + 主帅 + 行动计划)\n· 核心部门 OGSM (使命/目标/策略/衡量)\n· 4 季度路线图\n· 6 项一致性检查\n· 高管 PPC 雏形\n\n这一步要 60-90 秒,内容比较重...`,
       (t) => setMessages(prev => prev.map(m => m.id === genId ? { ...m, text: t } : m)),
     );
 
@@ -237,10 +289,11 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
       finishedProfileRef.current = finalProfile;
       finishedDecodingRef.current = result.data.decoding;
 
+      const d = result.data.decoding;
       const doneId = nextMsgId();
       setMessages(prev => [...prev, { id: doneId, role: 'bot', text: '' }]);
       streamText(
-        `**战略解码地图已生成**\n\n包括:\n· 一句话战略表述\n· 三大杠杆\n· ${result.data.decoding.department_translations?.length || 0} 个部门的 critical outcomes + KPIs\n· ${result.data.decoding.critical_roles?.length || 0} 个关键岗位\n· 4 个季度的路线图\n· 6 项一致性检查\n\n点右上角"看战略解码地图 →"进入展示页。这页的对话历史 + 笔记都还在,需要时可以滚回去看。`,
+        `**战略解码地图已生成** (V2 完整版)\n\n包括:\n· 一句话战略表述\n· BSC 战略地图 ${d.bsc_map?.financial?.length || 0}+${d.bsc_map?.customer?.length || 0}+${d.bsc_map?.internal_process?.length || 0}+${d.bsc_map?.learning_growth?.length || 0} 个目标\n· ${d.mwbs?.length || 0} 场必赢之仗\n· ${d.department_ogsms?.length || 0} 个部门 OGSM\n· ${d.roadmap?.length || 0} 个季度路线图\n· ${d.consistency_checks?.length || 0} 项一致性检查\n· ${d.exec_ppcs?.length || 0} 位高管 PPC\n\n点右上角"看战略解码地图 →"进入完整展示页。`,
         (t) => setMessages(prev => prev.map(m => m.id === doneId ? { ...m, text: t } : m)),
         () => setStage('done'),
       );
@@ -263,7 +316,6 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
 
   return (
     <div style={{ display: 'flex', height: '100%', background: '#FAFAFA' }}>
-      {/* 左:Sparky 对话区 */}
       <div style={{
         flex: 1, minWidth: 0, height: '100%',
         background: '#fff', borderRight: '1px solid #E2E8F0',
@@ -280,23 +332,37 @@ export default function SdInterview({ onComplete, onSkip }: Props) {
         />
       </div>
 
-      {/* 右:访谈笔记 */}
       <Workspace
         mode="wide"
-        title="战略澄清笔记"
-        subtitle="访谈中实时整理 5 个维度的输入,完成后用来生成战略解码地图"
-        headerExtra={onSkip && stage === 'interview' ? (
-          <span
-            onClick={onSkip}
-            style={{
-              fontSize: 13, color: BRAND, cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-            title="跳过访谈,直接进入解码地图视图(如果之前已经生成过)"
-          >
-            跳过访谈,看上一版解码 →
-          </span>
-        ) : undefined}
+        title="战略解码笔记 (V2)"
+        subtitle="访谈中实时整理 7 维度战略输入,完成后生成完整解码地图"
+        headerExtra={
+          <div style={{ display: 'flex', gap: 10 }}>
+            {hasSc && !scLoaded && stage === 'interview' && (
+              <span
+                onClick={handleLoadFromSc}
+                style={{
+                  fontSize: 13, color: BRAND, cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="从战略澄清 SC 工具拉初始数据,自动填充 3 个字段"
+              >
+                从 SC 拉数据 →
+              </span>
+            )}
+            {onSkip && stage === 'interview' && (
+              <span
+                onClick={onSkip}
+                style={{
+                  fontSize: 13, color: BRAND, cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                跳过访谈,看上一版 →
+              </span>
+            )}
+          </div>
+        }
       >
         {stage === 'done' && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
@@ -323,18 +389,17 @@ const primaryBtn: React.CSSProperties = {
   background: BRAND, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 500,
 };
 
-// ============================================================================
-// 右侧访谈笔记 — 5 段文字摘要
-// ============================================================================
 function NotesView({ profile, stage, errorText }: {
   profile: Partial<SdProfile>;
   stage: Stage;
   errorText: string | null;
 }) {
-  const hasAny = !!(profile.vision_md || profile.business_model_md
-    || profile.growth_opportunities_md
-    || (profile.core_capabilities?.length || 0) > 0
-    || profile.constraints_md);
+  const hasAny = !!(
+    profile.vision_targets_md || profile.business_model_md
+    || profile.differentiators_md || profile.value_chain_md
+    || profile.mwb_candidates_md || profile.constraints_md
+    || profile.core_departments_md
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -343,7 +408,7 @@ function NotesView({ profile, stage, errorText }: {
           padding: '40px 24px', textAlign: 'center', color: '#94A3B8', fontSize: 13,
           background: '#fff', border: '1px dashed #E2E8F0', borderRadius: 12,
         }}>
-          访谈开始后这里会逐段出现你们的战略输入 — 愿景 / 业务模式 / 增长机会 / 核心能力 / 关键约束。访谈结束后我会基于这些信息生成战略解码地图。
+          访谈开始后这里会出现 7 维度战略输入 — 愿景目标 / 业务模式 / 差异化 / 价值链 / 必赢之仗候选 / 约束 / 核心部门。访谈结束后我会基于 Korn Ferry 5 层分解模型生成完整战略解码地图。
         </div>
       )}
 
@@ -352,48 +417,26 @@ function NotesView({ profile, stage, errorText }: {
           background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
           padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18,
         }}>
-          <NoteSection
-            label="愿景与成功指标"
-            empty="(待 Q1 收集)"
-            done={!!profile.vision_md}
-          >
-            {profile.vision_md && renderMd(profile.vision_md)}
+          <NoteSection label="① 战略愿景 + 量化目标" empty="(待 Q1 收集)" done={!!profile.vision_targets_md}>
+            {profile.vision_targets_md && renderMd(profile.vision_targets_md)}
           </NoteSection>
-
-          <NoteSection
-            label="业务模式与客户价值"
-            empty="(待 Q2 收集)"
-            done={!!profile.business_model_md}
-          >
+          <NoteSection label="② 业务模式 + 价值主张" empty="(待 Q2 收集)" done={!!profile.business_model_md}>
             {profile.business_model_md && renderMd(profile.business_model_md)}
           </NoteSection>
-
-          <NoteSection
-            label="关键增长机会"
-            empty="(待 Q3 收集)"
-            done={!!profile.growth_opportunities_md}
-          >
-            {profile.growth_opportunities_md && renderMd(profile.growth_opportunities_md)}
+          <NoteSection label="③ 关键差异化 + 竞争壁垒" empty="(待 Q3 收集)" done={!!profile.differentiators_md}>
+            {profile.differentiators_md && renderMd(profile.differentiators_md)}
           </NoteSection>
-
-          <NoteSection
-            label="核心能力"
-            empty="(待 Q4 收集)"
-            done={(profile.core_capabilities?.length || 0) > 0}
-          >
-            {(profile.core_capabilities?.length || 0) > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {profile.core_capabilities!.map(c => <Chip key={c}>{c}</Chip>)}
-              </div>
-            )}
+          <NoteSection label="④ 价值链关键环节 + 制约" empty="(待 Q4 收集)" done={!!profile.value_chain_md}>
+            {profile.value_chain_md && renderMd(profile.value_chain_md)}
           </NoteSection>
-
-          <NoteSection
-            label="关键约束与资源现状"
-            empty="(待 Q5 收集)"
-            done={!!profile.constraints_md}
-          >
+          <NoteSection label="⑤ 必赢之仗候选" empty="(待 Q5 收集)" done={!!profile.mwb_candidates_md}>
+            {profile.mwb_candidates_md && renderMd(profile.mwb_candidates_md)}
+          </NoteSection>
+          <NoteSection label="⑥ 关键约束" empty="(待 Q6 收集)" done={!!profile.constraints_md}>
             {profile.constraints_md && renderMd(profile.constraints_md)}
+          </NoteSection>
+          <NoteSection label="⑦ 核心部门" empty="(待 Q7 收集)" done={!!profile.core_departments_md}>
+            {profile.core_departments_md && renderMd(profile.core_departments_md)}
           </NoteSection>
         </div>
       )}
@@ -404,7 +447,7 @@ function NotesView({ profile, stage, errorText }: {
           padding: '18px 16px', textAlign: 'center', color: BRAND, fontSize: 13,
           fontWeight: 500,
         }}>
-          正在基于战略输入生成解码地图...
+          正在生成完整战略解码地图 (BSC + MWB + OGSM + PPC)... 60-90 秒
         </div>
       )}
       {stage === 'done' && (
@@ -414,15 +457,14 @@ function NotesView({ profile, stage, errorText }: {
         }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>战略解码地图已生成</div>
           <div style={{ color: '#065F46' }}>
-            上面"看战略解码地图 →"按钮进入展示页。这里的对话历史 + 笔记都还在。
+            上面"看战略解码地图 →"按钮进入完整展示页。
           </div>
         </div>
       )}
       {stage === 'error' && (
         <div style={{
           background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12,
-          padding: '18px 16px', color: '#B91C1C', fontSize: 13,
-          lineHeight: 1.7,
+          padding: '18px 16px', color: '#B91C1C', fontSize: 13, lineHeight: 1.7,
         }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>解码生成失败</div>
           <div>{errorText || '未知错误'}</div>
@@ -433,10 +475,7 @@ function NotesView({ profile, stage, errorText }: {
 }
 
 function NoteSection({ label, empty, done, children }: {
-  label: string;
-  empty: string;
-  done: boolean;
-  children?: React.ReactNode;
+  label: string; empty: string; done: boolean; children?: React.ReactNode;
 }) {
   return (
     <div>
@@ -461,17 +500,6 @@ function NoteSection({ label, empty, done, children }: {
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span style={{
-      padding: '3px 10px', borderRadius: 999, fontSize: 12,
-      background: '#F1F5F9', color: '#475569',
-    }}>
-      {children}
-    </span>
-  );
-}
-
 function renderMd(text: string): React.ReactNode {
   const lines = text.split('\n').filter(l => l.trim());
   return (
@@ -489,19 +517,10 @@ function renderMd(text: string): React.ReactNode {
   );
 }
 
-/** 解析顿号 / 逗号分隔的列表 */
-function parseListAnswer(v: string): string[] {
-  return v.replace(/，/g, '、').split('、').map(s => s.trim()).filter(Boolean);
-}
-
-/** 流式打字效果,跟 SparkyPanel 内置一致 */
 function streamText(text: string, onTick: (s: string) => void, onDone?: () => void) {
   let i = 0;
   const tick = () => {
-    if (i >= text.length) {
-      onDone?.();
-      return;
-    }
+    if (i >= text.length) { onDone?.(); return; }
     i = Math.min(i + 1, text.length);
     onTick(text.slice(0, i));
     if (i < text.length) setTimeout(tick, 25);

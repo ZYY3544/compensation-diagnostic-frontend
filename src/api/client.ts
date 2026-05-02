@@ -470,53 +470,126 @@ export const invokeSkill = (skillKey: string, sessionId: string, params: any) =>
   api.post('/skill/invoke', { skill_key: skillKey, session_id: sessionId, params });
 
 // ============================================================================
-// SD - 战略解码 (Strategy Decoding)
+// SD V2 - 战略解码 (Strategy Decoding) — KF 5 层分解模型
 // ============================================================================
 
+/** V2 访谈产出 - 7 个 markdown 字段 */
 export interface SdProfile {
-  vision_md: string;
-  business_model_md: string;
-  growth_opportunities_md: string;
-  core_capabilities: string[];
-  constraints_md: string;
+  vision_targets_md: string;       // 战略愿景 + 量化目标
+  business_model_md: string;       // 业务模式 + 价值主张
+  differentiators_md: string;      // 关键差异化 + 竞争壁垒
+  value_chain_md: string;          // 价值链关键环节 + 制约
+  mwb_candidates_md: string;       // 必赢之仗候选
+  constraints_md: string;          // 关键约束
+  core_departments_md: string;     // 核心部门
 }
 
-export interface SdDecodingLever {
-  name: string;
-  rationale: string;
+/** BSC 战略地图节点 (4 层面) */
+export interface SdBscNode {
+  goal: string;
+  measure: string;
+  target_value?: string;
+  rationale?: string;
 }
 
-export interface SdDepartmentTranslation {
+export interface SdBscMap {
+  financial: SdBscNode[];
+  customer: SdBscNode[];
+  internal_process: SdBscNode[];
+  learning_growth: SdBscNode[];
+  causal_summary: string;
+}
+
+/** 必赢之仗 MWB - 5 维度描述 + 主帅副帅 + 一级行动 */
+export interface SdMwbAction {
+  action: string;
+  due_date: string;
+  owner_role: string;
+  supporters_roles?: string[];
+  resources_needed?: string[];
+  milestones?: string[];
+  metrics?: string[];
+}
+
+export interface SdMwb {
+  id: string;
+  title: string;
+  why: string[];
+  is_what: string[];
+  is_not_what: string[];
+  success_picture: string[];
+  key_metrics: string[];
+  difficulties: string[];
+  positive_factors: string[];
+  negative_factors: string[];
+  key_drivers: string[];
+  commander_role: string;
+  vice_commander_role?: string;
+  level1_actions: SdMwbAction[];
+}
+
+/** 部门 OGSM */
+export interface SdOgsmStrategy {
+  strategy: string;
+  priority: 'H' | 'M' | 'L' | string;
+  measures: string[];
+  related_mwb_id?: string;
+}
+
+export interface SdOgsmGoal {
+  goal: string;
+  strategies: SdOgsmStrategy[];
+}
+
+export interface SdDepartmentOgsm {
   department: string;
-  critical_outcomes: string[];
-  kpis: string[];
+  objective: string;
+  goals: SdOgsmGoal[];
 }
 
-export interface SdCriticalRole {
-  role: string;
-  why_critical: string;
-  priority: '立即' | '6 月内' | '1 年内' | string;
+/** 季度路线图 */
+export interface SdRoadmapMilestone {
+  text: string;
+  responsible_dept?: string;
+  related_mwb_id?: string;
 }
 
 export interface SdRoadmapQuarter {
-  quarter: string;
-  milestones: string[];
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4' | string;
+  milestones: SdRoadmapMilestone[];
 }
 
+/** 一致性检查 (V2 扩展到 6 大类别) */
 export interface SdConsistencyCheck {
-  criterion: string;
+  category: string;
   status: string;
   note: string;
 }
 
+/** 高管 PPC 雏形 */
+export interface SdExecPpcKpi {
+  kpi: string;
+  target: string;
+  weight_pct: number;
+}
+
+export interface SdExecPpc {
+  exec_role: string;
+  is_commander_of?: string[];
+  organizational_kpis: SdExecPpcKpi[];
+  review_dimensions: string[];
+  capability_development: string[];
+}
+
+/** V2 完整解码地图 */
 export interface SdDecoding {
-  strategy_statement: string;
-  three_levers: SdDecodingLever[];
-  department_translations: SdDepartmentTranslation[];
-  critical_roles: SdCriticalRole[];
-  capability_priorities: { '1y': string[]; '3y': string[] };
+  strategic_statement: string;
+  bsc_map: SdBscMap;
+  mwbs: SdMwb[];
+  department_ogsms: SdDepartmentOgsm[];
   roadmap: SdRoadmapQuarter[];
-  consistency_check: SdConsistencyCheck[];
+  consistency_checks: SdConsistencyCheck[];
+  exec_ppcs: SdExecPpc[];
   generated_at?: string;
   model_used?: string;
 }
@@ -527,13 +600,17 @@ export const sdGetProfile = () =>
 export const sdSaveProfile = (profile: Partial<SdProfile>) =>
   api.post<{ ok: boolean; profile: SdProfile; decoding: SdDecoding | null }>('/sd/profile', profile);
 
+/** V2 新增 - 从 SC 钻石模型拉初始 profile */
+export const sdProfileFromSc = () =>
+  api.post<{ ok: boolean; profile: SdProfile; message: string }>('/sd/profile/from-sc');
+
 export const sdGenerateDecoding = (config?: { timeout?: number }) =>
   api.post<{ ok: boolean; decoding: SdDecoding }>('/sd/decoding/generate', undefined, {
     timeout: config?.timeout ?? 0,
   });
 
 export interface SdInterviewExtractRequest {
-  question_id: 'Opening' | 'SD_Q1' | 'SD_Q2' | 'SD_Q3' | 'SD_Q4' | 'SD_Q5';
+  question_id: 'Opening' | 'SD2_Q1' | 'SD2_Q2' | 'SD2_Q3' | 'SD2_Q4' | 'SD2_Q5' | 'SD2_Q6' | 'SD2_Q7';
   answer: string;
   previous_value?: string;
   is_follow_up?: boolean;
